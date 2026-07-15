@@ -1,0 +1,52 @@
+---
+description: Zasady frontendu React PWA dla Trainer
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# FRONTEND (REACT PWA) - Trainer
+
+Źródło wymagań: `docs/prd.md`. Stack: React, Vite, TypeScript, Tailwind, shadcn/ui, TanStack Query, Zustand, React Hook Form + Zod, vite-plugin-pwa.
+
+## 1) Granice warstw
+
+- UI (komponenty) nie woła API bezpośrednio z głębi drzewa — używaj hooków / query functions.
+- Stan serwera: TanStack Query. Stan UI i offline queue: Zustand (+ IndexedDB).
+- Walidacja formularzy: Zod + React Hook Form; schematy trzymać blisko feature, spójne z kontraktami API.
+- Nie duplikuj reguł awansu/regresu na frontcie jako „źródła prawdy” — silnik jest na backendzie; UI może pokazywać progi z konfiguracji pobranej z API.
+
+## 2) Auth i dostęp
+
+- MVP: wyłącznie „Zaloguj przez Google”. Brak przycisku Apple (Faza 3+).
+- 401 z API → wylogowanie lokalne + redirect na login; zachowaj intended path po powrocie.
+- Po wylogowaniu nie mieszaj danych lokalnych między kontami (clear IndexedDB / namespace per user).
+
+## 3) Offline i sync (Faza 1)
+
+- Offline: program CC + ostatnie 30 sesji + pomiary w lokalnej bazie; mutacje przez outbox.
+- Każda mutacja offline ma stabilne `client_mutation_id` i `updated_at` (LWW zgodnie z PRD).
+- Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync.
+- Wskaźnik „oczekuje na sync” musi być widoczny dla sesji i pomiarów.
+- Nie wprowadzaj Service Worker cache’ującego wrażliwe API responses bez świadomej polityki prywatności.
+
+## 4) UX domenowy
+
+- Ekran „dzisiejsza sesja”: CC → satelity → notatka; cel logowania < 3 min.
+- Satelity `daily` widoczne także w dni odpoczynku CC.
+- Limit 10 satelitów: komunikat + licznik X/10 przed próbą zapisu.
+- Pomiary: domyślnie waga, pas, biceps; jednostki kg/cm; walidacja zakresów po stronie Zod.
+- Disclaimer zdrowotny wymagany przed pierwszą sesją; dostępny też w ustawieniach.
+- Teksty UI po polsku; brak dosłownych cytatów z książki CC.
+
+## 5) Faza 2 (nie buduj przedwcześnie)
+
+- Agent AI, wykresy premium, Garmin connect, Web Push, import YouTube — za feature flag / trasą premium.
+- Web Push na iOS tylko po „Add to Home Screen”; nie obiecuj natywnego push w UI.
+- Brak integracji z Cloudflare R2 w kliencie Fazy 1.
+
+## 6) Jakość
+
+- TypeScript strict; unikaj `any`.
+- Komponenty funkcyjne; logikę wyciągaj do hooków.
+- Testuj krytyczne ścieżki: login redirect, outbox enqueue, render sesji dnia odpoczynku, limit satelitów.
+- Mobile-first; nie zakładaj natywnych API (HealthKit, Garmin SDK).

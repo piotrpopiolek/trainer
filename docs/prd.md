@@ -14,7 +14,8 @@ Indywidualny użytkownik trenujący dla własnego rozwoju, śledzący progres w 
 
 - Frontend: React PWA (mobile-first), Vite, TypeScript, Tailwind CSS, shadcn/ui
 - Backend: FastAPI, Pydantic v2, SQLAlchemy 2.0, PostgreSQL + JSONB
-- Infrastruktura: Redis + ARQ (kolejka zadań), Cloudflare R2 (pliki), Docker, GitHub Actions
+- Infrastruktura (Faza 1): Docker, GitHub Actions
+- Infrastruktura (Faza 2+): Redis + ARQ (kolejka zadań), Cloudflare R2 (pliki)
 - Observability: OpenTelemetry, Prometheus, Grafana, OpenAPI
 
 ```mermaid
@@ -37,8 +38,8 @@ flowchart TB
 
     subgraph storage [Storage]
         PG[(PostgreSQL + JSONB)]
-        R2[Cloudflare R2]
-        Redis[(Redis)]
+        R2[Cloudflare R2 Faza 2]
+        Redis[(Redis Faza 2)]
     end
 
     UI --> TQ --> API
@@ -50,6 +51,7 @@ flowchart TB
     ARQ --> GarminSync
     AgentService --> PG
     GarminSync --> PG
+    AgentService --> R2
 ```
 
 ### 1.4 Roadmapa produktu
@@ -57,7 +59,7 @@ flowchart TB
 | Faza | Czas | Zakres |
 |------|------|--------|
 | Faza 1 (MVP) | 8–10 tygodni | OAuth Google, onboarding, program CC, silnik progresji, logowanie sesji, satelity (max 10), pomiary sylwetki, offline sync, compliance |
-| Faza 2 | 6–8 tygodni | Agent AI, Garmin (odczyt), powiadomienia regułowe, wykresy trendów, tworzenie ćwiczeń z YouTube, monetyzacja premium |
+| Faza 2 | 6–8 tygodni | Agent AI, Garmin (odczyt), powiadomienia regułowe, wykresy trendów, tworzenie ćwiczeń z YouTube, monetyzacja premium, Cloudflare R2, Redis/ARQ |
 | Faza 3 | TBD | Własne programy, społeczność, płatności rozbudowane, import JSON/CSV, natywna aplikacja (rozważana) |
 
 ### 1.5 Model monetyzacji
@@ -299,11 +301,14 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - Powiadomienia regułowe (Web Push)
 - Wykresy trendów treningu i sylwetki (premium)
 - Subskrypcja premium (mechanizm płatności — szczegóły TBD)
+- Cloudflare R2 (storage plików / assetów; nie wymagane w Fazie 1)
+- Redis + ARQ (workery: agent AI, sync Garmin, push)
 
 ### 4.3 Poza scope (Fazy 1–2)
 
 | Element | Uzasadnienie |
 |---------|--------------|
+| Cloudflare R2 | Poza scope Fazy 1 (MVP); brak uploadu plików użytkownika — wprowadzenie w Fazie 2 |
 | OAuth Apple | Poza scope MVP; Faza 1 = wyłącznie Google OAuth; Apple Sign In w Fazie 3+ |
 | Natywna aplikacja iOS/Android | Decyzja: PWA w Fazie 1; native rozważane w Fazie 3+ |
 | HealthKit / Garmin SDK natywnie | Integracja Garmin wyłącznie przez API backendu |

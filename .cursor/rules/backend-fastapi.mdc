@@ -1,0 +1,76 @@
+---
+description: Zasady backendu FastAPI dla Trainer (PRD)
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# BACKEND (FASTAPI) - Trainer
+
+Źródło wymagań: `docs/prd.md`. Stack: FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic, PostgreSQL + JSONB. Redis/ARQ i Cloudflare R2 dopiero Faza 2+.
+
+## 1) Architektura i granice warstw
+
+- Stosuj architekturę warstwową: `api/routers` (HTTP), `schemas` (Pydantic — kontrakty), `services` (logika domenowa), `models` / `repositories` (persistencja).
+- Logika domenowa wyłącznie w serwisach aplikacyjnych; nie implementuj reguł biznesowych w routerach, triggery DB ani w workerach (worker tylko orchestruje wywołanie serwisu).
+- Silnik progresji (`ProgressionEngine`) to serwis deterministyczny — nie zastępuj go LLM (PRD FR-030, FR-093).
+- Wymuszaj DRY: duplikacja logiki domenowej = błąd krytyczny do refaktoryzacji.
+- Projektuj moduły zgodnie z SOLID, szczególnie SRP i DIP (serwis zależy od abstrakcji repozytorium / jednostki pracy, nie od szczegółów routera).
+
+## 2) Walidacja danych i HTTP
+
+- Kontrakty wejścia/wyjścia wyłącznie Pydantic v2; OpenAPI generowane z FastAPI.
+- Używaj poprawnych metod HTTP i jednoznacznych kodów: 401 (brak auth), 403 (obce zasoby), 404, 409 (konflikt sync / limit satelitów), 422 (walidacja).
+- Operacje I/O-bound (LLM, Garmin, push, długotrwałe sync) nie mogą blokować cyklu request/response — od Fazy 2 deleguj do ARQ; w Fazie 1 nie dodawaj Redis „na zapas”.
+- Każdy endpoint chroniony wymaga uwierzytelnionego użytkownika; filtruj dane po `user_id` z tokenu (nie z body).
+
+## 3) ORM, transakcje i idempotencja
+
+- Używaj SQLAlchemy 2.0 (async lub sync — jeden styl w całym projekcie) jako podstawowego dostępu do danych.
+- Zmiana stanu biznesowego (zapis sesji, ocena progresji, wpis outbox sync) musi być atomowa w jednej transakcji.
+- Endpointy sync / outbox klienta wspierają idempotencję: `client_mutation_id` (lub równoważne) — powtórzone żądanie nie duplikuje sesji ani awansu kroku.
+- Przy przejściach stanu progresji (awans/regres) używaj blokad wiersza (`SELECT … FOR UPDATE`) na rekordzie postępu ćwiczenia użytkownika.
+- Konflikty sync: last-write-wins per encja na `updated_at` (PRD FR-073); nie implementuj merge semantyki bez zmiany PRD.
+
+## 4) Reguły domenowe Trainer
+
+- Persona: wyłącznie indywidualny użytkownik (brak ról trener/klient/admin multi-tenant w MVP).
+- Auth MVP: Google OAuth. Apple OAuth poza scope (Faza 3+) — nie dodawaj przycisku ani providerów Apple w Fazie 1.
+- Program główny: jeden aktywny program CC (6 ćwiczeń × 10 kroków); satelity max 10 na konto.
+- Typy ćwiczeń: A (progresyjne CC), B (powtarzalne), C (mobility/recovery). Metryki: `reps`, `duration_sec`, `weight_kg`, `sides`, `notes`.
+- Reguły progresji jako konfiguracja w JSONB z `schema_version` — nie hardcode progów w Pythonie poza seedem/migracją.
+- Awans/regres (MVP, założenie PRD): 3× min. 10 = awans; 2 sesje poniżej minimum z rzędu = regres −1 krok (min krok 1, max 10).
+- Harmonogram satelity: dzień tygodnia | `daily` | kategoria (`anytime` / `after_workout` / `rest_day`).
+- Agent AI i Garmin: tylko Faza 2+; agent proponuje sesję, nie nadpisuje wyniku silnika progresji.
+- Dane zdrowotne (pomiary, recovery): nie diagnozuj, nie „lecź”; disclaimer i tagi rehab zgodnie z PRD.
+
+## 5) Outbox, zadania tła i integracje
+
+- Faza 1: outbox dotyczy synchronizacji klienta (PWA → API). Nie wprowadzaj Redis/ARQ/R2 przed Fazą 2.
+- Faza 2: ciężkie I/O (Garmin sync, LLM agent, Web Push, pliki R2) wyłącznie przez ARQ workers.
+- Nie wywołuj LLM ani zewnętrznych API z routera „na gorąco” bez timeoutu, limitu kosztów i audytu (user_id, request_id).
+- Integracja Garmin: OAuth po stronie backendu, jednostronny odczyt; tokeny tylko w sekretach/env, nigdy w logach.
+- Upload plików użytkownika: tylko Faza 2+ (R2 + presigned URLs).
+
+## 6) Kontrakty JSON i wersjonowanie
+
+- Każdy JSON w DB (reguły progresji, konfiguracja ćwiczenia, payload outbox, kontekst agenta) musi mieć `schema_version`.
+- Zmiana kontraktu JSON = nowa wersja + migracja danych historycznych + testy kompatybilności wstecz.
+- Dane krytyczne biznesowo trzymaj relacyjnie (user, exercise, step progress, session, set logs, body measurements); JSON tylko na konfigurację i elastyczne metryki pomocnicze.
+
+## 7) Błędy, bezpieczeństwo, obserwowalność
+
+- Rozdziel błędy: HTTP w routerach/exception handlers, domenowe w serwisach (własne wyjątki), globalny handler na poziomie aplikacji.
+- Sekretów nie trzymaj w kodzie — wyłącznie zmienne środowiskowe / vault.
+- Auth: waliduj JWT/sesję; przy 401 klient wraca do logowania. Zasoby innego użytkownika → 403, nie 404 z wyciekiem istnienia (albo konsekwentna polityka 404 — jedna w całym API).
+- Instrumentacja: OpenTelemetry (logi, metryki, traces). Metryki MVP: latencja API, błędy 5xx, sync/outbox success/fail, awanse/regresy progresji.
+- Faza 2+: metryki ARQ, Garmin sync, LLM latency/cost, Web Push delivery.
+- Nie loguj PII ani pełnych pomiarów ciała / sygnałów Garmin w plain text na poziomie DEBUG w produkcji.
+
+## 8) Jakość kodu i testy
+
+- Migracje Alembic i pytest — w kontenerze Docker (jak CI/prod). Nie uruchamiaj migracji/testów na gołym interpreterze hosta, o ile użytkownik nie wymusi inaczej.
+- Stack lokalny: `docker compose up -d` (db + api); migracje: `docker compose run --rm api alembic upgrade head`; testy: wg `Makefile` / compose.
+- Tooling: `uv`, `Ruff`, `mypy` (strict w miarę możliwości), `pytest`. Adnotacje typów wymagane w nowym kodzie.
+- Każde przejście stanu progresji i zapis sesji: test pozytywny i negatywny.
+- PR zmieniający sync/outbox/progresję/integracje (F2) musi zawierać testy; dla outbox/integracji — wpis runbook/alertingu jako element Definition of Done.
+- Preferuj małe, testowalne serwisy; nie buduj „god object” `WorkoutService` ze wszystkimi fazami produktu naraz.

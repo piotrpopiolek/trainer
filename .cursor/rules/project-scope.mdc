@@ -1,0 +1,33 @@
+---
+description: Scope produktu Trainer — fazy PRD, zakazy i źródło prawdy
+alwaysApply: true
+---
+
+# PROJECT SCOPE - Trainer
+
+Źródło prawdy wymagań: `docs/prd.md` (uzupełnienie: `docs/prd-planning-summary.md`). Przy konflikcie wygrywa `prd.md`.
+
+## Fazy — nie wyprzedzaj scope
+
+- Faza 1 (MVP): Google OAuth, onboarding, CC 6×10, silnik progresji, sesje, satelity (max 10), pomiary sylwetki, offline/outbox, disclaimer. Stack: FastAPI + PG + React PWA. Docker + GitHub Actions.
+- Faza 2: Agent AI, Garmin (read), Web Push, wykresy, YouTube→ćwiczenie, premium, Redis/ARQ, Cloudflare R2.
+- Faza 3+: Apple OAuth, native app, społeczność, wiele programów, zdjęcia sylwetki, zapis do kalendarza Garmin.
+
+## Zakazy w Fazie 1
+
+- Nie dodawaj: Redis, ARQ, R2, Apple Sign In, LLM agenta, integracji Garmin, Web Push, wykresów premium, progress photos.
+- Nie buduj ról trenera / multi-client.
+- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL.
+- Nie implementuj diagnoz medycznych ani „leczenia” przez AI/rehab.
+
+## Priorytety przy implementacji
+
+1. Deterministyczny silnik progresji i szybkie logowanie sesji.
+2. Poprawny sync offline (idempotencja, LWW) — dopiero potem polish UI.
+3. Content CC i onboarding mają być w scope MVP, nie „później”.
+
+## Stack decyzje (nie zmieniaj bez zgody)
+
+- Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
+- Reguły progresji w JSONB + `schema_version`.
+- Auth MVP: wyłącznie Google OAuth.
