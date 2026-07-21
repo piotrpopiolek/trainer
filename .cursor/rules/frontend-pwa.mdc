@@ -13,6 +13,7 @@ alwaysApply: false
 - UI (komponenty) nie woła API bezpośrednio z głębi drzewa — używaj hooków / query functions.
 - Stan serwera: TanStack Query. Stan UI i offline queue: Zustand (+ IndexedDB).
 - Walidacja formularzy: Zod + React Hook Form; schematy trzymać blisko feature, spójne z kontraktami API.
+- Każdy dokument JSON (lokalny store, outbox payload, odpowiedzi API z JSONB) musi mieć `schema_version` i schemat Zod per wersja; brak wersji = błąd, nie „best effort”.
 - Nie duplikuj reguł awansu/regresu na frontcie jako „źródła prawdy” — silnik jest na backendzie; UI może pokazywać progi z konfiguracji pobranej z API.
 
 ## 2) Auth i dostęp
@@ -23,10 +24,11 @@ alwaysApply: false
 
 ## 3) Offline i sync (Faza 1)
 
-- Offline: program CC + ostatnie 30 sesji + pomiary w lokalnej bazie; mutacje przez outbox.
-- Każda mutacja offline ma stabilne `client_mutation_id` i `updated_at` (LWW zgodnie z PRD).
+- Offline: program CC + ostatnie 30 sesji + pomiary + cache ostatniego stanu kroków z serwera; mutacje sesji/pomiarów przez outbox.
+- **Nie obliczaj awansu/regresu/`goal_met` na kliencie** — tylko backend `ProgressionEngine` po utrwaleniu sesji (online lub po flush outbox). Po sync nadpisz lokalny cache progresji wynikiem serwera.
+- Każda mutacja offline ma stabilne `client_mutation_id` i `updated_at` (LWW zgodnie z PRD) dla sesji/pomiarów/satelitów — nie dla wyliczonego stanu progresji.
 - Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync.
-- Wskaźnik „oczekuje na sync” musi być widoczny dla sesji i pomiarów.
+- Wskaźnik „oczekuje na sync” musi być widoczny dla sesji i pomiarów; UX może informować, że ocena progresji nastąpi po synchronizacji.
 - Nie wprowadzaj Service Worker cache’ującego wrażliwe API responses bez świadomej polityki prywatności.
 
 ## 4) UX domenowy

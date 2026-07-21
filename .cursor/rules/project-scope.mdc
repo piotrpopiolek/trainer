@@ -22,12 +22,14 @@ alwaysApply: true
 
 ## Priorytety przy implementacji
 
-1. Deterministyczny silnik progresji i szybkie logowanie sesji.
-2. Poprawny sync offline (idempotencja, LWW) — dopiero potem polish UI.
+1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze).
+2. Poprawny sync offline (idempotencja, LWW sesji/pomiarów) — dopiero potem polish UI.
 3. Content CC i onboarding mają być w scope MVP, nie „później”.
+4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
 
 ## Stack decyzje (nie zmieniaj bez zgody)
 
 - Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
-- Reguły progresji w JSONB + `schema_version`.
+- Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`.
 - Auth MVP: wyłącznie Google OAuth.
+- Na logu sesji: `rules_snapshot` z wersją reguł użytych przy ocenie — seed nie reinterpretuje historii.

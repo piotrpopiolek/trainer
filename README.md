@@ -21,7 +21,7 @@ Progressive Web App for tracking calisthenics progression (Convict Conditioning�
 
 Trainer helps an individual athlete follow a step-based bodyweight progression program inspired by Convict Conditioning (“Skazany na trening”), log workouts quickly (including offline), track custom satellite work (mobility, prehab, loaded auxiliaries), and record body measurements (weight, waist, biceps, and more).
 
-**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / last-write-wins), and health/privacy compliance.
+**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a **server-side** deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / last-write-wins; sessions/measurements queue offline — progression evaluated only after sync on the backend), and health/privacy compliance.
 
 **Phase 2+** adds a premium AI session coach, Garmin read-only recovery signals, rule-based Web Push, trend charts, YouTube-assisted exercise creation, billing, Redis/ARQ workers, and Cloudflare R2.
 
@@ -35,6 +35,7 @@ This app is **not** a medical device and does not replace professional advice. R
 |----------|-------------|
 | [docs/prd.md](docs/prd.md) | Product requirements (features, user stories, metrics) |
 | [docs/prd-planning-summary.md](docs/prd-planning-summary.md) | Planning decisions and stack notes |
+| [docs/db-plan.md](docs/db-plan.md) | PostgreSQL schema plan (MVP) |
 
 ## Tech stack
 
@@ -59,6 +60,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | API | FastAPI + Pydantic v2 |
 | ORM | SQLAlchemy 2.0 + Alembic |
 | Database | PostgreSQL + JSONB |
+| Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
 | Tooling | uv, Ruff, mypy, pytest |
 | Auth (MVP) | Google OAuth only |
 
@@ -139,11 +141,11 @@ This section will be updated when real scripts are added to the repository.
 - React PWA (installable, mobile-first)
 - Google OAuth (no email/password; no Apple Sign In)
 - CC program: 6 big exercises × 10 steps, 3-day split
-- Deterministic progression engine (rules in JSONB, `schema_version`)
+- Deterministic progression engine **on the backend only** (versioned JSONB rules + `schema_version` contracts; `rules_snapshot` on session logs; no dual JS engine)
 - Fast session logging (&lt; 3 minutes target)
 - Up to 10 satellite exercises (types B/C, including **daily** schedule)
 - Body measurements (weight, waist, biceps; optional chest, thigh, neck)
-- Offline support with outbox sync (last-write-wins)
+- Offline support with outbox sync (last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
 - Health disclaimer and privacy policy
 
 ### In scope — Phase 2

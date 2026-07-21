@@ -6,9 +6,33 @@ Konwencje:
 - PK syncowanych encji: `UUID` (v7, generowane też offline)
 - Czas: `TIMESTAMPTZ`; dzień lokalny sesji: `DATE` (`local_date`)
 - Soft-delete: `deleted_at TIMESTAMPTZ NULL`
-- Sync: `updated_at TIMESTAMPTZ NOT NULL`; LWW po `updated_at`
+- Sync: `updated_at TIMESTAMPTZ NOT NULL`; LWW po `updated_at` (sesje, pomiary, satelity, mutacje klienta)
+- **Silnik progresji wyłącznie na serwerze** — klient nie zapisuje awansu/regresu/`goal_met`; te pola wynikają z `ProgressionEngine` po apply sesji
+- **JSONB = zawsze wersjonowany kontrakt:** każdy dokument JSONB ma wymagane `schema_version` (INT ≥ 1); walidacja Pydantic (backend) / Zod (frontend) per wersja; brak „gołego” JSON bez wersji
 - Izolacja F1: warstwa aplikacji (`user_id`); schemat RLS-ready, RLS wyłączone
 - Role DB: `trainer_app` (DML), `trainer_migrator` (DDL/Alembic)
+
+### Kontrakty JSONB (obowiązkowe)
+
+Envelope (płaski obiekt z top-level `schema_version`):
+
+```json
+{ "schema_version": 1, "...": "pola kontraktu v1" }
+```
+
+| Dokument | Tabela.kolumna | Kontrakt Pydantic (przykład) | Uwagi |
+|----------|----------------|------------------------------|--------|
+| Preferencje metryk | `users.body_metric_prefs` | `BodyMetricPrefsV1` | Nie tablica „goła” — obiekt z `metrics: string[]` |
+| Onboarding | `user_onboarding.*` | `OnboardingQuestionnaireV1` itd. | Każde pole JSONB osobny kontrakt + version |
+| Metryki ćwiczenia | `exercises.active_metrics` | `ActiveMetricsV1` | |
+| Reguły kroku | `exercise_steps.rules` | `ProgressionRulesV1` | Zgodne z `progression_schemas.schema_version` |
+| Serie sesji | `session_exercise_logs.sets` | `SessionSetsV1` | Przy `skipped=false` wymagane |
+| Snapshot reguł oceny | `session_exercise_logs.rules_snapshot` | kopia `ProgressionRulesV*` użyta przy ocenie | **Historia nie zależy od późniejszego seedu** |
+| Pomiary | `body_measurements.metrics` | `BodyMetricsV1` | |
+| Konflikt sync | `sync_conflict_logs.losing_payload` | `SyncLosingPayloadV1` | Zawiera `entity_schema_version` |
+
+CHECK w DB (minimum): `(col ? 'schema_version') AND (col->>'schema_version')::int >= 1` dla NOT NULL JSONB.  
+Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik wybiera parser po `schema_version` (brak cichego fallbacku na „najnowszy” przy starych logach).
 
 ---
 
@@ -23,7 +47,7 @@ Konwencje:
 | `email` | `CITEXT` | NULL po anonimizacji |
 | `display_name` | `TEXT` | NULL |
 | `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) |
-| `body_metric_prefs` | `JSONB` | NOT NULL, DEFAULT `'["weight_kg","waist_cm","biceps_cm"]'` |
+| `body_metric_prefs` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1,"metrics":["weight_kg","waist_cm","biceps_cm"]}'`, CHECK `(body_metric_prefs ? 'schema_version')` |
 | `onboarding_completed_at` | `TIMESTAMPTZ` | NULL |
 | `deleted_at` | `TIMESTAMPTZ` | NULL (soft-delete konta) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -81,10 +105,10 @@ UNIQUE (`user_id`, `document_id`).
 | Kolumna | Typ | Ograniczenia |
 |---------|-----|--------------|
 | `user_id` | `UUID` | PK, FK → `users(id)` RESTRICT (1:1) |
-| `questionnaire` | `JSONB` | NOT NULL, DEFAULT `'{}'` |
-| `placement_test` | `JSONB` | NOT NULL, DEFAULT `'{}'` |
-| `recommended_steps` | `JSONB` | NOT NULL, DEFAULT `'{}'` |
-| `chosen_steps` | `JSONB` | NOT NULL, DEFAULT `'{}'` |
+| `questionnaire` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1}'`, CHECK `(questionnaire ? 'schema_version')` |
+| `placement_test` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1}'`, CHECK `(placement_test ? 'schema_version')` |
+| `recommended_steps` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1}'`, CHECK `(recommended_steps ? 'schema_version')` |
+| `chosen_steps` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1}'`, CHECK `(chosen_steps ? 'schema_version')` |
 | `completed_at` | `TIMESTAMPTZ` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -131,7 +155,7 @@ UNIQUE (`program_id`, `day_index`).
 | `kind` | `TEXT` | NOT NULL, CHECK (`kind IN ('cc','satellite')`) |
 | `exercise_type` | `TEXT` | NOT NULL, CHECK (`exercise_type IN ('A','B','C')`) |
 | `description` | `TEXT` | NULL |
-| `active_metrics` | `JSONB` | NOT NULL, DEFAULT `'["reps"]'` |
+| `active_metrics` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1,"metrics":["reps"]}'`, CHECK `(active_metrics ? 'schema_version')` |
 | `equipment` | `TEXT[]` | NOT NULL, DEFAULT `'{}'` |
 | `tags` | `TEXT[]` | NOT NULL, DEFAULT `'{}'` |
 | `schedule_kind` | `TEXT` | NULL, CHECK (`schedule_kind IN ('daily','weekdays','category')`) |
@@ -192,18 +216,20 @@ UNIQUE (`slug`, `schema_version`).
 | `step_number` | `SMALLINT` | NOT NULL, CHECK (`step_number >= 1`) |
 | `name` | `TEXT` | NOT NULL |
 | `description` | `TEXT` | NULL |
-| `rules` | `JSONB` | NOT NULL, DEFAULT `'{}'` |
-| `progression_schema_id` | `UUID` | NULL, FK → `progression_schemas(id)` RESTRICT |
+| `rules` | `JSONB` | NOT NULL, CHECK `(rules ? 'schema_version') AND (rules->>'schema_version')::int >= 1` |
+| `progression_schema_id` | `UUID` | NOT NULL, FK → `progression_schemas(id)` RESTRICT |
 | `sort_order` | `SMALLINT` | NOT NULL, DEFAULT `0` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`exercise_id`, `step_number`).  
-CC: kroki 1–10; satelity z mini-progresją: 2–5 (walidacja aplikacji).
+CC: kroki 1–10; satelity z mini-progresją: 2–5 (walidacja aplikacji).  
+`progression_schema_id` obowiązkowe — wiąże krok z wersją kontraktu reguł; `rules.schema_version` musi być równe `progression_schemas.schema_version` (egzekwowane w serwisie seed/write).
 
-Przykładowy kształt `rules` (typ A):
+Przykładowy kształt `rules` (typ A, v1):
 ```json
 {
+  "schema_version": 1,
   "advance": { "sets": 3, "min_reps": 10, "require_both_sides": false },
   "regress": { "fail_sessions": 2 },
   "goal": null
@@ -260,9 +286,12 @@ UNIQUE (`user_id`, `exercise_id`).
 | `from_step` | `SMALLINT` | NOT NULL |
 | `to_step` | `SMALLINT` | NOT NULL |
 | `reason` | `TEXT` | NULL |
+| `rules_snapshot` | `JSONB` | NULL, CHECK (`rules_snapshot IS NULL OR (rules_snapshot ? 'schema_version')`) |
+| `progression_schema_version` | `INT` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
-Append-only (brak `updated_at` / soft-delete).
+Append-only (brak `updated_at` / soft-delete).  
+Dla `advance`/`regress`: `rules_snapshot` + `progression_schema_version` wypełniane przez silnik (te same wartości co na logu sesji).
 
 ---
 
@@ -300,6 +329,8 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 | `step_label_snapshot` | `TEXT` | NULL |
 | `skipped` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
 | `sets` | `JSONB` | NULL |
+| `rules_snapshot` | `JSONB` | NULL |
+| `progression_schema_version` | `INT` | NULL, CHECK (`progression_schema_version IS NULL OR progression_schema_version >= 1`) |
 | `goal_met` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
 | `goal_evaluated_at` | `TIMESTAMPTZ` | NULL |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 1000`) |
@@ -308,17 +339,25 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
-CHECK: `skipped = true` ⇒ (`sets IS NULL OR sets = '[]'::jsonb`) AND `goal_met = false`.  
+CHECK:
+- `skipped = true` ⇒ (`sets IS NULL`) AND `goal_met = false` AND `rules_snapshot IS NULL`
+- `skipped = false` ⇒ `sets IS NOT NULL` AND `(sets ? 'schema_version')` AND `rules_snapshot IS NOT NULL` AND `(rules_snapshot ? 'schema_version')` AND `progression_schema_version IS NOT NULL`
+
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.
 
-Przykładowy `sets`:
+Przykładowy `sets` (v1):
 ```json
-[
-  { "reps": 10, "sides": "left" },
-  { "reps": 10, "sides": "right" },
-  { "duration_sec": 60, "weight_kg": null, "sides": "none" }
-]
+{
+  "schema_version": 1,
+  "entries": [
+    { "reps": 10, "sides": "left" },
+    { "reps": 10, "sides": "right" },
+    { "duration_sec": 60, "weight_kg": null, "sides": "none" }
+  ]
+}
 ```
+
+`rules_snapshot`: głęboka kopia `exercise_steps.rules` **w momencie oceny** (ten sam `schema_version`). Późniejsza zmiana seedu CC nie zmienia znaczenia historycznego `goal_met` / eventów awansu — audyt i support czytają snapshot, nie bieżący katalog.
 
 ---
 
@@ -330,15 +369,21 @@ Przykładowy `sets`:
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `measured_at` | `TIMESTAMPTZ` | NOT NULL |
 | `local_date` | `DATE` | NOT NULL |
-| `metrics` | `JSONB` | NOT NULL |
+| `metrics` | `JSONB` | NOT NULL, CHECK `(metrics ? 'schema_version') AND (metrics->>'schema_version')::int >= 1` |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 1000`) |
 | `client_mutation_id` | `UUID` | NULL |
 | `deleted_at` | `TIMESTAMPTZ` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
-Dozwolone klucze `metrics` (walidacja aplikacji):  
+Dozwolone klucze w `metrics` v1 (obok `schema_version`; walidacja Pydantic `BodyMetricsV1`):  
 `weight_kg`, `waist_cm`, `biceps_cm`, `chest_cm`, `thigh_cm`, `neck_cm`.  
+
+Przykład:
+```json
+{ "schema_version": 1, "weight_kg": 78.5, "waist_cm": 82, "biceps_cm": 34 }
+```
+
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.
 
 ---
@@ -352,7 +397,7 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 | `entity_type` | `TEXT` | NOT NULL |
 | `entity_id` | `UUID` | NOT NULL |
 | `winning_updated_at` | `TIMESTAMPTZ` | NOT NULL |
-| `losing_payload` | `JSONB` | NOT NULL |
+| `losing_payload` | `JSONB` | NOT NULL, CHECK `(losing_payload ? 'schema_version')` |
 | `device_id` | `TEXT` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
@@ -538,16 +583,18 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 ## 5. Dodatkowe uwagi projektowe
 
-1. **Offline / LWW:** klient ustawia `updated_at` i `id` (UUID v7) przed zapisem lokalnym; serwer upsertuje gdy `incoming.updated_at >= existing.updated_at`; przegrana wersja → `sync_conflict_logs`.
-2. **Idempotencja:** każdy push outbox niesie `client_mutation_id`; duplikaty zwracają istniejący zasób (200/idempotent).
-3. **Wiele sesji / dzień:** ekran „dzisiejsza sesja” agreguje wiersze `workout_sessions` po `local_date`; brak UNIQUE dziennego.
-4. **Progresja:** ocena tylko dla logów `skipped = false`; kolejność fail_streak po `performed_at`, tie-break `session.id`; `manual_override` zeruje streak.
-5. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku na logu — historia odporna na soft-delete i zmiany harmonogramu.
-6. **JSONB:** `rules`, `sets`, `metrics`, onboarding — walidacja Pydantic/jsonschema w API; w DB CHECK tylko tam, gdzie tanie (skipped, długość notatek, enumy TEXT).
-7. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` v1.
-8. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos.
-9. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
-10. **Usuwanie konta:** `users.deleted_at`, revoke `auth_sessions`, anonimizacja `email`/`google_sub`, decyzja retencji danych treningowych wg polityki prywatności (serwis, nie CASCADE).
+1. **Silnik progresji — tylko serwer:** `user_exercise_progress`, `progression_events`, `session_exercise_logs.goal_met` są mutowane wyłącznie przez backendowy `ProgressionEngine` w tej samej transakcji co utrwalenie sesji (zapis online lub apply outbox). Klient **nie** wysyła `current_step_number` / `fail_streak` / `goal_met` jako źródła prawdy; po sync nadpisuje lokalny cache wynikiem pull z serwera. Unika podwójnej implementacji reguł (JS + Python) i rozjazdu przy LWW.
+2. **Offline / LWW:** klient ustawia `updated_at` i `id` (UUID v7) przed zapisem lokalnym sesji/pomiarów/satelitów; serwer upsertuje gdy `incoming.updated_at >= existing.updated_at`; przegrana wersja → `sync_conflict_logs`. Stan progresji **nie** podlega LWW z klienta — jest wynikiem silnika po przyjęciu wygranej sesji.
+3. **Idempotencja:** każdy push outbox niesie `client_mutation_id`; duplikaty zwracają istniejący zasób (200/idempotent); ponowne apply nie dubluje `progression_events` (idempotencja po `session_id` + exercise lub mutation id).
+4. **Wiele sesji / dzień:** ekran „dzisiejsza sesja” agreguje wiersze `workout_sessions` po `local_date`; brak UNIQUE dziennego.
+5. **Progresja (semantyka):** ocena tylko dla logów `skipped = false`; kolejność fail_streak po `performed_at`, tie-break `session.id`; `manual_override` zeruje streak; `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
+6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku na logu — historia odporna na soft-delete i zmiany harmonogramu.
+7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
+8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`.
+9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos.
+10. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
+11. **Usuwanie konta:** `users.deleted_at`, revoke `auth_sessions`, anonimizacja `email`/`google_sub`, decyzja retencji danych treningowych wg polityki prywatności (serwis, nie CASCADE).
+12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
 
 ### Kolejność migracji (sugerowana)
 
@@ -567,9 +614,9 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 | FR-001–006 | `users`, `auth_sessions` |
 | FR-010–014 | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` |
 | FR-020–024 | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps` |
-| FR-030–036 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events` |
-| FR-040–045 | `workout_sessions`, `session_exercise_logs` |
+| FR-030–037, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs.rules_snapshot` |
+| FR-040–046 | `workout_sessions`, `session_exercise_logs` (`sets` + `goal_met` + kontrakty) |
 | FR-050–058 | `exercises` (satelity), limit trigger |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
-| FR-070–073 | sync kolumny, `client_mutations`, `sync_conflict_logs`, `sync_devices` |
+| FR-070–074 | sync kolumny, `client_mutations`, `sync_conflict_logs`, `sync_devices` |
 | FR-080–083 | `legal_documents`, `tags` rehab |

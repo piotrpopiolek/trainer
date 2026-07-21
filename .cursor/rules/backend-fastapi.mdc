@@ -12,7 +12,8 @@ alwaysApply: false
 
 - Stosuj architekturę warstwową: `api/routers` (HTTP), `schemas` (Pydantic — kontrakty), `services` (logika domenowa), `models` / `repositories` (persistencja).
 - Logika domenowa wyłącznie w serwisach aplikacyjnych; nie implementuj reguł biznesowych w routerach, triggery DB ani w workerach (worker tylko orchestruje wywołanie serwisu).
-- Silnik progresji (`ProgressionEngine`) to serwis deterministyczny — nie zastępuj go LLM (PRD FR-030, FR-093).
+- Silnik progresji (`ProgressionEngine`) to serwis deterministyczny **wyłącznie na backendzie** — nie zastępuj go LLM (PRD FR-030, FR-093) i nie polegaj na wyliczeniach klienta.
+- Uruchamiaj ocenę awansu/regresu/`goal_met` w tej samej transakcji co utrwalenie sesji (zapis online lub apply outbox); klient nie jest źródłem prawdy dla `user_exercise_progress`.
 - Wymuszaj DRY: duplikacja logiki domenowej = błąd krytyczny do refaktoryzacji.
 - Projektuj moduły zgodnie z SOLID, szczególnie SRP i DIP (serwis zależy od abstrakcji repozytorium / jednostki pracy, nie od szczegółów routera).
 
@@ -38,6 +39,8 @@ alwaysApply: false
 - Program główny: jeden aktywny program CC (6 ćwiczeń × 10 kroków); satelity max 10 na konto.
 - Typy ćwiczeń: A (progresyjne CC), B (powtarzalne), C (mobility/recovery). Metryki: `reps`, `duration_sec`, `weight_kg`, `sides`, `notes`.
 - Reguły progresji jako konfiguracja w JSONB z `schema_version` — nie hardcode progów w Pythonie poza seedem/migracją.
+- **Każdy** JSON w DB i w body API ma `schema_version` i model Pydantic `*V{n}`; brak wersji lub nieznana wersja → 422. Przy ocenie sesji zapisuj `rules_snapshot` + `progression_schema_version` na `session_exercise_logs` / `progression_events`.
+- Zakaz reinterpretacji historycznych logów nowymi regułami seedu — silnik przy audycie/odczycie używa snapshotu z logu.
 - Awans/regres (MVP, założenie PRD): 3× min. 10 = awans; 2 sesje poniżej minimum z rzędu = regres −1 krok (min krok 1, max 10).
 - Harmonogram satelity: dzień tygodnia | `daily` | kategoria (`anytime` / `after_workout` / `rest_day`).
 - Agent AI i Garmin: tylko Faza 2+; agent proponuje sesję, nie nadpisuje wyniku silnika progresji.
@@ -53,9 +56,10 @@ alwaysApply: false
 
 ## 6) Kontrakty JSON i wersjonowanie
 
-- Każdy JSON w DB (reguły progresji, konfiguracja ćwiczenia, payload outbox, kontekst agenta) musi mieć `schema_version`.
-- Zmiana kontraktu JSON = nowa wersja + migracja danych historycznych + testy kompatybilności wstecz.
-- Dane krytyczne biznesowo trzymaj relacyjnie (user, exercise, step progress, session, set logs, body measurements); JSON tylko na konfigurację i elastyczne metryki pomocnicze.
+- Każdy JSON w DB i w API (reguły, `sets`, pomiary, onboarding, outbox, conflict payload) musi mieć `schema_version` i model Pydantic `*V{n}`.
+- Zmiana kontraktu = nowa wersja + parser per wersja + testy kompatybilności **odczytu** wstecz; write path MVP zapisuje tylko aktualną wersję write.
+- Historyczne logi sesji: nie migruj semantyki reguł „w miejscu” — trzymaj `rules_snapshot`; zakaz przeliczania starych `goal_met`/eventów nowym seedem.
+- Dane krytyczne biznesowo trzymaj relacyjnie (user, exercise, step progress, session); JSON tylko na konfigurację i elastyczne metryki w kontrakcie.
 
 ## 7) Błędy, bezpieczeństwo, obserwowalność
 

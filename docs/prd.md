@@ -58,7 +58,7 @@ flowchart TB
 
 | Faza | Czas | Zakres |
 |------|------|--------|
-| Faza 1 (MVP) | 8–10 tygodni | OAuth Google, onboarding, program CC, silnik progresji, logowanie sesji, satelity (max 10), pomiary sylwetki, offline sync, compliance |
+| Faza 1 (MVP) | 8–10 tygodni | OAuth Google, onboarding, program CC, silnik progresji (serwer), logowanie sesji, satelity (max 10), pomiary sylwetki, offline sync, compliance |
 | Faza 2 | 6–8 tygodni | Agent AI, Garmin (odczyt), powiadomienia regułowe, wykresy trendów, tworzenie ćwiczeń z YouTube, monetyzacja premium, Cloudflare R2, Redis/ARQ |
 | Faza 3 | TBD | Własne programy, społeczność, płatności rozbudowane, import JSON/CSV, natywna aplikacja (rozważana) |
 
@@ -98,7 +98,7 @@ Obecne rozwiązania wymuszają ręczne śledzenie w notatniku, arkuszu kalkulacy
 
 ### 2.3 Propozycja wartości
 
-Trainer oferuje jeden ekran „dzisiejsza sesja”, deterministyczny silnik progresji, offline-first PWA oraz — w Fazie 2 — agenta AI interpretującego historię treningów, pomiary sylwetki i dane Garmin, proponującego konkretną sesję z uzasadnieniem.
+Trainer oferuje jeden ekran „dzisiejsza sesja”, deterministyczny silnik progresji **wyłącznie na backendzie**, PWA z offline logowaniem sesji (ocena awansu/regresu po sync) oraz — w Fazie 2 — agenta AI interpretującego historię treningów, pomiary sylwetki i dane Garmin, proponującego konkretną sesję z uzasadnieniem.
 
 ---
 
@@ -150,13 +150,14 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-030 | Deterministyczny silnik reguł — agent AI nie zastępuje silnika w Fazie 1 |
-| FR-031 | Reguły progresji jako konfiguracja danych (JSONB w PostgreSQL), nie hardcode |
+| FR-030 | Deterministyczny silnik reguł — wyłącznie na backendzie (FastAPI); klient nie oblicza awansu/regresu; agent AI nie zastępuje silnika |
+| FR-031 | Reguły progresji jako konfiguracja JSONB z obowiązkowym `schema_version` + kontrakt Pydantic per wersja; nie hardcode progów |
 | FR-032 | Typ A (progresyjne): kroki z progami awansu i regresu |
 | FR-033 | Awans (Założenie PRD): 3 serie × min. 10 powtórzeń; dla ćwiczeń jednostronnych — min. 10 powtórzeń na lewą i prawą stronę |
 | FR-034 | Regres (Założenie PRD): 2 kolejne sesje poniżej minimum progu = powrót o 1 krok |
-| FR-035 | Automatyczna ocena progresji po zapisie sesji CC |
-| FR-036 | Powiadomienie w aplikacji o awansie lub regresie kroku |
+| FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync) |
+| FR-036 | Powiadomienie w aplikacji o awansie lub regresie kroku (po otrzymaniu wyniku z serwera / po sync) |
+| FR-037 | Przy ocenie sesji serwer zapisuje `rules_snapshot` + `progression_schema_version` na logu; późniejsza zmiana seedu nie reinterpretuje historii |
 
 ### 3.5 Logowanie sesji treningowej (Faza 1)
 
@@ -164,10 +165,11 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 |----|-----------|
 | FR-040 | Jeden ekran „dzisiejsza sesja” z sekcjami: Program główny (CC) → Dodatki (satelity) → notatka sesji |
 | FR-041 | Czas logowania standardowej sesji: docelowo poniżej 3 minut |
-| FR-042 | Metryki logowania per ćwiczenie: reps, duration_sec, weight_kg, sides (none/left/right/both), notes |
+| FR-042 | Metryki logowania per ćwiczenie w kontrakcie JSONB z `schema_version` (np. `SessionSetsV1`: reps, duration_sec, weight_kg, sides, notes) |
 | FR-043 | Formularz dostosowany do aktywnych metryk danego ćwiczenia |
 | FR-044 | Historia sesji z datą, listą ćwiczeń i wynikami |
-| FR-045 | Badge „cel osiągnięty” dla ćwiczeń typu B/C po spełnieniu progu |
+| FR-045 | Badge „cel osiągnięty” dla ćwiczeń typu B/C — wyliczany na serwerze przy utrwaleniu sesji (`goal_met`) |
+| FR-046 | Każdy payload JSON (reguły, sety, pomiary, onboarding, outbox) musi przejść kontrakt wersjonowany; brak `schema_version` → 422 |
 
 ### 3.6 Ćwiczenia satelitarne (Faza 1)
 
@@ -198,10 +200,11 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-070 | Lokalna baza: pełny program CC + ostatnie 30 sesji + historia pomiarów |
-| FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem |
+| FR-070 | Lokalna baza: pełny program CC + ostatnie 30 sesji + historia pomiarów + ostatni znany stan kroków z serwera (read-only cache) |
+| FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem (bez lokalnej oceny progresji) |
 | FR-072 | Outbox pattern: kolejka zmian lokalnych synchronizowana w tle po powrocie online |
 | FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja na podstawie timestamp; opcjonalny log konfliktu w UI |
+| FR-074 | Po sync sesji serwer uruchamia silnik progresji i zwraca zaktualizowane kroki / eventy; klient nadpisuje lokalny cache stanu progresji wynikiem serwera |
 
 ### 3.9 Compliance (Faza 1)
 
@@ -286,11 +289,11 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - React PWA mobile-first (instalacja na ekran początkowy)
 - OAuth Google (Apple OAuth poza scope MVP)
 - Program CC: 6 ćwiczeń × 10 kroków, split 3-dniowy
-- Silnik progresji typu A z regułami w JSONB
-- Logowanie sesji (<3 min), historia, badge celu dla B/C
+- Silnik progresji typu A z regułami w JSONB + `schema_version` / kontrakty — **tylko na serwerze** (nie w PWA/offline); `rules_snapshot` na logach
+- Logowanie sesji (<3 min), historia, badge celu dla B/C (badge/ocena po stronie serwera)
 - Do 10 ćwiczeń satelitarnych (typ B/C, harmonogram w tym „codziennie”)
 - Pomiary sylwetki: log + historia + konfiguracja metryk
-- Offline + outbox sync (last-write-wins)
+- Offline + outbox sync (last-write-wins): offline zapisuje sesje/pomiary; awans/regres po sync na backendzie
 - Disclaimer zdrowotny, polityka prywatności
 
 ### 4.2 W scope — Faza 2
@@ -325,6 +328,7 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - Brak natywnego dostępu do HealthKit i Garmin SDK w Fazie 1
 - Ograniczona praca w tle vs natywna aplikacja
 - Desktop web: wspierany, ale UX zoptymalizowany pod mobile
+- Ocena progresji (awans/regres, `goal_met`) wymaga utrwalenia sesji na serwerze — po sesji offline wynik pojawia się dopiero po sync
 
 ### 4.5 Założenia PRD (domknięcie nierozwiązanych kwestii)
 
@@ -332,7 +336,9 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 |---------|---------|
 | Split CC | D1: pompki + HSPU; D2: podciągania + mostek; D3: przysiady + unoszenie nóg |
 | Progi progresji | 3×10 = awans; 2 sesje poniżej min = regres −1 krok |
-| Sync konfliktów | last-write-wins + timestamp |
+| Silnik progresji | Wyłącznie backend (FastAPI); brak drugiej implementacji w kliencie; offline nie liczy awansu/regresu |
+| Kontrakty JSON | Każdy JSONB/`schema` API ma `schema_version`; Pydantic + Zod; snapshot reguł na logu sesji (FR-037) |
+| Sync konfliktów | last-write-wins + timestamp (sesje/pomiary/satelity); stan progresji = wynik silnika serwerowego po apply |
 | Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium) |
 | Analiza wideo | Faza 2; transcript + metadata; Vision fallback |
 | Content CC | Opisy i ilustracje tworzone przez zespół produktu na Fazę 1 |
@@ -483,20 +489,22 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę automatycznie awansować na wyższy krok po spełnieniu progu, aby nie musieć ręcznie śledzić reguł progresji.
 
 Kryteria akceptacji:
-- Po zapisie sesji silnik ocenia spełnienie progu awansu (3 serie × min. 10 powt.).
-- Przy spełnieniu progu aktualny krok zwiększa się o 1 (max krok 10).
-- Użytkownik widzi komunikat o awansie (in-app).
-- Awans jest zapisany w historii progresji z datą i powiązaniem z sesją.
+- Po utrwaleniu sesji na serwerze (zapis online lub po sync outbox) backendowy silnik ocenia próg awansu (3 serie × min. 10 powt.).
+- Przy spełnieniu progu aktualny krok zwiększa się o 1 (max krok 10) wyłącznie po stronie serwera.
+- Użytkownik widzi komunikat o awansie (in-app) po odpowiedzi API / po synchronizacji.
+- Awans jest zapisany w historii progresji na serwerze z datą, powiązaniem z sesją oraz `rules_snapshot` / `progression_schema_version` zgodnymi z regułami użytymi przy ocenie.
+- Klient nie wylicza awansu lokalnie; do czasu sync pokazuje ostatni znany krok z cache.
 
 ### US-015: Automatyczny regres kroku progresji
 
 Opis: Jako użytkownik chcę wrócić o krok po dwóch nieudanych sesjach, aby trenować na bezpiecznym poziomie trudności.
 
 Kryteria akceptacji:
-- Po 2 kolejnych sesjach poniżej minimum progu krok zmniejsza się o 1 (min krok 1).
-- Użytkownik widzi komunikat o regresie z wyjaśnieniem.
+- Po 2 kolejnych sesjach poniżej minimum progu (ocena na serwerze) krok zmniejsza się o 1 (min krok 1).
+- Użytkownik widzi komunikat o regresie z wyjaśnieniem po odpowiedzi API / po synchronizacji.
 - Regres nie następuje poniżej kroku 1.
-- Regres jest zapisany w historii progresji.
+- Regres jest zapisany w historii progresji na serwerze.
+- Klient nie wylicza regresu lokalnie.
 
 ### US-016: Przeglądanie historii sesji
 
@@ -516,7 +524,7 @@ Kryteria akceptacji:
 - Ekran „Mój progres CC” listuje 6 ćwiczeń z aktualnym krokiem (1–10).
 - Widoczna data ostatniej sesji per ćwiczenie.
 - Możliwość przejścia do szczegółów kroku z tego ekranu.
-- Dane spójne z silnikiem progresji po ostatniej sesji.
+- Dane spójne z ostatnim wynikiem silnika na serwerze (po ostatniej zsynchronizowanej / zapisanej online sesji).
 
 ### 5.4 Ćwiczenia satelitarne
 
@@ -565,10 +573,11 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę otrzymać badge „cel osiągnięty” po spełnieniu progu powtarzalnego ćwiczenia, aby mieć potwierdzenie wykonania planu.
 
 Kryteria akceptacji:
-- Po zapisie sesji system ocenia spełnienie celu dla typu B/C.
-- Przy spełnieniu wyświetlany badge „cel osiągnięty” na ekranie sesji i w historii.
-- Dla typu B z mini-progresją spełnienie progu może triggerować awans kroku (silnik progresji).
+- Po utrwaleniu sesji na serwerze system ocenia spełnienie celu dla typu B/C i ustawia `goal_met`.
+- Przy spełnieniu wyświetlany badge „cel osiągnięty” na ekranie sesji i w historii (po odpowiedzi API / po sync).
+- Dla typu B z mini-progresją spełnienie progu może triggerować awans kroku wyłącznie przez silnik na serwerze.
 - Brak badge, jeśli cel nie został spełniony (bez blokady zapisu sesji).
+- Offline: sesja zapisuje się lokalnie bez lokalnego wyliczania badge; wynik pojawia się po sync.
 
 ### US-023: Edycja i usuwanie satelity
 
@@ -629,10 +638,10 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę zapisać pełną sesję treningową bez internetu, aby trenować w siłowni ze słabym zasięgiem.
 
 Kryteria akceptacji:
-- CC + satelity + notatka sesji zapisywalne offline.
-- Silnik progresji działa lokalnie (awans/regres obliczany offline).
-- Program CC i kroki dostępne offline bez dodatkowego pobierania.
-- Po zapisie sesji offline użytkownik widzi potwierdzenie z informacją o oczekującym sync.
+- CC + satelity + notatka sesji zapisywalne offline (outbox).
+- Silnik progresji **nie** działa offline — awans/regres nie są obliczane na urządzeniu.
+- Program CC i ostatni znany stan kroków (cache z serwera) dostępne offline do podglądu i logowania.
+- Po zapisie sesji offline użytkownik widzi potwierdzenie z informacją o oczekującym sync; komunikat może wskazać, że ocena progresji nastąpi po synchronizacji.
 
 ### US-029: Automatyczna synchronizacja po powrocie online
 
@@ -640,8 +649,9 @@ Opis: Jako użytkownik chcę, aby dane zapisane offline synchronizowały się au
 
 Kryteria akceptacji:
 - Przy wykryciu połączenia outbox wysyła kolejkowane zmiany w tle.
-- Sesje, pomiary i zmiany progresji synchronizują się w kolejności chronologicznej.
-- Po sync wskaźnik „oczekuje na sync” znika.
+- Sesje i pomiary synchronizują się w kolejności chronologicznej; po apply sesji CC serwer uruchamia silnik progresji.
+- Zaktualizowany stan kroków i eventy progresji wracają do klienta w pull sync; lokalny cache progresji jest nadpisywany wynikiem serwera.
+- Po sync wskaźnik „oczekuje na sync” znika; ewentualny awans/regres pokazywany jest po zakończeniu sync.
 - Sync nie blokuje korzystania z aplikacji (praca w tle).
 
 ### US-030: Rozwiązywanie konfliktu sync (last-write-wins)
