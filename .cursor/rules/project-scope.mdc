@@ -5,7 +5,7 @@ alwaysApply: true
 
 # PROJECT SCOPE - Trainer
 
-Źródło prawdy wymagań: `docs/prd.md` (uzupełnienie: `docs/prd-planning-summary.md`). Przy konflikcie wygrywa `prd.md`.
+Źródło prawdy wymagań: `docs/prd.md` (schemat: `docs/db-plan.md`). Przy konflikcie wygrywa `prd.md`.
 
 ## Fazy — nie wyprzedzaj scope
 
@@ -23,7 +23,7 @@ alwaysApply: true
 ## Priorytety przy implementacji
 
 1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze).
-2. Poprawny sync offline (idempotencja, LWW sesji/pomiarów) — dopiero potem polish UI.
+2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038) — dopiero potem polish UI.
 3. Content CC i onboarding mają być w scope MVP, nie „później”.
 4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
 

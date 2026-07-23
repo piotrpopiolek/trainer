@@ -158,6 +158,7 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync) |
 | FR-036 | Powiadomienie w aplikacji o awansie lub regresie kroku (po otrzymaniu wyniku z serwera / po sync) |
 | FR-037 | Przy ocenie sesji serwer zapisuje `rules_snapshot` + `progression_schema_version` na logu; późniejsza zmiana seedu nie reinterpretuje historii |
+| FR-038 | Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; LWW z wyższym `revision` i innym content hash → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind w F1); opcjonalnie `manual_override`. `notes` wolno zmienić bez re-evaluate |
 
 ### 3.5 Logowanie sesji treningowej (Faza 1)
 
@@ -203,8 +204,8 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-070 | Lokalna baza: pełny program CC + ostatnie 30 sesji + historia pomiarów + ostatni znany stan kroków z serwera (read-only cache) |
 | FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem (bez lokalnej oceny progresji) |
 | FR-072 | Outbox pattern: kolejka zmian lokalnych synchronizowana w tle po powrocie online |
-| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja na podstawie timestamp; opcjonalny log konfliktu w UI |
-| FR-074 | Po sync sesji serwer uruchamia silnik progresji i zwraca zaktualizowane kroki / eventy; klient nadpisuje lokalny cache stanu progresji wynikiem serwera |
+| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer; remis revision + różny payload → 409; log konfliktu w UI. **Wyjątek sesji ocenionych:** FR-038 (immutable) — LWW nie nadpisuje `sets` po evaluate |
+| FR-074 | Po sync sesji serwer uruchamia silnik progresji i zwraca zaktualizowane kroki / eventy; klient nadpisuje lokalny cache stanu progresji wynikiem serwera. Ponowne apply tej samej treści (idempotent) nie dubluje eventów; zmiana treści po evaluate → FR-038 |
 
 ### 3.9 Compliance (Faza 1)
 
@@ -293,7 +294,7 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - Logowanie sesji (<3 min), historia, badge celu dla B/C (badge/ocena po stronie serwera)
 - Do 10 ćwiczeń satelitarnych (typ B/C, harmonogram w tym „codziennie”)
 - Pomiary sylwetki: log + historia + konfiguracja metryk
-- Offline + outbox sync (last-write-wins): offline zapisuje sesje/pomiary; awans/regres po sync na backendzie
+- Offline + outbox sync (last-write-wins po **`revision`**): offline zapisuje sesje/pomiary; awans/regres po sync na backendzie
 - Disclaimer zdrowotny, polityka prywatności
 
 ### 4.2 W scope — Faza 2
@@ -338,7 +339,8 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | Progi progresji | 3×10 = awans; 2 sesje poniżej min = regres −1 krok |
 | Silnik progresji | Wyłącznie backend (FastAPI); brak drugiej implementacji w kliencie; offline nie liczy awansu/regresu |
 | Kontrakty JSON | Każdy JSONB/`schema` API ma `schema_version`; Pydantic + Zod; snapshot reguł na logu sesji (FR-037) |
-| Sync konfliktów | last-write-wins + timestamp (sesje/pomiary/satelity); stan progresji = wynik silnika serwerowego po apply |
+| Sync konfliktów | last-write-wins po **`revision`** (sesje/pomiary/satelity); `client_updated_at` hint; `updated_at` serwerowy; remis revision → 409; stan progresji = wynik silnika po apply |
+| Sesja po evaluate (A1) | Immutable `sets`/progresja po pierwszej ocenie; poprawka = soft-delete + nowa sesja; soft-delete nie rewinduje kroku (FR-038); rewind+replay poza F1 |
 | Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium) |
 | Analiza wideo | Faza 2; transcript + metadata; Vision fallback |
 | Content CC | Opisy i ilustracje tworzone przez zespół produktu na Fazę 1 |
@@ -515,6 +517,18 @@ Kryteria akceptacji:
 - Kliknięcie sesji otwiera szczegóły: wszystkie ćwiczenia, wyniki, notatki, pominięcia.
 - Historia obejmuje minimum ostatnie 30 sesji offline.
 - Pusta historia wyświetla komunikat zachęty do pierwszej sesji.
+- Sesja oceniona (`goal_evaluated_at` na logach) jest oznaczona jako „oceniona”; UI nie oferuje edycji wyników (sets) — tylko soft-delete / „zapisz jako nową sesję” oraz opcjonalna edycja notatki (FR-038).
+
+### US-016a: Korekta wyniku po ocenie sesji (A1)
+
+Opis: Jako użytkownik chcę poprawić błędnie zapisane wyniki po tym, jak serwer już ocenił sesję, bez psucia spójności kroków progresji.
+
+Kryteria akceptacji:
+- Próba sync/LWW zmieniająca `sets` ocenionej sesji zwraca `409 session_immutable_after_evaluate`; lokalny stan wraca do wersji serwera.
+- Korekta: użytkownik soft-delete’uje ocenioną sesję i tworzy nową sesję z poprawnymi wynikami (nowe `id`, `revision=1`).
+- Soft-delete ocenionej sesji **nie** cofa automatycznie awansu/regresu ani nie usuwa `progression_events` (F1 A1).
+- Nowa sesja jest oceniana na bieżącym `user_exercise_progress`; jeśli użytkownik musi cofnąć krok, używa jawnego `manual_override` (osobny flow).
+- Soft-deleted sesje nie wchodzą do fail_streak ani do „ostatnie 30” aktywnych.
 
 ### US-017: Podgląd postępu CC (wszystkie ćwiczenia)
 
@@ -654,15 +668,18 @@ Kryteria akceptacji:
 - Po sync wskaźnik „oczekuje na sync” znika; ewentualny awans/regres pokazywany jest po zakończeniu sync.
 - Sync nie blokuje korzystania z aplikacji (praca w tle).
 
-### US-030: Rozwiązywanie konfliktu sync (last-write-wins)
+### US-030: Rozwiązywanie konfliktu sync (last-write-wins po revision)
 
-Opis: Jako użytkownik korzystający z dwóch urządzeń chcę, aby aplikacja rozwiązywała konflikty danych przewidywalnie, gdy te same dane edytowałem offline na dwóch urządzeniach.
+Opis: Jako użytkownik korzystający z dwóch urządzeń chcę, aby aplikacja rozwiązywała konflikty danych przewidywalnie, gdy te same dane edytowałem offline na dwóch urządzeniach — bez zależności od zegara telefonu.
 
 Kryteria akceptacji:
-- Przy konflikcie wersji wygrywa wpis z późniejszym timestamp.
-- Użytkownik może zobaczyć informację o rozstrzygniętym konflikcie (opcjonalny log w ustawieniach).
-- Brak utraty wszystkich danych — przynajmniej wersja zwycięska jest zachowana.
+- Przy konflikcie wersji wygrywa wpis z wyższym **`revision`** (nie późniejszy timestamp klienta).
+- `client_updated_at` jest przechowywany jako hint/diagnostyka; nie rozstrzyga LWW.
+- Ten sam `revision` i różna treść → konflikt `409` (tie); użytkownik widzi informację o konflikcie w UI (log w ustawieniach / badge na encji).
+- Przegrany push (`revision` niższy) jest logowany; przynajmniej wersja zwycięska jest zachowana; klient nadpisuje lokalny stan winning snapshotem z serwera.
 - Po sync oba urządzenia zbiegają do spójnego stanu.
+- Przyszły lub mocno przesunięty `client_updated_at` **nie** pozwala nadpisać encji o wyższym `revision` na serwerze.
+- Jeśli sesja jest już oceniona (FR-038), wyższy `revision` z innym `sets` **nie** wygrywa LWW — `409 session_immutable_after_evaluate`.
 
 ### US-031: Ręczne wymuszenie synchronizacji
 
@@ -982,9 +999,9 @@ Faza 2:
 
 | Kryterium | Status |
 |-----------|--------|
-| Każda historyjka użytkownika (US-001–US-055) jest testowalna | Tak |
+| Każda historyjka użytkownika (US-001–US-055, w tym US-016a) jest testowalna | Tak |
 | Kryteria akceptacji są jasne i konkretne | Tak |
 | Wystarczająca liczba story do zbudowania aplikacji Fazy 1 i Fazy 2 | Tak |
 | Uwierzytelnianie i autoryzacja uwzględnione (MVP: US-001, US-003–US-005; Apple US-002 = Faza 3+) | Tak |
 | Scenariusze podstawowe, alternatywne i skrajne uwzględnione | Tak |
-| Spójność z docs/prd-planning-summary.md | Tak |
+| Spójność z docs/db-plan.md (sync, schema) | Tak |

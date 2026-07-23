@@ -21,7 +21,7 @@ Progressive Web App for tracking calisthenics progression (Convict Conditioning�
 
 Trainer helps an individual athlete follow a step-based bodyweight progression program inspired by Convict Conditioning (“Skazany na trening”), log workouts quickly (including offline), track custom satellite work (mobility, prehab, loaded auxiliaries), and record body measurements (weight, waist, biceps, and more).
 
-**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a **server-side** deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / last-write-wins; sessions/measurements queue offline — progression evaluated only after sync on the backend), and health/privacy compliance.
+**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a **server-side** deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / revision-based last-write-wins; sessions/measurements queue offline — progression evaluated only after sync on the backend), and health/privacy compliance.
 
 **Phase 2+** adds a premium AI session coach, Garmin read-only recovery signals, rule-based Web Push, trend charts, YouTube-assisted exercise creation, billing, Redis/ARQ workers, and Cloudflare R2.
 
@@ -34,7 +34,6 @@ This app is **not** a medical device and does not replace professional advice. R
 | Document | Description |
 |----------|-------------|
 | [docs/prd.md](docs/prd.md) | Product requirements (features, user stories, metrics) |
-| [docs/prd-planning-summary.md](docs/prd-planning-summary.md) | Planning decisions and stack notes |
 | [docs/db-plan.md](docs/db-plan.md) | PostgreSQL schema plan (MVP) |
 
 ## Tech stack
@@ -145,7 +144,7 @@ This section will be updated when real scripts are added to the repository.
 - Fast session logging (&lt; 3 minutes target)
 - Up to 10 satellite exercises (types B/C, including **daily** schedule)
 - Body measurements (weight, waist, biceps; optional chest, thigh, neck)
-- Offline support with outbox sync (last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
+- Offline support with outbox sync (revision-based last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
 - Health disclaimer and privacy policy
 
 ### In scope — Phase 2
@@ -173,7 +172,7 @@ This section will be updated when real scripts are added to the repository.
 | Item | Status |
 |------|--------|
 | Product requirements | Done — [docs/prd.md](docs/prd.md) |
-| Planning summary | Done — [docs/prd-planning-summary.md](docs/prd-planning-summary.md) |
+| Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) |
 | Cursor project rules | Done — `.cursor/rules/` |
 | Application code (frontend / backend) | Not started |
 | `package.json` / `.nvmrc` | Not present |

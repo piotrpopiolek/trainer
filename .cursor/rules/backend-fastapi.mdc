@@ -30,7 +30,8 @@ alwaysApply: false
 - Zmiana stanu biznesowego (zapis sesji, ocena progresji, wpis outbox sync) musi być atomowa w jednej transakcji.
 - Endpointy sync / outbox klienta wspierają idempotencję: `client_mutation_id` (lub równoważne) — powtórzone żądanie nie duplikuje sesji ani awansu kroku.
 - Przy przejściach stanu progresji (awans/regres) używaj blokad wiersza (`SELECT … FOR UPDATE`) na rekordzie postępu ćwiczenia użytkownika.
-- Konflikty sync: last-write-wins per encja na `updated_at` (PRD FR-073); nie implementuj merge semantyki bez zmiany PRD.
+- Konflikty sync: last-write-wins per encja po **`revision`** (PRD FR-073) — nie po `client_updated_at` / zegarze klienta; po accept ustaw `updated_at = now()` na serwerze; remis revision + różny hash → 409; nie implementuj merge semantyki bez zmiany PRD.
+- **FR-038 (A1):** po `goal_evaluated_at` nie nadpisuj zamrożonych pól sesji nawet przy wyższym `revision` — `409 session_immutable_after_evaluate`. Soft-delete nie rewinduje `progression_events` / kroku. Korekta = soft-delete + nowa sesja. Silnik: tylko sesje `deleted_at IS NULL`.
 
 ## 4) Reguły domenowe Trainer
 
