@@ -46,10 +46,12 @@ Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik w
 | `google_sub` | `TEXT` | UNIQUE, NULL po anonimizacji |
 | `email` | `CITEXT` | NULL po anonimizacji |
 | `display_name` | `TEXT` | NULL |
-| `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) |
+| `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) — źródło „dziś” / walidacji `local_date` (FR-040a); zmiana nie przepisuje historii |
 | `body_metric_prefs` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1,"metrics":["weight_kg","waist_cm","biceps_cm"]}'`, CHECK `(body_metric_prefs ? 'schema_version')` |
 | `onboarding_completed_at` | `TIMESTAMPTZ` | NULL |
 | `deleted_at` | `TIMESTAMPTZ` | NULL (soft-delete konta) |
+| `purge_after` | `DATE` | NULL — po delete: `deleted_at::date + 30`; job hard-purge treningów gdy `purge_after <= today` |
+| `purge_status` | `TEXT` | NULL, CHECK (`purge_status IN ('pending_grace','pending_job','done')`) — NULL = konto aktywne |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
@@ -169,6 +171,7 @@ UNIQUE (`program_id`, `day_index`).
 | `weekdays` | `SMALLINT[]` | NULL (ISO 1=Mon … 7=Sun) |
 | `schedule_category` | `TEXT` | NULL, CHECK (`schedule_category IN ('anytime','post_workout','rest_day')`) |
 | `cloned_from_exercise_id` | `UUID` | NULL, FK → `exercises(id)` SET NULL |
+| `client_mutation_id` | `UUID` | NULL — **wymagany** dla satelitów (FR-072d); NULL dla seed CC |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — LWW dla satelitów; seed CC = `1` |
 | `client_updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — hint klienta (nie arbiter LWW) |
 | `deleted_at` | `TIMESTAMPTZ` | NULL |
@@ -176,13 +179,14 @@ UNIQUE (`program_id`, `day_index`).
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
 
 CHECK:
-- CC: `kind = 'cc'` ⇒ `user_id IS NULL` AND `program_id IS NOT NULL` AND `schedule_kind IS NULL`
-- Satelita: `kind = 'satellite'` ⇒ `user_id IS NOT NULL` AND `schedule_kind IS NOT NULL`
+- CC: `kind = 'cc'` ⇒ `user_id IS NULL` AND `program_id IS NOT NULL` AND `schedule_kind IS NULL` AND `client_mutation_id IS NULL`
+- Satelita: `kind = 'satellite'` ⇒ `user_id IS NOT NULL` AND `schedule_kind IS NOT NULL` AND `client_mutation_id IS NOT NULL`
 - `schedule_kind = 'weekdays'` ⇒ `weekdays IS NOT NULL AND cardinality(weekdays) > 0`
 - `schedule_kind = 'category'` ⇒ `schedule_category IS NOT NULL`
 - `schedule_kind = 'daily'` ⇒ `weekdays IS NULL AND schedule_category IS NULL`
 
-UNIQUE partial (system): (`slug`) WHERE `kind = 'cc' AND deleted_at IS NULL`.
+UNIQUE partial (system): (`slug`) WHERE `kind = 'cc' AND deleted_at IS NULL`.  
+UNIQUE partial (satelity): (`user_id`, `client_mutation_id`) WHERE `kind = 'satellite' AND client_mutation_id IS NOT NULL`.
 
 Limit 10 aktywnych satelitów: egzekwowany triggerem / aplikacją  
 `COUNT(*) WHERE user_id = X AND kind = 'satellite' AND deleted_at IS NULL ≤ 10`.
@@ -254,14 +258,16 @@ Przykładowy kształt `rules` (typ A, v1):
 | `id` | `UUID` | PK |
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `program_id` | `UUID` | NOT NULL, FK → `programs(id)` RESTRICT |
-| `started_on` | `DATE` | NOT NULL |
-| `anchor_weekday` | `SMALLINT` | NULL, CHECK (`anchor_weekday` BETWEEN 1 AND 7) |
-| `rotation_offset` | `SMALLINT` | NOT NULL, DEFAULT `0` |
+| `started_on` | `DATE` | NOT NULL — w TZ użytkownika; brak planu CC dla `local_date < started_on` |
+| `anchor_weekday` | `SMALLINT` | NOT NULL, DEFAULT `1`, CHECK (`anchor_weekday` BETWEEN 1 AND 7) — ISO weekday dnia **D1** (FR-022a) |
+| `rotation_offset` | `SMALLINT` | NOT NULL, DEFAULT `0`, CHECK (`rotation_offset` BETWEEN 0 AND 2) — przesuwa day_index przy non-rest |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT `true` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE partial (`user_id`) WHERE `is_active = true`.
+
+**Semantyka splitu (Pr4 / FR-022a):** fixed weekdays — `offset = (iso_weekday(local_date) - anchor_weekday + 7) % 7`; `0→1`, `2→2`, `4→3`, else rest; potem `day_index' = ((day_index - 1 + rotation_offset) % 3) + 1` gdy nie rest. **Nie** rolling od `started_on`. Onboarding default: `anchor_weekday=1`, `rotation_offset=0`.
 
 ---
 
@@ -313,14 +319,14 @@ Dla `advance`/`regress`: `rules_snapshot` + `progression_schema_version` wypełn
 | `performed_at` | `TIMESTAMPTZ` | NOT NULL |
 | `local_date` | `DATE` | NOT NULL |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 2000`) |
-| `client_mutation_id` | `UUID` | NULL |
+| `client_mutation_id` | `UUID` | NOT NULL — ID operacji outbox (FR-072d); generowane przez klienta przy enqueue |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — arbiter LWW |
 | `client_updated_at` | `TIMESTAMPTZ` | NOT NULL — czas lokalny klienta (hint / diagnostyka; nie LWW) |
 | `deleted_at` | `TIMESTAMPTZ` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** (`server_received_at` po accepted write) |
 
-UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.  
+UNIQUE (`user_id`, `client_mutation_id`).  
 **Brak** UNIQUE na (`user_id`, `local_date`) — wiele sesji dziennie dozwolone (P1 / FR-039: rano satelity, wieczór CC, A1 = nowa sesja).  
 Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 
@@ -338,6 +344,7 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `section` | `TEXT` | NOT NULL, CHECK (`section IN ('main','accessories')`) |
 | `step_number` | `SMALLINT` | NULL |
 | `local_date` | `DATE` | NOT NULL — denormalizacja z `workout_sessions.local_date` (FR-039; unikalność próby CC / dzień) |
+| `performed_at` | `TIMESTAMPTZ` | NOT NULL — denormalizacja z `workout_sessions.performed_at` (Perf5 / FR-035; sort silnika bez JOIN) |
 | `exercise_name_snapshot` | `TEXT` | NOT NULL |
 | `step_label_snapshot` | `TEXT` | NULL |
 | `skipped` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
@@ -348,7 +355,7 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `goal_evaluated_at` | `TIMESTAMPTZ` | NULL |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 1000`) |
 | `sort_order` | `SMALLINT` | NOT NULL, DEFAULT `0` |
-| `client_mutation_id` | `UUID` | NULL |
+| `client_mutation_id` | `UUID` | NULL — F1: logi syncowane **w** sesji (mutation na `workout_sessions`); NULL OK; niezależny push logu poza F1 |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — LWW gdy log syncowany niezależnie; przy push sesji jako całości bump `workout_sessions.revision` |
 | `client_updated_at` | `TIMESTAMPTZ` | NOT NULL — hint klienta |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -358,7 +365,7 @@ CHECK:
 - `skipped = true` ⇒ (`sets IS NULL`) AND `goal_met = false` AND `rules_snapshot IS NULL`
 - `skipped = false` ⇒ `sets IS NOT NULL` AND `(sets ? 'schema_version')` AND `rules_snapshot IS NOT NULL` AND `(rules_snapshot ? 'schema_version')` AND `progression_schema_version IS NOT NULL`
 
-UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.
+UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` — na wypadek przyszłego niezależnego syncu logów.
 
 **FR-039 — jedna zaliczona próba CC / dzień:** egzekwowane w serwisie (+ zalecany partial UNIQUE wspomagający):  
 brak drugiego aktywnego logu CC tego samego ćwiczenia na ten sam `local_date`, gdy sesja-rodzic ma `deleted_at IS NULL` i `skipped = false`.  
@@ -391,7 +398,7 @@ Przykładowy `sets` (v1):
 | `local_date` | `DATE` | NOT NULL |
 | `metrics` | `JSONB` | NOT NULL, CHECK `(metrics ? 'schema_version') AND (metrics->>'schema_version')::int >= 1` |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 1000`) |
-| `client_mutation_id` | `UUID` | NULL |
+| `client_mutation_id` | `UUID` | NOT NULL — ID operacji outbox (FR-072d) |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — arbiter LWW |
 | `client_updated_at` | `TIMESTAMPTZ` | NOT NULL — hint klienta |
 | `deleted_at` | `TIMESTAMPTZ` | NULL |
@@ -406,7 +413,7 @@ Przykład:
 { "schema_version": 1, "weight_kg": 78.5, "waist_cm": 82, "biceps_cm": 34 }
 ```
 
-UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.
+UNIQUE (`user_id`, `client_mutation_id`).
 
 ---
 
@@ -425,6 +432,9 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 | `losing_payload` | `JSONB` | NOT NULL, CHECK `(losing_payload ? 'schema_version')` |
 | `device_id` | `TEXT` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+Ack przeczytania w F1: **tylko klient** (IndexedDB po `conflict.id`) — bez kolumny `acked_at` na serwerze.  
+Retencja: best-effort **90 dni** (`created_at`); purge job / cron — opcjonalnie przy scaffoldzie observability (nie blocker MVP UI).
 
 ---
 
@@ -448,6 +458,8 @@ Cursor pull (`since`) trzymany po stronie klienta — tabela diagnostyczna.
 
 ### 1.20 `client_mutations` (idempotencja outbox)
 
+Rejestr **już przetworzonych** operacji klienta. `client_mutation_id` = UUID wygenerowany przy enqueue (nie przy flush). Ponowny push z tym samym id nie duplikuje encji ani `progression_events`.
+
 | Kolumna | Typ | Ograniczenia |
 |---------|-----|--------------|
 | `id` | `UUID` | PK |
@@ -455,9 +467,12 @@ Cursor pull (`since`) trzymany po stronie klienta — tabela diagnostyczna.
 | `client_mutation_id` | `UUID` | NOT NULL |
 | `entity_type` | `TEXT` | NOT NULL |
 | `entity_id` | `UUID` | NOT NULL |
+| `content_hash` | `TEXT` | NULL — hash payloadu przy claim (wykrycie `mutation_payload_mismatch`) |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`user_id`, `client_mutation_id`).
+
+**Kolejność w per-item tx (FR-072d):** (1) claim INSERT tutaj → (2) upsert encji → (3) `FOR UPDATE` progress (sesje CC, `exercise_id ASC`) → (4) silnik → COMMIT. Nigdy progress lock przed claim.
 
 ---
 
@@ -523,7 +538,7 @@ erDiagram
 
 | Tabela | Indeks | Cel |
 |--------|--------|-----|
-| `users` | UNIQUE (`google_sub`) WHERE `deleted_at IS NULL AND google_sub IS NOT NULL` | Logowanie OAuth |
+| `users` | (`purge_after`) WHERE `deleted_at IS NOT NULL AND purge_status IS DISTINCT FROM 'done'` | Job purge kont |
 | `auth_sessions` | (`user_id`, `expires_at`) WHERE `revoked_at IS NULL` | Aktywne sesje |
 | `auth_sessions` | UNIQUE (`token_hash`) | Lookup tokenu |
 | `legal_documents` | UNIQUE (`slug`, `version`) | Wersjonowanie |
@@ -542,14 +557,15 @@ erDiagram
 | `workout_sessions` | (`user_id`, `performed_at` DESC) WHERE `deleted_at IS NULL` | Ostatnie 30 / historia |
 | `workout_sessions` | (`user_id`, `local_date`, `performed_at`) WHERE `deleted_at IS NULL` | Sesje „dziś” |
 | `workout_sessions` | (`user_id`, `updated_at`) | Pull sync delta |
-| `workout_sessions` | UNIQUE (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` | Idempotencja |
+| `workout_sessions` | UNIQUE (`user_id`, `client_mutation_id`) | Idempotencja |
 | `session_exercise_logs` | (`session_id`, `sort_order`) | Szczegóły sesji |
-| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false` | Wsparcie FR-039 / lookup „czy już dziś” (unikalność w serwisie) |
-| `session_exercise_logs` | (`user_id`, `exercise_id`, `created_at` DESC) | Historia per ćwiczenie |
-| `session_exercise_logs` | (`user_id`, `updated_at`) | Pull sync |
+| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false` | FR-039 lookup „czy już dziś” |
+| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date` ASC, `performed_at` ASC, `id` ASC) WHERE `exercise_kind = 'cc' AND skipped = false` | Silnik progresji / fail_streak (FR-035, Perf5) |
+| `session_exercise_logs` | (`user_id`, `updated_at`) | Pull sync (gdyby kiedyś; F1 preferuje nested w sesji) |
 | `body_measurements` | (`user_id`, `measured_at` DESC) WHERE `deleted_at IS NULL` | Historia pomiarów |
 | `body_measurements` | (`user_id`, `updated_at`) | Pull sync |
-| `body_measurements` | UNIQUE (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` | Idempotencja |
+| `body_measurements` | UNIQUE (`user_id`, `client_mutation_id`) | Idempotencja |
+| `exercises` | UNIQUE (`user_id`, `client_mutation_id`) WHERE `kind = 'satellite'` | Idempotencja satelitów |
 | `sync_conflict_logs` | (`user_id`, `created_at` DESC) | UI konfliktów |
 | `sync_devices` | UNIQUE (`user_id`, `device_id`) | Diagnostyka |
 | `client_mutations` | UNIQUE (`user_id`, `client_mutation_id`) | Idempotencja globalna |
@@ -572,25 +588,34 @@ Partycjonowanie — **nie** w MVP.
 
 Połączenie ORM FastAPI: `trainer_app`.
 
-### 4.2 RLS (Faza 1)
+### 4.2 RLS i izolacja (Faza 1 — S3 / FR-005b)
 
-**RLS wyłączone** w MVP. Izolacja: filtry `user_id` w serwisach + testy IDOR.
+**RLS wyłączone** w MVP. Izolacja wyłącznie w warstwie aplikacji + obowiązkowa IDOR suite.
 
-Konwencja RLS-ready (każda tabela user-owned ma `user_id NOT NULL`):
+**Deny-by-default:** każde odczytanie / mutacja zasobu user-owned po ID:
+`WHERE id = :id AND user_id = :session_user_id` (lub równoważne w repo). Brak wiersza lub cudzy owner → traktuj jak brak → API **404** (nie 403 — jedna polityka, bez enumeracji istnienia).
+`user_id` **nigdy** nie pochodzi z body jako źródło uprawnień (INSERT ustawia `user_id` z sesji; podany inny → ignoruj lub 422).
+
+**IDOR suite (DoD / CI):** parametr User A tworzy zasób → User B woła ten sam `id` → 404 dla:
+`workout_sessions`, `session_exercise_logs`, `body_measurements`, `exercises` (satelity), `user_exercise_progress` (GET), `sync_conflict_logs`, `sync_devices`, `user_onboarding`, `user_legal_acceptances`.
+Marker: `pytest -m idor`. PR zmieniające repozytoria / routery user-owned **musi** przejść ten job.
+
+Konwencja RLS-ready (każda tabela user-owned ma `user_id NOT NULL` — pod F2):
 - `auth_sessions`, `user_onboarding`, `user_legal_acceptances`
 - `exercises` (satelity), `user_program_enrollments`, `user_exercise_progress`
 - `progression_events`, `workout_sessions`, `session_exercise_logs`
 - `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`
 
-Szkic polityk na Fazę 2+ (nie wdrażać w F1):
+Szkic polityk na Fazę 2+ (nie wdrażać w F1; pierwsze kandydaty: `body_measurements`, potem sessions):
 
 ```sql
 -- Przykład (Faza 2+):
--- ALTER TABLE workout_sessions ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY workout_sessions_owner ON workout_sessions
+-- ALTER TABLE body_measurements ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY body_measurements_owner ON body_measurements
 --   USING (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
 --   WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 -- W request: SET LOCAL app.user_id = '<uuid>';
+-- Role migrator/seed: BYPASSRLS lub osobna rola bez RLS.
 ```
 
 Tabele systemowe (`programs`, `program_days`, `program_day_exercises`, `legal_documents`, `progression_schemas`, CC `exercises`) — odczyt dla wszystkich uwierzytelnionych; zapis tylko przez migrator/seed.
@@ -619,24 +644,31 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - `incoming.revision == existing.revision`: ten sam `client_mutation_id` / ten sam content hash → `200` idempotent; różny payload → `409` + `conflict_kind=tie_revision` (oba urządzenia zrobiły „ten sam numer” bez pulla).
    - `|client_updated_at − server_now| > skew_max` (np. 24h) → **nie** blokuje syncu; metryka/log `clock_skew_flag` (defense in depth, nie arbiter).
    - Stan progresji **nie** podlega LWW z klienta — wynik silnika po przyjęciu wygranej sesji.
-3. **Idempotencja:** każdy push outbox niesie `client_mutation_id`; duplikaty zwracają istniejący zasób (200/idempotent); ponowne apply nie dubluje `progression_events` (idempotencja po `session_id` + exercise lub mutation id).
+3. **Idempotencja (FR-072d / Rel6):** każdy push outbox niesie obowiązkowe `client_mutation_id`. Na start tx: claim w `client_mutations`; duplikat + ten sam `content_hash` → `idempotent`; inny hash → `rejected` `mutation_payload_mismatch`. Ponowne apply nie dubluje `progression_events`. Lock order: claim → session/entity → `user_exercise_progress FOR UPDATE` (exercise_id ASC).
 4. **Wiele sesji / dzień (P1 / FR-039/040):** brak UNIQUE `(user_id, local_date)`. Ekran „dzisiejsza sesja” agreguje aktywne wiersze po `local_date`. Dopisanie po evaluate = nowa sesja (spójne z A1).
 5. **Progresja (semantyka):**
    - Ocena tylko dla logów `skipped = false` na sesjach `deleted_at IS NULL`.
    - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`.
    - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039); drugi → `409 duplicate_exercise_same_day`.
+   - Przy ocenie: zbuduj ciąg aktywnych prób E po `(local_date ASC, performed_at ASC, id)` (kolumny na **logu**, denorm z sesji — Perf5) i licz streak / progi z tego ciągu (FR-035 / Rel3) — niezależnie od kolejności push. Filtr: JOIN sesji `deleted_at IS NULL` (lub równoważne). **Zakaz** sortu historii po `log.created_at`.
    - Regres (FR-034): 2 kolejne **dni** z zaliczoną nieudaną próbą (po `local_date ASC`), nie 2 sesje tego samego dnia.
    - Awans: zaliczona próba dnia spełnia próg → advance (jedna ocena / dzień / ćwiczenie).
    - Tie-break gdyby kiedyś złagodzono limit: `performed_at`, potem `session.id` — w F1 limit 1 logu czyni to zbędnym.
    - `manual_override` zeruje streak; `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
-6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku na logu — historia odporna na soft-delete i zmiany harmonogramu.
+   - Out-of-order apply **nie** voiduje wcześniejszych `progression_events` i **nie** rewinduje `current_step_number`.
+6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu — historia i silnik bez zbędnego JOIN/sortu po `created_at`; odporność na soft-delete satelitów i zmiany harmonogramu.
 7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
-8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`.
+8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`. Treści opisów: status `draft`\|`ready` (FR-020a); scaffold może seedować draft; prod wymaga 60× ready + bump `catalog_version` przy zmianie.
 9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos. **Poza scope F1 także:** rewind+replay progresji po zmianie historycznych `sets` (opcja B) — dopiero gdy produkt tego wymaga.
 10. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
-11. **Usuwanie konta:** `users.deleted_at`, revoke `auth_sessions`, anonimizacja `email`/`google_sub`, decyzja retencji danych treningowych wg polityki prywatności (serwis, nie CASCADE).
+11. **Usuwanie konta (Rel5 / FR-006a):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
+    - Natychmiast: `deleted_at`, `purge_after = today+30`, `purge_status = pending_grace`; revoke `auth_sessions`; NULL `email`/`google_sub`/`display_name`; **hard delete** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, `user_onboarding`, `user_legal_acceptances`.
+    - Soft-delete (lub oznaczenie) sesji/logów/eventów/satelitów/progress — niedostępne API (`deleted_at` user ⇒ 401).
+    - Po `purge_after`: hard delete pozostałych wierszy user-owned; `purge_status = done`. Job: cron / `POST /internal/purge-accounts` (compose), bez Redis/ARQ.
+    - Export: FR-006b przed delete.
+    - Re-OAuth po anonimizacji = nowy `users` row.
 12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
-13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` + winning snapshot (`revision`, `updated_at`).
+13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
 14. **Sesja immutable po evaluate (A1 / FR-038):**
    - Sesja jest **oceniona**, gdy istnieje ≥1 `session_exercise_logs` z `goal_evaluated_at IS NOT NULL` (albo równoważny znacznik ustawiony w tej samej tx co silnik).
    - Po ocenie zamrożone: `sets`, `skipped`, `step_number`, skład logów CC wpływający na silnik. Dozwolone: zmiana `notes` (bez re-evaluate).
@@ -646,13 +678,23 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie kroku wyłącznie przez `manual_override`.
 15. **Content hash (F1):** kanoniczny hash JSON zamrożonych pól logów (np. SHA-256 po stabilnej serializacji `sets` + `skipped` + `step_number` + `exercise_id` + `sort_order`); serwer liczy przy evaluate i przy push compare.
 16. **Sync pull (FR-070/075 — Perf1):**
-   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (każda z zagnieżdżonymi `logs[]`), `progress[]`, `satellites[]`, `measurements[]`, `catalog_version`, `server_time`; opcjonalnie `since` → delta.
+   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (każda z zagnieżdżonymi `logs[]`), `progress[]`, `satellites[]`, `measurements[]`, `progression_events[]` (nowe od `since` / okno flush — do surface UI FR-036), `conflicts[]` (ostatnie N / `since` — lista UI FR-073a; bez pełnego `losing_payload` w pull jeśli duży — wtedy detail `GET /sync/conflicts/{id}`), `catalog_version`, `server_time`; opcjonalnie `since` → delta.
    - **Okno sesji (initial + offline cache):** max **30** aktywnych (`deleted_at IS NULL`), sort `performed_at DESC` (tie-break `id`). Soft-deleted w oknie: tombstone `{ id, deleted_at, revision }` bez `sets` / `rules_snapshot`.
    - **Projekcja logów w pull:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync (`revision`, `updated_at`, …). **Zakaz** pola `rules_snapshot` w `SyncPull` / liście — snapshot zostaje w DB; opcjonalny `GET /sessions/{id}` dla audytu/support.
    - **Zakaz** osobnego unbounded `GET` wszystkich `session_exercise_logs` usera po `updated_at` jako ścieżki offline sync (N+1 / rozrost).
    - **Pomiary:** okno **365 dni** (`measured_at` / `local_date`); starsze — lazy online.
-   - **Katalog CC:** sync tylko gdy `catalog_version` (lub ETag) ≠ lokalny; nie w każdym pullu sesji.
+   - **Katalog CC:** sync tylko gdy `catalog_version` (lub ETag) ≠ lokalny; `GET` z `If-None-Match` → **304** (FR-075a); nie w każdym pullu sesji.
    - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
+17. **Offline UX awansu (Pr2 / FR-071a, FR-036, FR-074):** push outbox (lub natychmiastowy follow-up pull) zwraca nowe `progression_events` powstałe w tej transakcji apply; klient surface’uje advance/regress idempotentnie po `event.id`. Brak lokalnego silnika / celebracji przed sync.
+18. **Konflikt UX (Pr3 / FR-073a):** serwer zawsze zapisuje `sync_conflict_logs` przy lost/tie/immutable; klient surface per kind; recovery = INSERT nowej encji z `losing_payload` (nowe id), nigdy UPDATE winning przegraną. Ack przeczytania tylko lokalnie.
+19. **Split / timezone (Pr4 / FR-022a, FR-040a):** `resolve_cc_day(enrollment, local_date)` = fixed weekdays (anchor + offset 0/2/4 → D1/D2/D3, else rest; `rotation_offset` przesuwa day_index). GET /today: `local_date` i split liczone w `users.timezone` na serwerze. Zapis: \|local_date − date(performed_at in TZ)\| ≤ 1 else `422 local_date_mismatch`. Rolling cycle **poza F1**.
+20. **Content CC (Pr5 / FR-020a):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; CI gate prod: wszystkie `exercise_steps` CC mają niepusty `description` bez `[DRAFT]`. Ilustracje per-step poza F1.
+21. **Outbox order (Rel3 / FR-072a):** klient i serwer sortują batch: sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`; w batchu sesje→pomiary→satelity. Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
+22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
+23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
+24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
+25. **Indeks silnika (Perf5):** `session_exercise_logs.performed_at` denorm z sesji przy INSERT logów; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. Soft-delete sesji: filtr JOIN `workout_sessions.deleted_at IS NULL`.
+26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox (FR-014a).
 
 ### Kolejność migracji (sugerowana)
 
@@ -669,12 +711,12 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006, FR-005a | `users`, `auth_sessions` (cookie HttpOnly + token_hash; OAuth PKCE) |
-| FR-010–014 | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` |
-| FR-020–024 | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps` |
-| FR-030–039, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs` (+ `local_date`) |
-| FR-040–046 | `workout_sessions`, `session_exercise_logs` (`sets` + `goal_met` + kontrakty) |
+| FR-001–006, FR-005a–c, FR-006a/b | `users` (+ `purge_after`/`purge_status`), `auth_sessions`; OAuth; IDOR; CORS/rate limit; delete/export |
+| FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` (+ outbox legal) |
+| FR-020–024, FR-020a, FR-022a, FR-040a | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps` (opisy PL + gate ready), `user_program_enrollments`, `users.timezone` |
+| FR-030–039, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm); push/pull zwraca eventy do surface UI |
+| FR-040–046, FR-040a/b, FR-046a | `workout_sessions`, `session_exercise_logs`; TodaySessionDto; write DTO strip |
 | FR-050–058 | `exercises` (satelity), limit trigger |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
-| FR-070–075 | sync kolumny, `client_mutations`, `sync_conflict_logs`, `sync_devices`; kontrakt `SyncPull` |
-| FR-080–083 | `legal_documents`, `tags` rehab |
+| FR-070–075, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; catalog 304 |
+| FR-080–083, FR-081, FR-082a | `legal_documents`, `tags` rehab; at-rest poza F1; analytics allowlist |

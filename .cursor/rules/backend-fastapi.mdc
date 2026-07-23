@@ -20,27 +20,36 @@ alwaysApply: false
 ## 2) Walidacja danych i HTTP
 
 - Kontrakty wejścia/wyjścia wyłącznie Pydantic v2; OpenAPI generowane z FastAPI.
-- Używaj poprawnych metod HTTP i jednoznacznych kodów: 401 (brak auth), 403 (obce zasoby), 404, 409 (konflikt sync / limit satelitów), 422 (walidacja).
+- **FR-046a (S5):** write/push schemas **bez** `goal_met`, `rules_snapshot`, `goal_evaluated_at`, `current_step_number`, `fail_streak` — strip jeśli klient wyśle; ustawia tylko silnik/serwer.
+- Używaj poprawnych metod HTTP i jednoznacznych kodów: 401 (brak auth), 404 (brak lub cudzy zasób user-owned — FR-005b), 403 (akcja niedozwolona / limit biznesowy, **nie** „cudzy UUID”), 409 (konflikt sync / limit satelitów), 422 (walidacja), 429 (rate limit — FR-005c).
+- **FR-005c:** CORS allowlist; rate limit per user + osobno sync/push; max body ~1MB.
 - Operacje I/O-bound (LLM, Garmin, push, długotrwałe sync) nie mogą blokować cyklu request/response — od Fazy 2 deleguj do ARQ; w Fazie 1 nie dodawaj Redis „na zapas”.
-- Każdy endpoint chroniony wymaga uwierzytelnionego użytkownika; filtruj dane po `user_id` z tokenu (nie z body).
+- Każdy endpoint chroniony wymaga uwierzytelnionego użytkownika; filtruj dane po `user_id` z sesji (nie z body). Repozytoria: `get_for_user(session_user_id, id)` — deny-by-default; zakaz „select by id, potem check owner” w routerze.
 
 ## 3) ORM, transakcje i idempotencja
 
 - Używaj SQLAlchemy 2.0 (async lub sync — jeden styl w całym projekcie) jako podstawowego dostępu do danych.
 - Zmiana stanu biznesowego (zapis sesji, ocena progresji, wpis outbox sync) musi być atomowa w jednej transakcji.
-- Endpointy sync / outbox klienta wspierają idempotencję: `client_mutation_id` (lub równoważne) — powtórzone żądanie nie duplikuje sesji ani awansu kroku.
-- Przy przejściach stanu progresji (awans/regres) używaj blokad wiersza (`SELECT … FOR UPDATE`) na rekordzie postępu ćwiczenia użytkownika.
-- Konflikty sync: last-write-wins per encja po **`revision`** (PRD FR-073) — nie po `client_updated_at` / zegarze klienta; po accept ustaw `updated_at = now()` na serwerze; remis revision + różny hash → 409; nie implementuj merge semantyki bez zmiany PRD.
+- Endpointy sync / outbox klienta wspierają idempotencję: obowiązkowe `client_mutation_id` (FR-072d) — powtórzone żądanie nie duplikuje sesji ani awansu kroku.
+- **FR-072d:** na start per-item tx claim `INSERT client_mutations`; konflikt + ten sam hash → idempotent; inny hash → `mutation_payload_mismatch`. Lock order: claim → encja → `user_exercise_progress FOR UPDATE` (exercise_id ASC). Nigdy odwrotnie.
+- **FR-072a / FR-035 (Rel3):** przed apply posortuj batch (sesje `performed_at,id` → pomiary → satelity). Ocena progresji: streak/advance/regress z historii logów po `(local_date, performed_at, id)` na **logu** (denorm `performed_at` — Perf5); out-of-order push nie rewinduje eventów; zakaz sortu po `created_at`.
+- **FR-072c (Perf3/Rel8):** `POST /sync/push` max 20 items; per-item transakcja; `results[]` (+ opcjonalnie `truncated`); zakaz all-or-nothing TX na cały batch.
+- Przy przejściach stanu progresji (awans/regres) używaj blokad wiersza (`SELECT … FOR UPDATE`) na `user_exercise_progress` **po** claim mutation i zapisie sesji (FR-072d); przy wielu ćwiczeniach w sesji lockuj `exercise_id ASC`.
+- Konflikty sync: last-write-wins per encja po **`revision`** (PRD FR-073) — nie po `client_updated_at` / zegarze klienta; po accept ustaw `updated_at = now()` na serwerze; remis revision + różny hash → 409; nie implementuj merge semantyki bez zmiany PRD. Przy konflikcie zapisuj `sync_conflict_logs` i zwracaj `conflict_id` + winning (FR-073a); recovery = nowa encja, nie overwrite.
 - **FR-038 (A1):** po `goal_evaluated_at` nie nadpisuj zamrożonych pól sesji nawet przy wyższym `revision` — `409 session_immutable_after_evaluate`. Soft-delete nie rewinduje `progression_events` / kroku. Korekta = soft-delete + nowa sesja. Silnik: tylko sesje `deleted_at IS NULL`.
-- **FR-070/075 (SyncPull):** initial/offline = max 30 sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; pomiary 365 dni; `catalog_version`; zakaz unbounded pull logów; detail sesji opcjonalnie ze snapshotem.
+- **FR-070/075 (SyncPull):** initial/offline = max 30 sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; pomiary 365 dni; `catalog_version`; zakaz unbounded pull logów; detail sesji opcjonalnie ze snapshotem. Push apply / SyncPull zwracają nowe `progression_events[]` (+ `progress[]`) do surface UI (FR-036 / Pr2). **FR-075a:** katalog CC z `If-None-Match` → 304.
+- **FR-040b:** `GET /today` zwraca pełny `TodaySessionDto` (jeden request).
 
 ## 4) Reguły domenowe Trainer
 
 - Persona: wyłącznie indywidualny użytkownik (brak ról trener/klient/admin multi-tenant w MVP).
 - Auth MVP: Google OAuth — Authorization Code + PKCE + walidacja `state`; sesja w `auth_sessions` + cookie HttpOnly Secure SameSite; w DB tylko `token_hash`; zakaz raw session token w JS storage / Bearer-from-localStorage jako domyślnej ścieżki. Apple OAuth poza scope (Faza 3+).
+- **FR-006a/b (Rel5):** usuwanie konta tylko przez `AccountDeletionService` (nie CASCADE); pomiary hard od razu; treningi grace 30d + purge job; export JSON przed delete.
 - Program główny: jeden aktywny program CC (6 ćwiczeń × 10 kroków); satelity max 10 na konto.
+- Split CC F1: **fixed weekdays** (`resolve_cc_day` / FR-022a) — nie rolling. `local_date` w `users.timezone`; zapis: tolerancja ±1 dzień vs `performed_at` w TZ else `422 local_date_mismatch` (FR-040a).
 - Typy ćwiczeń: A (progresyjne CC), B (powtarzalne), C (mobility/recovery). Metryki: `reps`, `duration_sec`, `weight_kg`, `sides`, `notes`.
 - Reguły progresji jako konfiguracja w JSONB z `schema_version` — nie hardcode progów w Pythonie poza seedem/migracją.
+- Seed / katalog CC: opisy własne PL; status draft OK w dev; przed prod — 60× ready (FR-020a). Nie generuj opisów „na żywo” LLM do prod bez akceptacji PCO.
 - **Każdy** JSON w DB i w body API ma `schema_version` i model Pydantic `*V{n}`; brak wersji lub nieznana wersja → 422. Przy ocenie sesji zapisuj `rules_snapshot` + `progression_schema_version` na `session_exercise_logs` / `progression_events`.
 - Zakaz reinterpretacji historycznych logów nowymi regułami seedu — silnik przy audycie/odczycie używa snapshotu z logu.
 - Awans/regres (MVP, założenie PRD): 3× min. 10 = awans; 2 **dni** z zaliczoną próbą poniżej minimum z rzędu = regres −1 krok (min krok 1, max 10). Jednostka = `(user, exercise, local_date)`; max 1 aktywny non-skipped log CC / ćwiczenie / dzień (FR-039).
@@ -67,10 +76,10 @@ alwaysApply: false
 
 - Rozdziel błędy: HTTP w routerach/exception handlers, domenowe w serwisach (własne wyjątki), globalny handler na poziomie aplikacji.
 - Sekretów nie trzymaj w kodzie — wyłącznie zmienne środowiskowe / vault.
-- Auth: waliduj sesję z cookie (hash → `auth_sessions`); revoked/expired → 401. Przy 401 klient wraca do logowania. Zasoby innego użytkownika → 403, nie 404 z wyciekiem istnienia (albo konsekwentna polityka 404 — jedna w całym API). Nie loguj raw session token.
-- Instrumentacja: OpenTelemetry (logi, metryki, traces). Metryki MVP: latencja API, błędy 5xx, sync/outbox success/fail, awanse/regresy progresji.
+- Auth: waliduj sesję z cookie (hash → `auth_sessions`); revoked/expired → 401. Przy 401 klient wraca do logowania. Zasoby innego użytkownika (lub nieistniejące) → **404** (FR-005b). Nie loguj raw session token. RLS off w F1; schema RLS-ready.
+- Instrumentacja: OpenTelemetry (logi, metryki, traces). Metryki MVP: latencja API, błędy 5xx, sync/outbox success/fail/quarantine/retry, awanse/regresy progresji. Przy 422/409 zwracaj stabilny `error_code` w body (klient FR-072b).
 - Faza 2+: metryki ARQ, Garmin sync, LLM latency/cost, Web Push delivery.
-- Nie loguj PII ani pełnych pomiarów ciała / sygnałów Garmin w plain text na poziomie DEBUG w produkcji.
+- Nie loguj PII ani pełnych pomiarów ciała / sygnałów Garmin w plain text na poziomie DEBUG w produkcji. Analytics: FR-082a allowlist (zakaz cm/kg w props).
 
 ## 8) Jakość kodu i testy
 
@@ -78,5 +87,6 @@ alwaysApply: false
 - Stack lokalny: `docker compose up -d` (db + api); migracje: `docker compose run --rm api alembic upgrade head`; testy: wg `Makefile` / compose.
 - Tooling: `uv`, `Ruff`, `mypy` (strict w miarę możliwości), `pytest`. Adnotacje typów wymagane w nowym kodzie.
 - Każde przejście stanu progresji i zapis sesji: test pozytywny i negatywny.
+- **IDOR suite** (`pytest -m idor`): User B nie dostaje 200 na zasób User A — obowiązkowa dla sessions, logs, measurements, satelitów, progress GET, sync_*, onboarding, legal (FR-005b). PR zmieniające repozytoria/routery user-owned musi przejść ten marker.
 - PR zmieniający sync/outbox/progresję/integracje (F2) musi zawierać testy; dla outbox/integracji — wpis runbook/alertingu jako element Definition of Done.
 - Preferuj małe, testowalne serwisy; nie buduj „god object” `WorkoutService` ze wszystkimi fazami produktu naraz.

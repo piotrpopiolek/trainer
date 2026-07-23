@@ -20,28 +20,35 @@ alwaysApply: false
 
 - MVP: wyłącznie „Zaloguj przez Google” (Auth Code + PKCE). Brak przycisku Apple (Faza 3+).
 - Sesja: cookie HttpOnly Secure SameSite — **zakaz** raw tokenu w localStorage/IndexedDB. `fetch` / TanStack Query z `credentials: 'include'`.
-- 401 z API → clear lokalnego stanu auth + redirect na login; zachowaj intended path; outbox nie dropuj bez polityki retry.
+- 401 z API → clear lokalnego stanu auth + redirect na login; zachowaj intended path; **outbox nie dropuj** — itemy wracają do `pending`; po reauth automatyczny flush (FR-072b).
 - Po wylogowaniu nie mieszaj danych lokalnych między kontami (clear IndexedDB / namespace per user).
+- Usuń konto (FR-006a): potwierdzenie → clear lokalny store; copy o retencji pomiarów vs 30 dni treningów; oferuj export (FR-006b) przed delete.
 
 ## 3) Offline i sync (Faza 1)
 
 - Offline: program CC + **ostatnie 30 sesji** + pomiary z okna **365 dni** + cache kroków; mutacje przez outbox. Limity = API `SyncPull` (FR-070/075).
 - **Nie obliczaj awansu/regresu/`goal_met` na kliencie** — tylko backend `ProgressionEngine` po utrwaleniu sesji (online lub po flush outbox). Po sync nadpisz lokalny cache progresji wynikiem serwera.
-- Każda mutacja offline ma stabilne `client_mutation_id`, **`revision`** (create = 1; edycja = last_known + 1) i `client_updated_at` (hint) dla sesji/pomiarów/satelitów — LWW po `revision` zgodnie z PRD FR-073; nie dla wyliczonego stanu progresji. Po conflict_lost / pull nadpisz lokalną encję winning snapshotem z serwera (`revision`, `updated_at`).
-- **FR-038 (A1):** po ocenie sesji nie edytuj `sets` lokalnie w oczekiwaniu na LWW — UI: soft-delete + nowa sesja; obsłuż `409 session_immutable_after_evaluate` (przywróć snapshot serwera, komunikat PL). Soft-delete nie obiecuje cofnięcia awansu.
+- Każda mutacja offline ma stabilne `client_mutation_id` (UUID przy **enqueue**, nie przy flush), **`revision`** (create = 1; edycja = last_known + 1) i `client_updated_at` (hint) dla sesji/pomiarów/satelitów — LWW po `revision` zgodnie z PRD FR-073; nie dla wyliczonego stanu progresji. Po conflict_lost / pull nadpisz lokalną encję winning snapshotem z serwera (`revision`, `updated_at`). Nie zmieniaj payloadu outbox bez nowego `client_mutation_id`. Obsłuż `mutation_payload_mismatch` → quarantine (FR-072d).
+- **FR-073a (Pr3):** handler `onSyncConflict` — lost → toast+link; tie / immutable → modal; lista konfliktów w ustawieniach; badge do lokalnego ack; recovery = draft nowej encji z `losing_payload` (nie overwrite serwera, nie merge). Batch: max 1 modal zbiorczy.
+- **FR-038 (A1):** po ocenie sesji nie edytuj `sets` lokalnie w oczekiwaniu na LWW — UI: soft-delete + nowa sesja; obsłuż `409 session_immutable_after_evaluate` (przywróć snapshot serwera, modal PL). Soft-delete nie obiecuje cofnięcia awansu.
 - Pull: oczekuj sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; honoruj `catalog_version`; nie cache’uj pełnej historii poza oknami.
-- Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync.
-- Wskaźnik „oczekuje na sync” musi być widoczny dla sesji i pomiarów; UX może informować, że ocena progresji nastąpi po synchronizacji.
+- Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync. Przed POST sortuj outbox wg FR-072a (sesje `performed_at,id` → pomiary → satelity).
+- **FR-072c:** flush w oknach ≤20; jeden flush naraz; ACK tylko z `results[i]`; honoruj `truncated` (reszta zostaje pending); pętla kolejnych batchy aż pusto / 401 / offline.
+- **FR-072b (Rel4):** macierz retry — quarantine na 422/409 duplicate/403 limit; konflikty → FR-073a; retryable → backoff+jitter (cap 15 min); stany `pending|in_flight|quarantine|synced`; UI escalation po 5 transport fail bez stopu tła.
+- **FR-071a / FR-036 (Pr2):** po offline save — obowiązkowy badge pending + copy o ocenie po sync; krok = cache z etykietą „Stan z ostatniego syncu”; **zakaz** lokalnej celebracji awansu. Po sync/online apply — jedna ścieżka `onProgressionEvents` (modal/sticky banner); idempotencja po `event.id`.
 - Nie wprowadzaj Service Worker cache’ującego wrażliwe API responses bez świadomej polityki prywatności.
 
 ## 4) UX domenowy
 
 - Ekran „dzisiejsza sesja”: widok złożony po `local_date` (może być wiele bloków sesji); CC → satelity → notatka; cel logowania < 3 min. Po ocenionym bloku dopisz kolejny jako nową sesję. Blokuj drugi aktywny log tego samego CC na dziś (`duplicate_exercise_same_day`).
+- **FR-022a / FR-040a (Pr4):** online today z API (`local_date`, `split_day`, `is_rest_day`, `timezone`); offline ta sama reguła fixed weekdays z cache enrollment + timezone. Przy zapisie wyślij `local_date` zgodny z `performed_at` w TZ użytkownika; obsłuż `422 local_date_mismatch`. Nie implementuj rolling splitu.
 - Satelity `daily` widoczne także w dni odpoczynku CC.
 - Limit 10 satelitów: komunikat + licznik X/10 przed próbą zapisu.
 - Pomiary: domyślnie waga, pas, biceps; jednostki kg/cm; walidacja zakresów po stronie Zod.
-- Disclaimer zdrowotny wymagany przed pierwszą sesją; dostępny też w ustawieniach.
-- Teksty UI po polsku; brak dosłownych cytatów z książki CC.
+- Disclaimer zdrowotny wymagany przed pierwszą sesją (także offline — lokalny gate + outbox legal, FR-014a); dostępny też w ustawieniach.
+- **FR-040b:** ekran dnia z jednego `GET /today` / cache tego samego kształtu; nie składaj dnia z N osobnych requestów online.
+- Analytics (jeśli włączone): tylko allowlist props (FR-082a) — bez wartości pomiarów.
+- Teksty UI po polsku; brak dosłownych cytatów z książki CC. Prod: opisy kroków bez `[DRAFT]` (FR-020a); nie wymagaj ilustracji per krok w F1.
 
 ## 5) Faza 2 (nie buduj przedwcześnie)
 
@@ -53,5 +60,5 @@ alwaysApply: false
 
 - TypeScript strict; unikaj `any`.
 - Komponenty funkcyjne; logikę wyciągaj do hooków.
-- Testuj krytyczne ścieżki: login redirect, outbox enqueue, render sesji dnia odpoczynku, limit satelitów.
+- Testuj krytyczne ścieżki: login redirect, outbox enqueue, render sesji dnia odpoczynku, limit satelitów, offline save → pending copy, sync → modal awansu (idempotent), conflict_lost/tie/immutable → surface + recovery draft, 422→quarantine, 503→backoff.
 - Mobile-first; nie zakładaj natywnych API (HealthKit, Garmin SDK).

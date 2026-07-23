@@ -17,19 +17,19 @@ alwaysApply: true
 
 - Nie dodawaj: Redis, ARQ, R2, Apple Sign In, LLM agenta, integracji Garmin, Web Push, wykresów premium, progress photos.
 - Nie buduj ról trenera / multi-client.
-- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL.
+- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL. Content: PCO (founder) akceptuje `ready`; scaffold może iść na `draft`; prod = 60× ready (FR-020a).
 - Nie implementuj diagnoz medycznych ani „leczenia” przez AI/rehab.
 
 ## Priorytety przy implementacji
 
 1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze).
 2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja po `local_date` / FR-039, SyncPull okna 30/365d bez `rules_snapshot` / FR-075) — dopiero potem polish UI.
-3. Content CC i onboarding mają być w scope MVP, nie „później”.
+3. Content CC i onboarding w scope MVP (FR-020a: draft OK na scaffold; prod = 60× ready) — nie „później”.
 4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
 
 ## Stack decyzje (nie zmieniaj bez zgody)
 
 - Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
 - Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`.
-- Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; sesja HttpOnly cookie / FR-005a).
+- Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; sesja HttpOnly cookie / FR-005a). Izolacja: app-layer `user_id` + IDOR suite; RLS F2+ (FR-005b).
 - Na logu sesji: `rules_snapshot` z wersją reguł użytych przy ocenie — seed nie reinterpretuje historii.
