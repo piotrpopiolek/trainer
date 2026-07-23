@@ -18,23 +18,25 @@ alwaysApply: false
 
 ## 2) Auth i dostęp
 
-- MVP: wyłącznie „Zaloguj przez Google”. Brak przycisku Apple (Faza 3+).
-- 401 z API → wylogowanie lokalne + redirect na login; zachowaj intended path po powrocie.
+- MVP: wyłącznie „Zaloguj przez Google” (Auth Code + PKCE). Brak przycisku Apple (Faza 3+).
+- Sesja: cookie HttpOnly Secure SameSite — **zakaz** raw tokenu w localStorage/IndexedDB. `fetch` / TanStack Query z `credentials: 'include'`.
+- 401 z API → clear lokalnego stanu auth + redirect na login; zachowaj intended path; outbox nie dropuj bez polityki retry.
 - Po wylogowaniu nie mieszaj danych lokalnych między kontami (clear IndexedDB / namespace per user).
 
 ## 3) Offline i sync (Faza 1)
 
-- Offline: program CC + ostatnie 30 sesji + pomiary + cache ostatniego stanu kroków z serwera; mutacje sesji/pomiarów przez outbox.
+- Offline: program CC + **ostatnie 30 sesji** + pomiary z okna **365 dni** + cache kroków; mutacje przez outbox. Limity = API `SyncPull` (FR-070/075).
 - **Nie obliczaj awansu/regresu/`goal_met` na kliencie** — tylko backend `ProgressionEngine` po utrwaleniu sesji (online lub po flush outbox). Po sync nadpisz lokalny cache progresji wynikiem serwera.
 - Każda mutacja offline ma stabilne `client_mutation_id`, **`revision`** (create = 1; edycja = last_known + 1) i `client_updated_at` (hint) dla sesji/pomiarów/satelitów — LWW po `revision` zgodnie z PRD FR-073; nie dla wyliczonego stanu progresji. Po conflict_lost / pull nadpisz lokalną encję winning snapshotem z serwera (`revision`, `updated_at`).
 - **FR-038 (A1):** po ocenie sesji nie edytuj `sets` lokalnie w oczekiwaniu na LWW — UI: soft-delete + nowa sesja; obsłuż `409 session_immutable_after_evaluate` (przywróć snapshot serwera, komunikat PL). Soft-delete nie obiecuje cofnięcia awansu.
+- Pull: oczekuj sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; honoruj `catalog_version`; nie cache’uj pełnej historii poza oknami.
 - Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync.
 - Wskaźnik „oczekuje na sync” musi być widoczny dla sesji i pomiarów; UX może informować, że ocena progresji nastąpi po synchronizacji.
 - Nie wprowadzaj Service Worker cache’ującego wrażliwe API responses bez świadomej polityki prywatności.
 
 ## 4) UX domenowy
 
-- Ekran „dzisiejsza sesja”: CC → satelity → notatka; cel logowania < 3 min.
+- Ekran „dzisiejsza sesja”: widok złożony po `local_date` (może być wiele bloków sesji); CC → satelity → notatka; cel logowania < 3 min. Po ocenionym bloku dopisz kolejny jako nową sesję. Blokuj drugi aktywny log tego samego CC na dziś (`duplicate_exercise_same_day`).
 - Satelity `daily` widoczne także w dni odpoczynku CC.
 - Limit 10 satelitów: komunikat + licznik X/10 przed próbą zapisu.
 - Pomiary: domyślnie waga, pas, biceps; jednostki kg/cm; walidacja zakresów po stronie Zod.

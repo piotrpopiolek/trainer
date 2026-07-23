@@ -61,7 +61,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | Database | PostgreSQL + JSONB |
 | Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
 | Tooling | uv, Ruff, mypy, pytest |
-| Auth (MVP) | Google OAuth only |
+| Auth (MVP) | Google OAuth (Auth Code + PKCE); session cookie HttpOnly |
 
 ### Infrastructure
 

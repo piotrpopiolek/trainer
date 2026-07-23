@@ -32,17 +32,18 @@ alwaysApply: false
 - Przy przejściach stanu progresji (awans/regres) używaj blokad wiersza (`SELECT … FOR UPDATE`) na rekordzie postępu ćwiczenia użytkownika.
 - Konflikty sync: last-write-wins per encja po **`revision`** (PRD FR-073) — nie po `client_updated_at` / zegarze klienta; po accept ustaw `updated_at = now()` na serwerze; remis revision + różny hash → 409; nie implementuj merge semantyki bez zmiany PRD.
 - **FR-038 (A1):** po `goal_evaluated_at` nie nadpisuj zamrożonych pól sesji nawet przy wyższym `revision` — `409 session_immutable_after_evaluate`. Soft-delete nie rewinduje `progression_events` / kroku. Korekta = soft-delete + nowa sesja. Silnik: tylko sesje `deleted_at IS NULL`.
+- **FR-070/075 (SyncPull):** initial/offline = max 30 sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; pomiary 365 dni; `catalog_version`; zakaz unbounded pull logów; detail sesji opcjonalnie ze snapshotem.
 
 ## 4) Reguły domenowe Trainer
 
 - Persona: wyłącznie indywidualny użytkownik (brak ról trener/klient/admin multi-tenant w MVP).
-- Auth MVP: Google OAuth. Apple OAuth poza scope (Faza 3+) — nie dodawaj przycisku ani providerów Apple w Fazie 1.
+- Auth MVP: Google OAuth — Authorization Code + PKCE + walidacja `state`; sesja w `auth_sessions` + cookie HttpOnly Secure SameSite; w DB tylko `token_hash`; zakaz raw session token w JS storage / Bearer-from-localStorage jako domyślnej ścieżki. Apple OAuth poza scope (Faza 3+).
 - Program główny: jeden aktywny program CC (6 ćwiczeń × 10 kroków); satelity max 10 na konto.
 - Typy ćwiczeń: A (progresyjne CC), B (powtarzalne), C (mobility/recovery). Metryki: `reps`, `duration_sec`, `weight_kg`, `sides`, `notes`.
 - Reguły progresji jako konfiguracja w JSONB z `schema_version` — nie hardcode progów w Pythonie poza seedem/migracją.
 - **Każdy** JSON w DB i w body API ma `schema_version` i model Pydantic `*V{n}`; brak wersji lub nieznana wersja → 422. Przy ocenie sesji zapisuj `rules_snapshot` + `progression_schema_version` na `session_exercise_logs` / `progression_events`.
 - Zakaz reinterpretacji historycznych logów nowymi regułami seedu — silnik przy audycie/odczycie używa snapshotu z logu.
-- Awans/regres (MVP, założenie PRD): 3× min. 10 = awans; 2 sesje poniżej minimum z rzędu = regres −1 krok (min krok 1, max 10).
+- Awans/regres (MVP, założenie PRD): 3× min. 10 = awans; 2 **dni** z zaliczoną próbą poniżej minimum z rzędu = regres −1 krok (min krok 1, max 10). Jednostka = `(user, exercise, local_date)`; max 1 aktywny non-skipped log CC / ćwiczenie / dzień (FR-039).
 - Harmonogram satelity: dzień tygodnia | `daily` | kategoria (`anytime` / `after_workout` / `rest_day`).
 - Agent AI i Garmin: tylko Faza 2+; agent proponuje sesję, nie nadpisuje wyniku silnika progresji.
 - Dane zdrowotne (pomiary, recovery): nie diagnozuj, nie „lecź”; disclaimer i tagi rehab zgodnie z PRD.
@@ -66,7 +67,7 @@ alwaysApply: false
 
 - Rozdziel błędy: HTTP w routerach/exception handlers, domenowe w serwisach (własne wyjątki), globalny handler na poziomie aplikacji.
 - Sekretów nie trzymaj w kodzie — wyłącznie zmienne środowiskowe / vault.
-- Auth: waliduj JWT/sesję; przy 401 klient wraca do logowania. Zasoby innego użytkownika → 403, nie 404 z wyciekiem istnienia (albo konsekwentna polityka 404 — jedna w całym API).
+- Auth: waliduj sesję z cookie (hash → `auth_sessions`); revoked/expired → 401. Przy 401 klient wraca do logowania. Zasoby innego użytkownika → 403, nie 404 z wyciekiem istnienia (albo konsekwentna polityka 404 — jedna w całym API). Nie loguj raw session token.
 - Instrumentacja: OpenTelemetry (logi, metryki, traces). Metryki MVP: latencja API, błędy 5xx, sync/outbox success/fail, awanse/regresy progresji.
 - Faza 2+: metryki ARQ, Garmin sync, LLM latency/cost, Web Push delivery.
 - Nie loguj PII ani pełnych pomiarów ciała / sygnałów Garmin w plain text na poziomie DEBUG w produkcji.

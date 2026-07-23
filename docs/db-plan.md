@@ -69,6 +69,13 @@ Uwagi: aktywne konta wymagają `google_sub` (egzekwowane w aplikacji / partial U
 | `user_agent` | `TEXT` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
+Uwagi (FR-001 / FR-005a):
+- Klient dostaje **losowy** session token wyłącznie w cookie `HttpOnly; Secure; SameSite=Lax` (nazwa np. `trainer_session`); w kolumnie `token_hash` = SHA-256(token) — raw token **nigdy** w DB ani w logach.
+- OAuth Google: Authorization Code + PKCE; `state` jednorazowy (store server-side / encrypted cookie krótkoterminowe); po sukcesie INSERT `auth_sessions` + Set-Cookie.
+- Lookup: hash cookie → wiersz gdzie `revoked_at IS NULL` AND `expires_at > now()`.
+- Logout / delete account: ustaw `revoked_at` (revoke-all opcjonalnie: wszystkie sesje usera).
+- **Zakaz** API auth przez Bearer z localStorage jako domyślnej ścieżki F1.
+
 ---
 
 ### 1.3 `legal_documents`
@@ -314,7 +321,8 @@ Dla `advance`/`regress`: `rules_snapshot` + `progression_schema_version` wypełn
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** (`server_received_at` po accepted write) |
 
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.  
-**Brak** UNIQUE na (`user_id`, `local_date`) — wiele sesji dziennie dozwolone.
+**Brak** UNIQUE na (`user_id`, `local_date`) — wiele sesji dziennie dozwolone (P1 / FR-039: rano satelity, wieczór CC, A1 = nowa sesja).  
+Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 
 ---
 
@@ -329,6 +337,7 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 | `exercise_kind` | `TEXT` | NOT NULL, CHECK (`exercise_kind IN ('cc','satellite')`) |
 | `section` | `TEXT` | NOT NULL, CHECK (`section IN ('main','accessories')`) |
 | `step_number` | `SMALLINT` | NULL |
+| `local_date` | `DATE` | NOT NULL — denormalizacja z `workout_sessions.local_date` (FR-039; unikalność próby CC / dzień) |
 | `exercise_name_snapshot` | `TEXT` | NOT NULL |
 | `step_label_snapshot` | `TEXT` | NULL |
 | `skipped` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
@@ -350,6 +359,11 @@ CHECK:
 - `skipped = false` ⇒ `sets IS NOT NULL` AND `(sets ? 'schema_version')` AND `rules_snapshot IS NOT NULL` AND `(rules_snapshot ? 'schema_version')` AND `progression_schema_version IS NOT NULL`
 
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL`.
+
+**FR-039 — jedna zaliczona próba CC / dzień:** egzekwowane w serwisie (+ zalecany partial UNIQUE wspomagający):  
+brak drugiego aktywnego logu CC tego samego ćwiczenia na ten sam `local_date`, gdy sesja-rodzic ma `deleted_at IS NULL` i `skipped = false`.  
+Praktyka F1: przed INSERT sprawdź JOIN do `workout_sessions`; konflikt → `409 duplicate_exercise_same_day`.  
+Opcjonalnie w migracji: partial unique na `(user_id, exercise_id, local_date)` tylko jeśli soft-delete sesji **propaguje** soft-delete / flagę na logach (inaczej UNIQUE łamie A1 soft-delete + nowa sesja bez oznaczenia starego logu). Preferowane: soft-delete sesji ustawia na child logs `superseded_at` lub kopiuje `session.deleted_at` do zapytania unikalności w aplikacji.
 
 Przykładowy `sets` (v1):
 ```json
@@ -530,6 +544,7 @@ erDiagram
 | `workout_sessions` | (`user_id`, `updated_at`) | Pull sync delta |
 | `workout_sessions` | UNIQUE (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` | Idempotencja |
 | `session_exercise_logs` | (`session_id`, `sort_order`) | Szczegóły sesji |
+| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false` | Wsparcie FR-039 / lookup „czy już dziś” (unikalność w serwisie) |
 | `session_exercise_logs` | (`user_id`, `exercise_id`, `created_at` DESC) | Historia per ćwiczenie |
 | `session_exercise_logs` | (`user_id`, `updated_at`) | Pull sync |
 | `body_measurements` | (`user_id`, `measured_at` DESC) WHERE `deleted_at IS NULL` | Historia pomiarów |
@@ -605,8 +620,15 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - `|client_updated_at − server_now| > skew_max` (np. 24h) → **nie** blokuje syncu; metryka/log `clock_skew_flag` (defense in depth, nie arbiter).
    - Stan progresji **nie** podlega LWW z klienta — wynik silnika po przyjęciu wygranej sesji.
 3. **Idempotencja:** każdy push outbox niesie `client_mutation_id`; duplikaty zwracają istniejący zasób (200/idempotent); ponowne apply nie dubluje `progression_events` (idempotencja po `session_id` + exercise lub mutation id).
-4. **Wiele sesji / dzień:** ekran „dzisiejsza sesja” agreguje wiersze `workout_sessions` po `local_date`; brak UNIQUE dziennego.
-5. **Progresja (semantyka):** ocena tylko dla logów `skipped = false` na sesjach z `deleted_at IS NULL`; kolejność fail_streak po `performed_at`, tie-break `session.id`; `manual_override` zeruje streak; `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
+4. **Wiele sesji / dzień (P1 / FR-039/040):** brak UNIQUE `(user_id, local_date)`. Ekran „dzisiejsza sesja” agreguje aktywne wiersze po `local_date`. Dopisanie po evaluate = nowa sesja (spójne z A1).
+5. **Progresja (semantyka):**
+   - Ocena tylko dla logów `skipped = false` na sesjach `deleted_at IS NULL`.
+   - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`.
+   - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039); drugi → `409 duplicate_exercise_same_day`.
+   - Regres (FR-034): 2 kolejne **dni** z zaliczoną nieudaną próbą (po `local_date ASC`), nie 2 sesje tego samego dnia.
+   - Awans: zaliczona próba dnia spełnia próg → advance (jedna ocena / dzień / ćwiczenie).
+   - Tie-break gdyby kiedyś złagodzono limit: `performed_at`, potem `session.id` — w F1 limit 1 logu czyni to zbędnym.
+   - `manual_override` zeruje streak; `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
 6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku na logu — historia odporna na soft-delete i zmiany harmonogramu.
 7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
 8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`.
@@ -623,6 +645,14 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Korekta wyniku: soft-delete sesji (`deleted_at`) + create nowej sesji (nowe `id`, `revision=1`) → silnik ocenia tylko nową; soft-deleted **wykluczone** z fail_streak i z aktywnej historii.
    - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie kroku wyłącznie przez `manual_override`.
 15. **Content hash (F1):** kanoniczny hash JSON zamrożonych pól logów (np. SHA-256 po stabilnej serializacji `sets` + `skipped` + `step_number` + `exercise_id` + `sort_order`); serwer liczy przy evaluate i przy push compare.
+16. **Sync pull (FR-070/075 — Perf1):**
+   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (każda z zagnieżdżonymi `logs[]`), `progress[]`, `satellites[]`, `measurements[]`, `catalog_version`, `server_time`; opcjonalnie `since` → delta.
+   - **Okno sesji (initial + offline cache):** max **30** aktywnych (`deleted_at IS NULL`), sort `performed_at DESC` (tie-break `id`). Soft-deleted w oknie: tombstone `{ id, deleted_at, revision }` bez `sets` / `rules_snapshot`.
+   - **Projekcja logów w pull:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync (`revision`, `updated_at`, …). **Zakaz** pola `rules_snapshot` w `SyncPull` / liście — snapshot zostaje w DB; opcjonalny `GET /sessions/{id}` dla audytu/support.
+   - **Zakaz** osobnego unbounded `GET` wszystkich `session_exercise_logs` usera po `updated_at` jako ścieżki offline sync (N+1 / rozrost).
+   - **Pomiary:** okno **365 dni** (`measured_at` / `local_date`); starsze — lazy online.
+   - **Katalog CC:** sync tylko gdy `catalog_version` (lub ETag) ≠ lokalny; nie w każdym pullu sesji.
+   - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
 
 ### Kolejność migracji (sugerowana)
 
@@ -639,12 +669,12 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006 | `users`, `auth_sessions` |
+| FR-001–006, FR-005a | `users`, `auth_sessions` (cookie HttpOnly + token_hash; OAuth PKCE) |
 | FR-010–014 | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` |
 | FR-020–024 | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps` |
-| FR-030–038, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs.rules_snapshot` |
+| FR-030–039, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs` (+ `local_date`) |
 | FR-040–046 | `workout_sessions`, `session_exercise_logs` (`sets` + `goal_met` + kontrakty) |
 | FR-050–058 | `exercises` (satelity), limit trigger |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
-| FR-070–074 | sync kolumny, `client_mutations`, `sync_conflict_logs`, `sync_devices` |
+| FR-070–075 | sync kolumny, `client_mutations`, `sync_conflict_logs`, `sync_devices`; kontrakt `SyncPull` |
 | FR-080–083 | `legal_documents`, `tags` rehab |

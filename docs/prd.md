@@ -110,11 +110,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-001 | Logowanie przez OAuth Google (jedyna metoda auth w MVP) |
+| FR-001 | Logowanie przez OAuth Google (jedyna metoda auth w MVP): **Authorization Code + PKCE**; callback na backend; walidacja OAuth `state`; zakaz implicit / token w URL dla sesji app |
 | FR-002 | Logowanie przez OAuth Apple — poza scope MVP (Faza 3+) |
 | FR-003 | Brak rejestracji e-mail/hasło w Fazie 1 |
-| FR-004 | Wylogowanie z unieważnieniem tokenu sesji |
-| FR-005 | Dostęp do API i danych użytkownika wyłącznie po uwierzytelnieniu |
+| FR-004 | Wylogowanie: `auth_sessions.revoked_at` + clear cookie sesji + clear IndexedDB (US-003) |
+| FR-005 | Dostęp do API i danych użytkownika wyłącznie po uwierzytelnieniu (sesja z cookie) |
+| FR-005a | Sesja aplikacji: losowy token w cookie **`HttpOnly; Secure; SameSite=Lax`** (lub Strict przy same-site); w DB wyłącznie `token_hash` (SHA-256); **zakaz** raw tokenu w `localStorage` / IndexedDB / JS. TTL (`expires_at`); API z `credentials` (cookie), nie Bearer z JS storage. CSRF: SameSite + same-origin API (MVP); przy cross-site mutacjach — dodatkowy CSRF token |
 | FR-006 | Identyfikator użytkownika umożliwiający sync między urządzeniami |
 
 ### 3.2 Onboarding (Faza 1)
@@ -154,17 +155,18 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-031 | Reguły progresji jako konfiguracja JSONB z obowiązkowym `schema_version` + kontrakt Pydantic per wersja; nie hardcode progów |
 | FR-032 | Typ A (progresyjne): kroki z progami awansu i regresu |
 | FR-033 | Awans (Założenie PRD): 3 serie × min. 10 powtórzeń; dla ćwiczeń jednostronnych — min. 10 powtórzeń na lewą i prawą stronę |
-| FR-034 | Regres (Założenie PRD): 2 kolejne sesje poniżej minimum progu = powrót o 1 krok |
+| FR-034 | Regres (Założenie PRD): 2 kolejne **dni** (`local_date`) z zaliczoną próbą poniżej minimum progu = powrót o 1 krok — nie 2 wiersze `workout_sessions` tego samego dnia |
 | FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync) |
 | FR-036 | Powiadomienie w aplikacji o awansie lub regresie kroku (po otrzymaniu wyniku z serwera / po sync) |
 | FR-037 | Przy ocenie sesji serwer zapisuje `rules_snapshot` + `progression_schema_version` na logu; późniejsza zmiana seedu nie reinterpretuje historii |
 | FR-038 | Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; LWW z wyższym `revision` i innym content hash → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind w F1); opcjonalnie `manual_override`. `notes` wolno zmienić bez re-evaluate |
+| FR-039 | Jednostka progresji CC = `(user, exercise, local_date)`: max **jeden** aktywny (`deleted_at IS NULL`, `skipped=false`) log CC danego ćwiczenia na dany `local_date`; drugi → `409 duplicate_exercise_same_day` (korekta przez soft-delete + nowa sesja / FR-038). `fail_streak` liczy kolejne **dni** z nieudaną zaliczoną próbą. Wiele `workout_sessions` na dzień dozwolone (np. rano satelity, wieczór CC) |
 
 ### 3.5 Logowanie sesji treningowej (Faza 1)
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-040 | Jeden ekran „dzisiejsza sesja” z sekcjami: Program główny (CC) → Dodatki (satelity) → notatka sesji |
+| FR-040 | Jeden ekran „dzisiejsza sesja” (widok złożony): agreguje wszystkie aktywne `workout_sessions` z `local_date = dziś`; sekcje Program główny (CC) → Dodatki (satelity) → notatki; dopisanie po evaluate wcześniejszego bloku = **nowa** sesja tego samego dnia (spójne z FR-038) |
 | FR-041 | Czas logowania standardowej sesji: docelowo poniżej 3 minut |
 | FR-042 | Metryki logowania per ćwiczenie w kontrakcie JSONB z `schema_version` (np. `SessionSetsV1`: reps, duration_sec, weight_kg, sides, notes) |
 | FR-043 | Formularz dostosowany do aktywnych metryk danego ćwiczenia |
@@ -201,11 +203,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-070 | Lokalna baza: pełny program CC + ostatnie 30 sesji + historia pomiarów + ostatni znany stan kroków z serwera (read-only cache) |
+| FR-070 | Lokalna baza (IndexedDB): pełny program CC + **ostatnie 30** aktywnych sesji + pomiary z okna **365 dni** + cache kroków z serwera (read-only). **Te same limity obowiązują API pull** — klient nie trzyma więcej niż serwer oddaje w sync offline |
 | FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem (bez lokalnej oceny progresji) |
 | FR-072 | Outbox pattern: kolejka zmian lokalnych synchronizowana w tle po powrocie online |
 | FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer; remis revision + różny payload → 409; log konfliktu w UI. **Wyjątek sesji ocenionych:** FR-038 (immutable) — LWW nie nadpisuje `sets` po evaluate |
 | FR-074 | Po sync sesji serwer uruchamia silnik progresji i zwraca zaktualizowane kroki / eventy; klient nadpisuje lokalny cache stanu progresji wynikiem serwera. Ponowne apply tej samej treści (idempotent) nie dubluje eventów; zmiana treści po evaluate → FR-038 |
+| FR-075 | Pull sync (`SyncPull`): jeden read-model — sesje z **zagnieżdżonymi** logami (bez N+1); w projekcji offline **bez** `rules_snapshot` (zostaje w DB / detail); logi mają `sets`, `goal_met`, `progression_schema_version`, snapshoty nazw; soft-deleted w oknie = tombstone (`id`, `deleted_at`); katalog CC osobno z `catalog_version` / ETag; starsza historia sesji/pomiarów — lazy online |
 
 ### 3.9 Compliance (Faza 1)
 
@@ -294,7 +297,7 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - Logowanie sesji (<3 min), historia, badge celu dla B/C (badge/ocena po stronie serwera)
 - Do 10 ćwiczeń satelitarnych (typ B/C, harmonogram w tym „codziennie”)
 - Pomiary sylwetki: log + historia + konfiguracja metryk
-- Offline + outbox sync (last-write-wins po **`revision`**): offline zapisuje sesje/pomiary; awans/regres po sync na backendzie
+- Offline + outbox sync (LWW po **`revision`**): offline zapisuje sesje/pomiary; awans/regres po sync; **SyncPull** ≤30 sesji / pomiary 365d / bez `rules_snapshot` (FR-070/075)
 - Disclaimer zdrowotny, polityka prywatności
 
 ### 4.2 W scope — Faza 2
@@ -336,12 +339,15 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | Kwestia | Decyzja |
 |---------|---------|
 | Split CC | D1: pompki + HSPU; D2: podciągania + mostek; D3: przysiady + unoszenie nóg |
-| Progi progresji | 3×10 = awans; 2 sesje poniżej min = regres −1 krok |
+| Progi progresji | 3×10 = awans; 2 **dni** z zaliczoną próbą poniżej min = regres −1 krok (FR-034/039) |
 | Silnik progresji | Wyłącznie backend (FastAPI); brak drugiej implementacji w kliencie; offline nie liczy awansu/regresu |
 | Kontrakty JSON | Każdy JSONB/`schema` API ma `schema_version`; Pydantic + Zod; snapshot reguł na logu sesji (FR-037) |
 | Sync konfliktów | last-write-wins po **`revision`** (sesje/pomiary/satelity); `client_updated_at` hint; `updated_at` serwerowy; remis revision → 409; stan progresji = wynik silnika po apply |
 | Sesja po evaluate (A1) | Immutable `sets`/progresja po pierwszej ocenie; poprawka = soft-delete + nowa sesja; soft-delete nie rewinduje kroku (FR-038); rewind+replay poza F1 |
-| Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium) |
+| Sesje / dzień (P1) | Wiele wierszy sesji na `local_date` OK; UI jeden ekran agregujący; max 1 aktywny log CC / ćwiczenie / dzień; streak po dniach (FR-039) |
+| Sync pull (Perf1) | Okno 30 sesji + pomiary 365 dni = IndexedDB; pull bez `rules_snapshot`; logi zagnieżdżone w sesji; `catalog_version` (FR-070/075) |
+| Auth F1 (S1/S4) | Google Auth Code + PKCE + `state`; sesja w cookie HttpOnly Secure SameSite; `auth_sessions.token_hash`; zakaz Bearer w JS storage (FR-001/005a) |
+| Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium); offline/pull: ostatnie 365 dni |
 | Analiza wideo | Faza 2; transcript + metadata; Vision fallback |
 | Content CC | Opisy i ilustracje tworzone przez zespół produktu na Fazę 1 |
 
@@ -357,8 +363,9 @@ Opis: Jako użytkownik chcę zalogować się kontem Google, aby szybko uzyskać 
 
 Kryteria akceptacji:
 - Ekran logowania zawiera przycisk „Zaloguj przez Google”.
+- Flow: Google Authorization Code + PKCE; backend wymienia code i tworzy `auth_sessions`; zły / brak `state` → odrzucenie logowania.
+- Sesja aplikacji jest w cookie HttpOnly Secure SameSite — **niedostępna z JS** (nie localStorage / IndexedDB).
 - Po pomyślnym OAuth użytkownik trafia do onboardingu (nowe konto) lub ekranu głównego (istniejące konto).
-- Token sesji jest przechowywany bezpiecznie po stronie klienta.
 - Błąd OAuth wyświetla komunikat z możliwością ponowienia próby.
 
 ### US-002: Logowanie przez Apple OAuth (poza scope MVP — Faza 3+)
@@ -378,29 +385,32 @@ Opis: Jako użytkownik chcę się wylogować, aby zabezpieczyć dane na współd
 
 Kryteria akceptacji:
 - Ustawienia konta zawierają opcję „Wyloguj”.
-- Po wylogowaniu token sesji jest usuwany lokalnie.
+- Po wylogowaniu: serwer ustawia `auth_sessions.revoked_at`, przeglądarka traci cookie sesji (Clear-Site-Data / Set-Cookie expired).
 - Próba dostępu do chronionych ekranów przekierowuje na logowanie.
 - Dane lokalne offline są czyszczone lub oznaczone jako należące do poprzedniego użytkownika (bez mieszania kont).
+- Outbox lokalny nie jest wysyłany po 401 bez ponownego logowania; po reauth — flush (nie drop kolejki przy samym 401 mid-retry, zgodnie z polityką retry).
 
 ### US-004: Ochrona chronionych zasobów
 
 Opis: Jako system chcę wymagać uwierzytelnienia do API i ekranów z danymi użytkownika, aby nieuprawnione osoby nie miały dostępu do danych treningowych.
 
 Kryteria akceptacji:
-- Żądanie API bez ważnego tokenu zwraca HTTP 401.
+- Żądanie API bez ważnej sesji (brak / wygasłe / revoked cookie) zwraca HTTP 401.
 - Klient PWA przekierowuje na ekran logowania po otrzymaniu 401.
 - Po ponownym logowaniu użytkownik wraca do zamierzonego ekranu (deep link / redirect).
-- Endpointy publiczne (health check, statyczne assety) nie wymagają auth.
+- Endpointy publiczne (health check, statyczne assety, start OAuth) nie wymagają auth.
+- Raw session token nie jest odczytywalny z JS (HttpOnly).
 
 ### US-005: Sync danych po logowaniu na nowym urządzeniu
 
 Opis: Jako użytkownik chcę po zalogowaniu na nowym urządzeniu zobaczyć swoje dane z serwera, aby kontynuować trening bez utraty historii.
 
 Kryteria akceptacji:
-- Po pierwszym logowaniu na urządzeniu aplikacja pobiera: kroki CC, satelity, ostatnie sesje, pomiary.
+- Po pierwszym logowaniu na urządzeniu aplikacja pobiera: kroki CC, satelity, **ostatnie ≤30 sesji** (z logami bez `rules_snapshot`), pomiary z okna **365 dni**, `catalog_version` programu CC.
 - Aktualny krok progresji CC jest zgodny z serwerem.
-- Czas pełnej synchronizacji początkowej poniżej 10 sekund przy typowym łączu.
+- Czas pełnej synchronizacji początkowej poniżej 10 sekund przy typowym łączu (przy 500+ sesjach na koncie pull nadal ≤30 sesji — nie pełna historia).
 - W trakcie sync wyświetlany jest wskaźnik ładowania.
+- Odpowiedź initial/delta pull **nie** zawiera `rules_snapshot`; pełny snapshot dostępny tylko w detail sesji (opcjonalnie) lub wyłącznie na serwerze.
 
 ### 5.2 Onboarding
 
@@ -455,6 +465,7 @@ Kryteria akceptacji:
 - Każde ćwiczenie wyświetla nazwę, aktualny krok progresji i krótki opis.
 - W dniu odpoczynku CC sekcja programu głównego jest pusta lub oznaczona jako „dzień odpoczynku”.
 - Data sesji jest widoczna na ekranie.
+- Jeśli tego dnia istnieje już zapisana/oceniona sesja, ekran agreguje jej wyniki i umożliwia **dopisanie** kolejnego bloku jako nowej sesji (np. wieczór po porannych satelitach) — bez edycji ocenionych `sets` (FR-038/039/040).
 
 ### US-011: Logowanie wyników ćwiczenia CC
 
@@ -465,6 +476,7 @@ Kryteria akceptacji:
 - Dla ćwiczeń jednostronnych dostępny wybór strony (lewa/prawa/obie).
 - Opcjonalne pole notatki per ćwiczenie.
 - Zapis wyniku jest możliwy bez wypełniania wszystkich opcjonalnych pól.
+- Ponowny zapis tego samego ćwiczenia CC na ten sam `local_date` (gdy aktywny log już istnieje) jest odrzucony z komunikatem PL i opcją korekty przez soft-delete + nowa sesja (`409 duplicate_exercise_same_day`, FR-039).
 
 ### US-012: Pominięcie ćwiczenia w sesji
 
@@ -502,8 +514,9 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę wrócić o krok po dwóch nieudanych sesjach, aby trenować na bezpiecznym poziomie trudności.
 
 Kryteria akceptacji:
-- Po 2 kolejnych sesjach poniżej minimum progu (ocena na serwerze) krok zmniejsza się o 1 (min krok 1).
-- Użytkownik widzi komunikat o regresie z wyjaśnieniem po odpowiedzi API / po synchronizacji.
+- Po 2 kolejnych **dniach** (`local_date`) z zaliczoną próbą poniżej minimum progu (ocena na serwerze) krok zmniejsza się o 1 (min krok 1).
+- Dwa fail-logi CC tego samego ćwiczenia w tym samym `local_date` nie są możliwe przy aktywnych sesjach (FR-039); streak nie rośnie o 2 w jeden dzień.
+- Użytkownik widzi komunikat o regresie z wyjaśnieniem po odpowiedzi API / po synchronizacji (copy: nieudane **treningi/dni**, nie „dwa zapisy”).
 - Regres nie następuje poniżej kroku 1.
 - Regres jest zapisany w historii progresji na serwerze.
 - Klient nie wylicza regresu lokalnie.
@@ -632,7 +645,7 @@ Opis: Jako użytkownik chcę przeglądać historię pomiarów, aby porównywać 
 Kryteria akceptacji:
 - Lista pomiarów posortowana od najnowszego z datą i wartościami wszystkich aktywnych metryk.
 - Możliwość edycji i usunięcia wpisu pomiarowego.
-- Pomiary dostępne offline (lokalna baza + sync).
+- Offline: dostępne pomiary z okna **365 dni** (FR-070); starsze dociągane online (lazy).
 - Pusty stan z komunikatem zachęty do pierwszego pomiaru.
 
 ### US-027: Logowanie pomiarów offline
