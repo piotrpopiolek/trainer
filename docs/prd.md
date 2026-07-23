@@ -115,12 +115,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-003 | Brak rejestracji e-mail/hasło w Fazie 1 |
 | FR-004 | Wylogowanie: `auth_sessions.revoked_at` + clear cookie sesji + clear IndexedDB (US-003) |
 | FR-005 | Dostęp do API i danych użytkownika wyłącznie po uwierzytelnieniu (sesja z cookie) |
-| FR-005a | Sesja aplikacji: losowy token w cookie **`HttpOnly; Secure; SameSite=Lax`** (lub Strict przy same-site); w DB wyłącznie `token_hash` (SHA-256); **zakaz** raw tokenu w `localStorage` / IndexedDB / JS. TTL (`expires_at`); API z `credentials` (cookie), nie Bearer z JS storage. CSRF: SameSite + same-origin API (MVP); przy cross-site mutacjach — dodatkowy CSRF token |
-| FR-005b | Izolacja tenantów w F1 **bez RLS**: `user_id` wyłącznie z sesji (nie z body/query jako źródło prawdy). Odczyt/mutacja zasobów user-owned wyłącznie przez `… WHERE id = :id AND user_id = :session_user_id` (deny-by-default). Cudzy lub nieistniejący ID → **HTTP 404** (jedna polityka; bez 403 na enumerację). Obowiązkowa **IDOR suite** w CI (`pytest -m idor`) na: sessions, logs, measurements, satelity, progress (GET), sync_conflict_logs, sync_devices, onboarding, legal acceptances. RLS = Faza 2+ (najpierw `body_measurements`) |
+| FR-005a | Sesja aplikacji: losowy token w cookie **`HttpOnly; Secure; SameSite=Lax`** (lub Strict przy same-site); w DB wyłącznie `token_hash` (SHA-256); **zakaz** raw tokenu w `localStorage` / IndexedDB / JS. TTL (`expires_at`); API z `credentials` (cookie), nie Bearer z JS storage. CSRF: SameSite + same-origin API (MVP); przy cross-site mutacjach — dodatkowy CSRF token. **Export (FR-006b) i inne wrażliwe „odczyty z side-effect / bulk PII” = POST + CSRF** — nie GET z samym cookie (SameSite=Lax nie chroni top-level GET) |
+| FR-005b | Izolacja tenantów w F1 **bez RLS na większości tabel**: `user_id` wyłącznie z sesji (nie z body/query jako źródło prawdy). Odczyt/mutacja zasobów user-owned wyłącznie przez `… WHERE id = :id AND user_id = :session_user_id` (deny-by-default) — w tym **`POST /sync/push` apply** (UPDATE/DELETE po `entity_id`). INSERT: `user_id` tylko z sesji (inny w body → ignoruj lub 422). Cudzy lub nieistniejący ID → **HTTP 404** / item `rejected` `not_found` (jedna polityka; bez 403 na enumerację). Obowiązkowa **IDOR suite** w CI (`pytest -m idor`) na: sessions, logs, measurements, satelity, progress (GET **i** override), sync_conflict_logs, sync_devices, onboarding, legal acceptances, **`POST /sync/push`** (cudzy `entity_id`), **`GET /sync/conflicts/{id}`**, **`GET /sessions/{id}`** (detail), **`POST /account/export`**, **`POST /account/delete`**. **Wyjątek F1:** RLS **włączone** na `body_measurements` (`SET LOCAL app.user_id`); pozostałe tabele RLS = Faza 2+ |
 | FR-005c | Abuse / CORS (S7): CORS allowlist originów PWA (prod + localhost); `credentials` + cookie SameSite. Rate limit: ok. **100 req/min** / authenticated user oraz **20** `POST /sync/push` / min; OAuth callback osobny niższy limit; przekroczenie → **429** + `Retry-After`. Max body ok. **1 MB** → 422 `payload_too_large` |
 | FR-006 | Identyfikator użytkownika umożliwiający sync między urządzeniami |
-| FR-006a | Usunięcie konta (Rel5): `POST /account/delete` — potwierdzenie w UI; `users.deleted_at`; revoke wszystkich `auth_sessions`; anonimizacja `email`/`google_sub`/`display_name`; clear cookie + IndexedDB. **Natychmiast hard delete:** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, onboarding/legal acceptances. Sesje/logi/`progression_events`/satelity/`user_exercise_progress`: soft + **grace 30 dni** (`purge_after`), potem hard purge jobem (cron/HTTP internal, bez Redis). Copy UI o retencji. Re-login Google = nowe `users.id`. Zakaz `ON DELETE CASCADE` od `users` — tylko `AccountDeletionService` |
-| FR-006b | Export danych (RODO, F1): `GET /account/export` — JSON (skrót sesji, pomiary, progress, satelity); dostępny przed delete; bez `rules_snapshot` w bulk (jak SyncPull) |
+| FR-006a | Usunięcie konta (Rel5): `POST /account/delete` — potwierdzenie w UI; `users.deleted_at`; revoke wszystkich `auth_sessions`; anonimizacja `email`/`google_sub`/`display_name`; clear cookie + IndexedDB. **Natychmiast hard delete:** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, onboarding/legal acceptances. Sesje/logi/`progression_events`/satelity/`user_exercise_progress`: soft + **grace 30 dni** (`purge_after`), potem hard purge **wyłącznie lokalnym cronem w Docker Compose** (wywołanie CLI / entrypoint serwisu w sieci compose — **bez** publicznego ani internal HTTP endpointu w F1; bez Redis/ARQ). Copy UI o retencji. Re-login Google = nowe `users.id`. Zakaz `ON DELETE CASCADE` od `users` — tylko `AccountDeletionService` |
+| FR-006b | Export danych (RODO, F1): **`POST /account/export`** (+ CSRF token — double-submit lub synchronizer) — JSON (skrót sesji, pomiary, progress, satelity); dostępny przed delete; bez `rules_snapshot` w bulk (jak SyncPull). **Zakaz** `GET /account/export` z samym cookie sesji (SameSite=Lax → ryzyko CSRF top-level GET). Odpowiedź: `Cache-Control: no-store`. UI: przycisk „Pobierz”, nie zwykły link nawigacyjny. Alternatywa dopuszczalna: POST wydaje one-time `download_token` (TTL ~60s) → `GET /account/export/{token}` **bez** cookie sesji |
 
 ### 3.2 Onboarding (Faza 1)
 
@@ -166,8 +166,8 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync). Przy ocenie: `fail_streak` / decyzja advance|regress z **historii** aktywnych logów ćwiczenia uporządkowanej po `(local_date ASC, performed_at ASC, id)` (wraz z bieżącą sesją) — nie z kolejności pushy. Out-of-order apply **nie** voiduje wcześniejszych `progression_events` / nie rewinduje kroku (spójne z FR-038) |
 | FR-036 | Po nowych `progression_events` (advance/regress) z serwera — **obowiązkowy** surface UI: modal (preferowany) lub sticky banner z nazwą ćwiczenia i nowym krokiem; ta sama ścieżka po zapisie online i po sync. Zakaz cichej-only zmiany numeru kroku. Web Push awansu = Faza 2 |
 | FR-037 | Przy ocenie sesji serwer zapisuje `rules_snapshot` + `progression_schema_version` na logu; późniejsza zmiana seedu nie reinterpretuje historii |
-| FR-038 | Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; LWW z wyższym `revision` i innym content hash → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind w F1); opcjonalnie `manual_override`. `notes` wolno zmienić bez re-evaluate |
-| FR-039 | Jednostka progresji CC = `(user, exercise, local_date)`: max **jeden** aktywny (`deleted_at IS NULL`, `skipped=false`) log CC danego ćwiczenia na dany `local_date`; drugi → `409 duplicate_exercise_same_day` (korekta przez soft-delete + nowa sesja / FR-038). `fail_streak` liczy kolejne **dni** z nieudaną zaliczoną próbą. Wiele `workout_sessions` na dzień dozwolone (np. rano satelity, wieczór CC) |
+| FR-038 | Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; push z `revision == existing + 1` i innym content hash pól zamrożonych → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind+replay w F1). Przy soft-delete **ocenionej** sesji UI **musi** pokazać modal no-rewind (PL) z CTA do `manual_override` (US-016b). **`manual_override` = first-class F1** (nie „opcjonalny”): jawna zmiana `current_step_number` + `fail_streak=0` + `progression_events.event_type=manual_override`; bez reinterpretacji historii logów. `notes` wolno zmienić bez re-evaluate |
+| FR-039 | Jednostka progresji CC = `(user, exercise, local_date)`: max **jeden** aktywny log CC danego ćwiczenia na dany `local_date` — aktywny = `skipped=false` AND `superseded_at IS NULL` (soft-delete sesji w tej samej TX ustawia `superseded_at` na child logach). Egzekucja: **obowiązkowy** partial UNIQUE w DB + check serwisowy; drugi INSERT → `409 duplicate_exercise_same_day` (także przy race dual-device). Korekta = soft-delete sesji + nowa sesja (FR-038). `fail_streak` liczy kolejne **dni** z nieudaną zaliczoną próbą. Wiele `workout_sessions` na dzień dozwolone (np. rano satelity, wieczór CC) |
 
 ### 3.5 Logowanie sesji treningowej (Faza 1)
 
@@ -217,11 +217,11 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem (bez lokalnej oceny progresji) |
 | FR-071a | Po zapisie sesji offline: obowiązkowy badge „Oczekuje na synchronizację” + copy, że ocena awansu/regresu nastąpi po sync; krok CC = ostatni znany z cache z etykietą „Stan z ostatniego syncu”. **Zakaz** celebracji awansu/`goal_met` lokalnie przed wynikiem serwera |
 | FR-072 | Outbox pattern: kolejka zmian lokalnych synchronizowana w tle po powrocie online |
-| FR-072a | Kolejność outbox (Rel3): przed POST klient sortuje; serwer sortuje defensywnie ponownie. Sesje: `(performed_at ASC, id ASC)`; pomiary: `(measured_at ASC, id ASC)`; satelity: `(client_updated_at ASC, id ASC)`. W batchu: sesje → pomiary → satelity. Zakaz sortu po `updated_at` serwera / FIFO enqueue jako arbiter apply |
-| FR-072b | Retry outbox (Rel4): klasyfikacja — `applied`/`idempotent` → drop z kolejki; konflikty Pr3 (`conflict_*` / immutable) → ACK+UI, bez retry sieciowego; **401** → stop flush, kolejka nienaruszona, login, po reauth flush; **422** / **409 duplicate_*** / **403** limit → **quarantine** (auto-retry off; UI „Wymaga uwagi”); **408/429/5xx/network** → retryable: backoff `min(15min, 15s×2^attempt) + jitter 0–30%`; po 5 kolejnych transport fail — escalation UI (US-055), ale retry w tle z cap; brak sieci → pause do `online`. Stany itemu: `pending\|in_flight\|quarantine\|synced`. Zakaz drop kolejki po N failach. Kompatybilne z partial ACK (FR-072c) |
+| FR-072a | Kolejność outbox (Rel3): przed POST klient sortuje; serwer sortuje defensywnie ponownie. Sesje: `(performed_at ASC, id ASC)`; pomiary: `(measured_at ASC, id ASC)`; satelity: `(client_updated_at ASC, id ASC)`. W batchu: sesje → pomiary → satelity. **Korekta A1 / FR-038–039:** soft-delete (tombstone) sesji **przed** create nowej sesji kolidującej po `(exercise_id, local_date)` CC — nawet gdy surowy sort `(performed_at, id)` sugeruje odwrotnie. Serwer: przy `409 duplicate_exercise_same_day`, jeśli w **tym samym batchu** jest jeszcze nieprzetworzony soft-delete rodzica kolidującego aktywnego logu → **odłóż create** (przetwórz delete najpierw / defer w batchu), **nie** od razu quarantine. Zakaz sortu po `updated_at` serwera / FIFO enqueue jako arbiter apply. `replace_session` (jedna mutacja) = opcjonalne uproszczenie F1.1, nie wymagane MVP |
+| FR-072b | Retry outbox (Rel4): klasyfikacja — `applied`/`idempotent` → drop z kolejki; konflikty Pr3 (`conflict_*` / immutable) → ACK+UI, bez retry sieciowego; **401** → stop flush, kolejka nienaruszona, login, po reauth flush; **422** / **409 duplicate_*** / **403** limit / **`revision_jump`** / `mutation_payload_mismatch` → **quarantine** (auto-retry off; UI „Wymaga uwagi”); **408/429/5xx/network** → retryable: backoff `min(15min, 15s×2^attempt) + jitter 0–30%`; po 5 kolejnych transport fail — escalation UI (US-055), ale retry w tle z cap; brak sieci → pause do `online`. Stany itemu: `pending\|in_flight\|quarantine\|synced`. Zakaz drop kolejki po N failach. Kompatybilne z partial ACK (FR-072c) |
 | FR-072c | Batch push (Perf3/Rel8): `POST /sync/push` — max **20** items (po sort FR-072a); `len>20` → `422 batch_too_large`. Serwer: **per-item transakcja** (encja + idempotencja + silnik/conflict); odpowiedź **200** z `results[]` 1:1 (`client_mutation_id` + status); opcjonalnie `truncated: true` + krótsze `results` przy budżecie czasu (~10s) — nieprzetworzone zostają `pending`. Klient: pętla okien ≤20; mutex 1 flush naraz; ACK tylko po jawnym `results[i]` (FR-072b). Response może zawierać `progression_events[]` z requestu. Zakaz jednej TX all-or-nothing na cały batch; zakaz cichego ACK bez wyniku itemu |
 | FR-072d | Idempotencja / races (Rel6): każdy item push / create z klienta **musi** mieć `client_mutation_id` (UUID) — brak → 422. Na początku per-item tx: **claim** `INSERT client_mutations` (UNIQUE `user_id, client_mutation_id`); konflikt → ten sam content hash ⇒ `idempotent`, inny hash ⇒ `rejected` `mutation_payload_mismatch` (quarantine, bez nadpisu). Potem upsert encji; przy sesji CC: `FOR UPDATE` na `user_exercise_progress` (**exercise_id ASC** jeśli wiele) **po** claim i po zapisie sesji — stała kolejność locków (anti-deadlock). Kolumny `client_mutation_id` na encjach syncowanych z klienta (`workout_sessions`, `body_measurements`, satelity): **NOT NULL** + UNIQUE `(user_id, client_mutation_id)`. Klient generuje id przy enqueue, nie zmienia payloadu bez nowego id |
-| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer; remis revision + różny payload → 409; log konfliktu w UI. **Wyjątek sesji ocenionych:** FR-038 (immutable) — LWW nie nadpisuje `sets` po evaluate |
+| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer. **Accept update tylko gdy `incoming.revision == existing.revision + 1`** (create: serwer wymusza `revision=1`). `incoming < existing` → `conflict_lost`; `incoming == existing` + ten sam content hash → idempotent; `incoming == existing` + różny hash → `409 conflict_tie`; **`incoming > existing + 1` → `rejected` `error_code=revision_jump` (quarantine, bez nadpisu)**. Log konfliktów w UI. **Wyjątek sesji ocenionych:** FR-038 (immutable) — nawet przy `existing+1` LWW nie nadpisuje `sets` po evaluate |
 | FR-073a | UX konfliktów sync (Pr3): po ACK `conflict_lost` → toast + link do szczegółów; `conflict_tie` / `session_immutable_after_evaluate` → **modal** (obowiązkowy). Lokalnie zawsze winning snapshot. Lista: Ustawienia → Synchronizacja → Konflikty (`sync_conflict_logs` / pull). Badge „Konflikt” na encji do lokalnego ack (`conflict.id` w IndexedDB). Recovery: CTA „Zapisz przegraną jako nową encję” z `losing_payload` (nowe `id`, `revision=1`) — **zakaz** nadpisu serwera przegraną / merge pól. Batch flush: max 1 modal zbiorczy + lista; lost_push może być toast-only. Retencja logów serwerowych: 90 dni (best-effort F1) |
 | FR-074 | Po sync/apply sesji serwer uruchamia silnik i zwraca zaktualizowane `progress[]` oraz nowe `progression_events[]` (w odpowiedzi push i/lub w `SyncPull`); klient nadpisuje cache i uruchamia surface FR-036 (idempotentnie po `event.id`). Ponowne apply tej samej treści nie dubluje eventów; zmiana treści po evaluate → FR-038 |
 | FR-075 | Pull sync (`SyncPull`): jeden read-model — sesje z **zagnieżdżonymi** logami (bez N+1); w projekcji offline **bez** `rules_snapshot` (zostaje w DB / detail); logi mają `sets`, `goal_met`, `progression_schema_version`, snapshoty nazw; soft-deleted w oknie = tombstone (`id`, `deleted_at`); katalog CC osobno z `catalog_version` / ETag; starsza historia sesji/pomiarów — lazy online |
@@ -362,12 +362,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | Silnik progresji | Wyłącznie backend (FastAPI); brak drugiej implementacji w kliencie; offline nie liczy awansu/regresu |
 | Offline UX awansu (Pr2) | Pending: obowiązkowy copy + badge (FR-071a); po sync: obowiązkowy modal/banner awansu/regresu (FR-036/074); bez lokalnej celebracji |
 | Kontrakty JSON | Każdy JSONB/`schema` API ma `schema_version`; Pydantic + Zod; snapshot reguł na logu sesji (FR-037) |
-| Sync konfliktów | last-write-wins po **`revision`** (sesje/pomiary/satelity); `client_updated_at` hint; `updated_at` serwerowy; remis revision → 409; stan progresji = wynik silnika po apply |
+| Sync konfliktów | LWW po **`revision`**: accept tylko `existing+1` (create=1); jump → `revision_jump` quarantine; remis → 409; `client_updated_at` hint; stan progresji = silnik (FR-073) |
 | Konflikt UX (Pr3) | Surface per kind (FR-073a); lista + badge; recovery = nowa encja z `losing_payload`; bez merge / overwrite serwera |
-| Sesja po evaluate (A1) | Immutable `sets`/progresja po pierwszej ocenie; poprawka = soft-delete + nowa sesja; soft-delete nie rewinduje kroku (FR-038); rewind+replay poza F1 |
-| Sesje / dzień (P1) | Wiele wierszy sesji na `local_date` OK; UI jeden ekran agregujący; max 1 aktywny log CC / ćwiczenie / dzień; streak po dniach (FR-039) |
+| Sesja po evaluate (A1) | Immutable `sets`/progresja po pierwszej ocenie; poprawka = soft-delete + nowa sesja; soft-delete nie rewinduje kroku + **obowiązkowy** modal no-rewind; `manual_override` first-class F1 (FR-038 / US-016b); rewind+replay poza F1 |
+| Sesje / dzień (P1) | Wiele wierszy sesji na `local_date` OK; UI jeden ekran agregujący; max 1 aktywny log CC / ćwiczenie / dzień (`superseded_at` + partial UNIQUE); streak po dniach (FR-039) |
 | Sync pull (Perf1) | Okno 30 sesji + pomiary 365 dni = IndexedDB; pull bez `rules_snapshot`; logi zagnieżdżone w sesji; `catalog_version` (FR-070/075) |
-| Outbox order (Rel3) | Sort sesji `(performed_at, id)`; evaluate streak z historii po `local_date` (FR-072a/035); bez rewind eventów przy out-of-order |
+| Outbox order (Rel3) | Sort `(performed_at, id)` + **tombstone przed create** przy korekcie A1; serwer defer create przy duplicate gdy delete w batchu (FR-072a); streak z historii `local_date` |
 | Outbox retry (Rel4) | Macierz 401/422/5xx; backoff+jitter; quarantine poison; bez drop kolejki (FR-072b) |
 | Outbox batch (Perf3/Rel8) | ≤20 items; per-item tx; `results[]` + opcjonalnie `truncated`; pętla okien (FR-072c) |
 | Idempotencja (Rel6) | `client_mutation_id` obowiązkowe; claim-first; lock order; mismatch → reject (FR-072d) |
@@ -380,8 +380,8 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | Catalog cache (Perf7) | `If-None-Match` / 304 (FR-075a) |
 | At-rest encryption | Poza F1 (świadomie; bez wymogu volume encryption w docs) |
 | Auth F1 (S1/S4) | Google Auth Code + PKCE + `state`; sesja w cookie HttpOnly Secure SameSite; `auth_sessions.token_hash`; zakaz Bearer w JS storage (FR-001/005a) |
-| Izolacja (S3) | RLS off w F1; deny-by-default `get_for_user`; cudzy ID → 404; IDOR suite obowiązkowa w CI (FR-005b) |
-| Delete account (Rel5) | Pomiary+sync meta hard od razu; treningi grace 30d → purge; export JSON (FR-006a/b) |
+| Izolacja (S3) | Deny-by-default `get_for_user` + sync push; IDOR suite (w tym sync/account/session detail); RLS F1 tylko `body_measurements`; reszta RLS F2+ (FR-005b) |
+| Delete account (Rel5) | Pomiary+sync meta hard od razu; treningi grace 30d → hard purge tylko cronem Compose (zakaz `/internal` HTTP w F1); export JSON przez **POST + CSRF** (FR-006a/b) |
 | Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium); offline/pull: ostatnie 365 dni |
 | Analiza wideo | Faza 2; transcript + metadata; Vision fallback |
 | Content CC (Pr5) | PCO = founder; scaffold=`draft` OK; prod=60×`ready`; ilustracje per-step poza F1 (FR-020a) |
@@ -441,9 +441,12 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę pobrać kopię swoich danych przed usunięciem konta lub na żądanie.
 
 Kryteria akceptacji:
-- Ustawienia / flow delete oferują pobranie pliku JSON (sesje skrót, pomiary, progress, satelity).
+- Ustawienia / flow delete oferują przycisk „Pobierz moje dane” (nie zwykły link GET).
+- Klient woła **`POST /account/export`** z `credentials` + CSRF token; odpowiedź JSON (sesje skrót, pomiary, progress, satelity) z `Cache-Control: no-store`.
 - Export nie zawiera `rules_snapshot` w bulk ani raw session tokenów.
-- Endpoint wymaga ważnej sesji; po `deleted_at` export niedostępny.
+- Endpoint wymaga ważnej sesji; POST bez / z nieprawidłowym CSRF → **403**; po `deleted_at` export niedostępny.
+- Top-level / cross-site **GET** na ścieżkę exportu nie oddaje body z pomiarami (405/404 lub brak trasy GET).
+- (Opcja) POST → one-time download URL z tokenem TTL ~60s bez cookie sesji — też akceptowalne.
 
 ### US-004: Ochrona chronionych zasobów
 
@@ -455,7 +458,7 @@ Kryteria akceptacji:
 - Po ponownym logowaniu użytkownik wraca do zamierzonego ekranu (deep link / redirect).
 - Endpointy publiczne (health check, statyczne assety, start OAuth) nie wymagają auth.
 - Raw session token nie jest odczytywalny z JS (HttpOnly).
-- User A nie odczyta ani nie zmieni zasobu User B po znanym UUID → **404** (FR-005b); testy IDOR w CI dla wszystkich zasobów user-owned.
+- User A nie odczyta ani nie zmieni zasobu User B po znanym UUID → **404** / sync item `not_found` (FR-005b); testy IDOR w CI obejmują sync push, account export/delete, session/conflict detail.
 - `user_id` w body/query nie rozszerza uprawnień — źródłem jest wyłącznie sesja.
 
 ### US-005: Sync danych po logowaniu na nowym urządzeniu
@@ -603,10 +606,23 @@ Opis: Jako użytkownik chcę poprawić błędnie zapisane wyniki po tym, jak ser
 
 Kryteria akceptacji:
 - Próba sync/LWW zmieniająca `sets` ocenionej sesji zwraca `409 session_immutable_after_evaluate`; lokalny stan wraca do wersji serwera; UI pokazuje **modal** z CTA korekty (FR-073a / FR-038).
-- Korekta: użytkownik soft-delete’uje ocenioną sesję i tworzy nową sesję z poprawnymi wynikami (nowe `id`, `revision=1`) — także z poziomu szczegółów konfliktu („Utwórz nową sesję z przegranych wyników”).
+- Korekta wyniku (serie): użytkownik soft-delete’uje ocenioną sesję i tworzy nową sesję z poprawnymi wynikami (nowe `id`, `revision=1`) — także z poziomu szczegółów konfliktu („Utwórz nową sesję z przegranych wyników”). Outbox: soft-delete **przed** create (FR-072a); sync nie kończy się quarantine na `duplicate_exercise_same_day` w happy path.
 - Soft-delete ocenionej sesji **nie** cofa automatycznie awansu/regresu ani nie usuwa `progression_events` (F1 A1).
-- Nowa sesja jest oceniana na bieżącym `user_exercise_progress`; jeśli użytkownik musi cofnąć krok, używa jawnego `manual_override` (osobny flow).
-- Soft-deleted sesje nie wchodzą do fail_streak ani do „ostatnie 30” aktywnych.
+- Przy potwierdzeniu soft-delete ocenionej sesji UI pokazuje **obowiązkowy modal no-rewind** (PL), np. „Usunięcie nie cofa awansu ani regresu. Aby zmienić krok: Dostosuj krok.” — CTA: **Dostosuj krok** (→ US-016b) | Kontynuuj bez zmiany kroku.
+- Nowa sesja jest oceniana na bieżącym `user_exercise_progress` (krok po soft-delete = ten sam, dopóki nie ma override).
+- Soft-deleted sesje / logi z `superseded_at` nie wchodzą do fail_streak ani do „ostatnie 30” aktywnych.
+
+### US-016b: Ręczna korekta kroku (`manual_override`)
+
+Opis: Jako użytkownik chcę świadomie zmienić aktualny krok ćwiczenia CC (np. po błędnym awansie), bez edycji historii sesji i bez rewind+replay.
+
+Kryteria akceptacji:
+- Wejście: ekran „Mój progres CC” (przy ćwiczeniu: „Dostosuj krok”) **oraz** CTA z modalu no-rewind po soft-delete ocenionej sesji (US-016a).
+- Flow: wybór nowego `step_number` ∈ 1…10 → potwierdzenie (copy: zmiana nie edytuje starych sesji) → opcjonalny krótki powód (notes).
+- Serwer: `POST /progress/{exercise_id}/override` (lub równoważny) — `user_id` z sesji; `SELECT … FOR UPDATE` na `user_exercise_progress`; ustawia `current_step_number`, `fail_streak = 0`; INSERT `progression_events` z `event_type=manual_override`, `from_step`, `to_step`, opcjonalnie `reason`; **nie** zmienia historycznych `session_exercise_logs` / `goal_met` / `rules_snapshot`.
+- Limit: ok. **10** override / użytkownik / kalendarzowy dzień (TZ konta) → `429` + `Retry-After` lub `403 override_rate_limited`; IDOR → 404.
+- Po sukcesie UI odświeża cache progress (jak po sync); brak lokalnego override offline jako źródła prawdy (wymaga online; offline → komunikat „wymaga połączenia”).
+- Analytics (jeśli włączone): tylko `exercise_slug`, `from_step`, `to_step` — bez free-text reason w props (FR-082a).
 
 ### US-017: Podgląd postępu CC (wszystkie ćwiczenia)
 
@@ -616,6 +632,7 @@ Kryteria akceptacji:
 - Ekran „Mój progres CC” listuje 6 ćwiczeń z aktualnym krokiem (1–10).
 - Widoczna data ostatniej sesji per ćwiczenie.
 - Możliwość przejścia do szczegółów kroku z tego ekranu.
+- Przy każdym ćwiczeniu CC dostępne „Dostosuj krok” (US-016b / FR-038).
 - Dane spójne z ostatnim wynikiem silnika na serwerze (po ostatniej zsynchronizowanej / zapisanej online sesji).
 
 ### 5.4 Ćwiczenia satelitarne
@@ -742,7 +759,7 @@ Opis: Jako użytkownik chcę, aby dane zapisane offline synchronizowały się au
 
 Kryteria akceptacji:
 - Przy wykryciu połączenia outbox wysyła kolejkowane zmiany w tle.
-- Przed wysyłką klient sortuje outbox wg FR-072a i tnie na batche ≤20 (FR-072c); serwer ponownie sortuje batch przed apply.
+- Przed wysyłką klient sortuje outbox wg FR-072a i tnie na batche ≤20 (FR-072c); serwer ponownie sortuje batch przed apply; przy korekcie A1 soft-delete sesji jest **przed** create kolidującym (test: obie kolejności enqueue → applied, bez quarantine).
 - Każdy item w osobnej transakcji serwera; odpowiedź zawiera `results[]` per `client_mutation_id`; przy `truncated` nieprzetworzone zostają w kolejce.
 - Po apply sesji CC serwer uruchamia silnik progresji (FR-035 — streak z historii po `local_date`); eventy wracają w odpowiedzi push / SyncPull.
 - Odpowiedź push i/lub `SyncPull` zawiera zaktualizowane `progress[]` oraz nowe `progression_events[]`; lokalny cache progresji jest nadpisywany wynikiem serwera.
@@ -755,15 +772,16 @@ Kryteria akceptacji:
 Opis: Jako użytkownik korzystający z dwóch urządzeń chcę, aby aplikacja rozwiązywała konflikty danych przewidywalnie, gdy te same dane edytowałem offline na dwóch urządzeniach — bez zależności od zegara telefonu.
 
 Kryteria akceptacji:
-- Przy konflikcie wersji wygrywa wpis z wyższym **`revision`** (nie późniejszy timestamp klienta).
+- Przy konflikcie wersji wygrywa wyłącznie push z **`revision == existing + 1`** (nie dowolnie wyższy numer; nie timestamp klienta). Create: serwer zapisuje `revision=1` niezależnie od wartości klienta.
+- Skok `incoming > existing + 1` → item `rejected` / `error_code=revision_jump` → **quarantine** (FR-072b); serwer bez nadpisu; UI „Wymaga uwagi”.
 - `client_updated_at` jest przechowywany jako hint/diagnostyka; nie rozstrzyga LWW.
-- `conflict_lost`: toast + link do szczegółów; lokalnie winning snapshot; przegrana w `sync_conflict_logs` (`lost_push`).
+- `conflict_lost` (`incoming < existing`): toast + link do szczegółów; lokalnie winning snapshot; przegrana w `sync_conflict_logs` (`lost_push`).
 - `conflict_tie` (ten sam `revision`, różna treść): **modal** obowiązkowy; winning z serwera; log `tie_revision`.
-- `session_immutable_after_evaluate`: **modal** + CTA soft-delete / nowa sesja (FR-038); zakaz LWW na `sets`.
+- `session_immutable_after_evaluate`: **modal** + CTA soft-delete / nowa sesja (FR-038); zakaz LWW na `sets` nawet przy `existing+1`.
 - Ustawienia → Synchronizacja → Konflikty: lista konfliktów; badge „Konflikt” na encji do lokalnego ack; szczegóły pokazują winning + `losing_payload` (read-only).
 - Recovery: „Zapisz przegraną jako nową encję” (nowe `id`, `revision=1`) — **bez** nadpisu serwera i **bez** merge pól (FR-073a).
 - Po sync oba urządzenia zbiegają do spójnego stanu (winning).
-- Przyszły lub mocno przesunięty `client_updated_at` **nie** pozwala nadpisać encji o wyższym `revision` na serwerze.
+- Przyszły lub mocno przesunięty `client_updated_at` **nie** pozwala nadpisać encji (arbiter = wyłącznie reguła revision).
 - W jednym flushu wiele konfliktów: max jeden modal zbiorczy + przejście do listy (lost_push może pozostać toast-only).
 
 ### US-031: Ręczne wymuszenie synchronizacji
@@ -1087,7 +1105,7 @@ Faza 2:
 
 | Kryterium | Status |
 |-----------|--------|
-| Każda historyjka użytkownika (US-001–US-055, w tym US-016a, US-003a/b) jest testowalna | Tak |
+| Każda historyjka użytkownika (US-001–US-055, w tym US-016a/b, US-003a/b) jest testowalna | Tak |
 | Kryteria akceptacji są jasne i konkretne | Tak |
 | Wystarczająca liczba story do zbudowania aplikacji Fazy 1 i Fazy 2 | Tak |
 | Uwierzytelnianie i autoryzacja uwzględnione (MVP: US-001, US-003–US-005, US-003a/b; Apple US-002 = Faza 3+) | Tak |

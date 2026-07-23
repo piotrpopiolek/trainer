@@ -31,5 +31,5 @@ alwaysApply: true
 
 - Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
 - Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`.
-- Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; sesja HttpOnly cookie / FR-005a). Izolacja: app-layer `user_id` + IDOR suite; RLS F2+ (FR-005b).
+- Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; sesja HttpOnly cookie / FR-005a). Izolacja: app-layer `user_id` + IDOR suite (w tym sync push / account); RLS F1 na `body_measurements`, reszta F2+ (FR-005b).
 - Na logu sesji: `rules_snapshot` z wersją reguł użytych przy ocenie — seed nie reinterpretuje historii.

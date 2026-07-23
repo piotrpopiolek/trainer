@@ -6,7 +6,7 @@ Konwencje:
 - PK syncowanych encji: `UUID` (v7, generowane też offline)
 - Czas: `TIMESTAMPTZ`; dzień lokalny sesji: `DATE` (`local_date`)
 - Soft-delete: `deleted_at TIMESTAMPTZ NULL`
-- Sync (sesje, pomiary, satelity): LWW po **`revision` (INT)** — nie po zegarze klienta; `client_updated_at` = hint; `updated_at` = wyłącznie czas serwera po accepted write (pull delta)
+- Sync (sesje, pomiary, satelity): LWW po **`revision` (INT)** — accept tylko `existing+1` (create=1); nie po zegarze klienta; `client_updated_at` = hint; `updated_at` = wyłącznie czas serwera po accepted write (pull delta)
 - **Silnik progresji wyłącznie na serwerze** — klient nie zapisuje awansu/regresu/`goal_met`; te pola wynikają z `ProgressionEngine` po apply sesji
 - **JSONB = zawsze wersjonowany kontrakt:** każdy dokument JSONB ma wymagane `schema_version` (INT ≥ 1); walidacja Pydantic (backend) / Zod (frontend) per wersja; brak „gołego” JSON bez wersji
 - Izolacja F1: warstwa aplikacji (`user_id`); schemat RLS-ready, RLS wyłączone
@@ -358,6 +358,7 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `client_mutation_id` | `UUID` | NULL — F1: logi syncowane **w** sesji (mutation na `workout_sessions`); NULL OK; niezależny push logu poza F1 |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — LWW gdy log syncowany niezależnie; przy push sesji jako całości bump `workout_sessions.revision` |
 | `client_updated_at` | `TIMESTAMPTZ` | NOT NULL — hint klienta |
+| `superseded_at` | `TIMESTAMPTZ` | NULL — ustawiane przy soft-delete sesji-rodzica (FR-039 / A1); aktywny log = `NULL` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
 
@@ -367,10 +368,12 @@ CHECK:
 
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` — na wypadek przyszłego niezależnego syncu logów.
 
-**FR-039 — jedna zaliczona próba CC / dzień:** egzekwowane w serwisie (+ zalecany partial UNIQUE wspomagający):  
-brak drugiego aktywnego logu CC tego samego ćwiczenia na ten sam `local_date`, gdy sesja-rodzic ma `deleted_at IS NULL` i `skipped = false`.  
-Praktyka F1: przed INSERT sprawdź JOIN do `workout_sessions`; konflikt → `409 duplicate_exercise_same_day`.  
-Opcjonalnie w migracji: partial unique na `(user_id, exercise_id, local_date)` tylko jeśli soft-delete sesji **propaguje** soft-delete / flagę na logach (inaczej UNIQUE łamie A1 soft-delete + nowa sesja bez oznaczenia starego logu). Preferowane: soft-delete sesji ustawia na child logs `superseded_at` lub kopiuje `session.deleted_at` do zapytania unikalności w aplikacji.
+**FR-039 — jedna zaliczona próba CC / dzień (obowiązkowe w DB):**
+- Soft-delete `workout_sessions` w **tej samej TX** ustawia na wszystkich child `session_exercise_logs`: `superseded_at = session.deleted_at` (lub `now()`).
+- **Obowiązkowy** partial UNIQUE: `(user_id, exercise_id, local_date)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`.
+- Serwis: przed INSERT check aktywnego logu; `UniqueViolation` → `409 duplicate_exercise_same_day` (chroni race dual-device / równoległe push).
+- Silnik / fail_streak: tylko logi `skipped = false AND superseded_at IS NULL` (oraz sesja-rodzic `deleted_at IS NULL` — spójne z `superseded_at`).
+- Korekta A1: soft-delete starej sesji (logi dostają `superseded_at`) + INSERT nowej sesji/logów — UNIQUE nie blokuje nowej próby.
 
 Przykładowy `sets` (v1):
 ```json
@@ -559,8 +562,8 @@ erDiagram
 | `workout_sessions` | (`user_id`, `updated_at`) | Pull sync delta |
 | `workout_sessions` | UNIQUE (`user_id`, `client_mutation_id`) | Idempotencja |
 | `session_exercise_logs` | (`session_id`, `sort_order`) | Szczegóły sesji |
-| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false` | FR-039 lookup „czy już dziś” |
-| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date` ASC, `performed_at` ASC, `id` ASC) WHERE `exercise_kind = 'cc' AND skipped = false` | Silnik progresji / fail_streak (FR-035, Perf5) |
+| `session_exercise_logs` | **UNIQUE** (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL` | FR-039 — max 1 aktywny log CC / dzień (anti-race) |
+| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date` ASC, `performed_at` ASC, `id` ASC) WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL` | Silnik progresji / fail_streak (FR-035, Perf5) |
 | `session_exercise_logs` | (`user_id`, `updated_at`) | Pull sync (gdyby kiedyś; F1 preferuje nested w sesji) |
 | `body_measurements` | (`user_id`, `measured_at` DESC) WHERE `deleted_at IS NULL` | Historia pomiarów |
 | `body_measurements` | (`user_id`, `updated_at`) | Pull sync |
@@ -590,26 +593,27 @@ Połączenie ORM FastAPI: `trainer_app`.
 
 ### 4.2 RLS i izolacja (Faza 1 — S3 / FR-005b)
 
-**RLS wyłączone** w MVP. Izolacja wyłącznie w warstwie aplikacji + obowiązkowa IDOR suite.
+**RLS:** w F1 **wyłączone** na większości tabel; **wyjątek — `body_measurements`:** RLS **włączone** od MVP (`SET LOCAL app.user_id` w request; migrator/seed: BYPASSRLS lub osobna rola). Pozostałe tabele user-owned: izolacja wyłącznie warstwą aplikacji + IDOR suite; RLS-ready pod F2+.
 
-**Deny-by-default:** każde odczytanie / mutacja zasobu user-owned po ID:
-`WHERE id = :id AND user_id = :session_user_id` (lub równoważne w repo). Brak wiersza lub cudzy owner → traktuj jak brak → API **404** (nie 403 — jedna polityka, bez enumeracji istnienia).
+**Deny-by-default:** każde odczytanie / mutacja zasobu user-owned po ID (w tym apply `POST /sync/push`):
+`WHERE id = :id AND user_id = :session_user_id` (lub równoważne w repo). Brak wiersza lub cudzy owner → traktuj jak brak → API **404** / push item `rejected` `not_found` (nie 403 — jedna polityka, bez enumeracji istnienia).
 `user_id` **nigdy** nie pochodzi z body jako źródło uprawnień (INSERT ustawia `user_id` z sesji; podany inny → ignoruj lub 422).
 
-**IDOR suite (DoD / CI):** parametr User A tworzy zasób → User B woła ten sam `id` → 404 dla:
-`workout_sessions`, `session_exercise_logs`, `body_measurements`, `exercises` (satelity), `user_exercise_progress` (GET), `sync_conflict_logs`, `sync_devices`, `user_onboarding`, `user_legal_acceptances`.
-Marker: `pytest -m idor`. PR zmieniające repozytoria / routery user-owned **musi** przejść ten job.
+**IDOR suite (DoD / CI):** User A tworzy zasób → User B woła ten sam `id` / `entity_id` → 404 lub `rejected` `not_found` (nigdy `applied` / 200 z danymi A) dla:
+`workout_sessions`, `session_exercise_logs`, `body_measurements`, `exercises` (satelity), `user_exercise_progress` (GET **oraz** override), `sync_conflict_logs`, `sync_devices`, `user_onboarding`, `user_legal_acceptances`,
+**oraz:** `POST /sync/push` (update/delete cudzego `entity_id`), `GET /sync/conflicts/{id}`, `GET /sessions/{id}` (detail ze snapshotem), `POST /account/export`, `POST /account/delete`.
+Marker: `pytest -m idor`. PR zmieniające repozytoria / routery user-owned / sync **musi** przejść ten job.
 
-Konwencja RLS-ready (każda tabela user-owned ma `user_id NOT NULL` — pod F2):
+Konwencja RLS-ready (każda tabela user-owned ma `user_id NOT NULL` — pod F2; `body_measurements` już z RLS w F1):
 - `auth_sessions`, `user_onboarding`, `user_legal_acceptances`
 - `exercises` (satelity), `user_program_enrollments`, `user_exercise_progress`
 - `progression_events`, `workout_sessions`, `session_exercise_logs`
-- `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`
+- `body_measurements` (**RLS ON w F1**), `sync_conflict_logs`, `sync_devices`, `client_mutations`
 
-Szkic polityk na Fazę 2+ (nie wdrażać w F1; pierwsze kandydaty: `body_measurements`, potem sessions):
+Szkic polityk (`body_measurements` w F1; pozostałe Faza 2+):
 
 ```sql
--- Przykład (Faza 2+):
+-- F1 (body_measurements) / F2+ (inne):
 -- ALTER TABLE body_measurements ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY body_measurements_owner ON body_measurements
 --   USING (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
@@ -637,20 +641,22 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 1. **Silnik progresji — tylko serwer:** `user_exercise_progress`, `progression_events`, `session_exercise_logs.goal_met` są mutowane wyłącznie przez backendowy `ProgressionEngine` w tej samej transakcji co utrwalenie sesji (zapis online lub apply outbox). Klient **nie** wysyła `current_step_number` / `fail_streak` / `goal_met` jako źródła prawdy; po sync nadpisuje lokalny cache wynikiem pull z serwera. Unika podwójnej implementacji reguł (JS + Python) i rozjazdu przy LWW.
 2. **Offline / LWW (revision-based):** dla sesji, pomiarów, satelitów (i logów syncowanych niezależnie):
-   - Klient ustawia `id` (UUID v7), `client_updated_at` (hint) oraz **`revision`**: create → `1`; każda lokalna edycja → `revision += 1` względem ostatnio znanej revision z serwera/pull.
+   - Klient ustawia `id` (UUID v7), `client_updated_at` (hint) oraz **`revision`**: create → `1`; każda lokalna edycja → `revision = last_known + 1` (względem serwera/pull).
    - Serwer **nie** rozstrzyga konfliktów po `client_updated_at` / gołym zegarze klienta.
-   - Push: `incoming.revision > existing.revision` → accept (UPDATE), `updated_at = now()`; przegrana existing → `sync_conflict_logs` (`conflict_kind=lost_push`) — **z wyjątkiem sesji ocenionych (pkt 14)**.
+   - **Create:** serwer wymusza `revision = 1` (wyższa wartość z klienta → ignoruj lub `422`).
+   - **Update push:** `incoming.revision == existing.revision + 1` → accept (UPDATE), `updated_at = now()`; przegrana existing → `sync_conflict_logs` (`conflict_kind=lost_push`) — **z wyjątkiem sesji ocenionych (pkt 14)**.
    - `incoming.revision < existing.revision` → reject overwrite, ACK `conflict_lost`, losing = incoming → log; zwróć winning row.
-   - `incoming.revision == existing.revision`: ten sam `client_mutation_id` / ten sam content hash → `200` idempotent; różny payload → `409` + `conflict_kind=tie_revision` (oba urządzenia zrobiły „ten sam numer” bez pulla).
+   - `incoming.revision == existing.revision`: ten sam `client_mutation_id` / ten sam content hash → `200` idempotent; różny payload → `409` + `conflict_kind=tie_revision`.
+   - **`incoming.revision > existing.revision + 1`** → `rejected` + `error_code=revision_jump` (bez nadpisu); klient → **quarantine** (FR-072b). Zakaz accept dowolnego `incoming > existing`.
    - `|client_updated_at − server_now| > skew_max` (np. 24h) → **nie** blokuje syncu; metryka/log `clock_skew_flag` (defense in depth, nie arbiter).
    - Stan progresji **nie** podlega LWW z klienta — wynik silnika po przyjęciu wygranej sesji.
 3. **Idempotencja (FR-072d / Rel6):** każdy push outbox niesie obowiązkowe `client_mutation_id`. Na start tx: claim w `client_mutations`; duplikat + ten sam `content_hash` → `idempotent`; inny hash → `rejected` `mutation_payload_mismatch`. Ponowne apply nie dubluje `progression_events`. Lock order: claim → session/entity → `user_exercise_progress FOR UPDATE` (exercise_id ASC).
 4. **Wiele sesji / dzień (P1 / FR-039/040):** brak UNIQUE `(user_id, local_date)`. Ekran „dzisiejsza sesja” agreguje aktywne wiersze po `local_date`. Dopisanie po evaluate = nowa sesja (spójne z A1).
 5. **Progresja (semantyka):**
-   - Ocena tylko dla logów `skipped = false` na sesjach `deleted_at IS NULL`.
+   - Ocena tylko dla logów `skipped = false AND superseded_at IS NULL` (soft-delete sesji ustawia `superseded_at` na childach w tej samej TX).
    - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`.
-   - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039); drugi → `409 duplicate_exercise_same_day`.
-   - Przy ocenie: zbuduj ciąg aktywnych prób E po `(local_date ASC, performed_at ASC, id)` (kolumny na **logu**, denorm z sesji — Perf5) i licz streak / progi z tego ciągu (FR-035 / Rel3) — niezależnie od kolejności push. Filtr: JOIN sesji `deleted_at IS NULL` (lub równoważne). **Zakaz** sortu historii po `log.created_at`.
+   - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039): **obowiązkowy** partial UNIQUE + check serwisowy; konflikt / `UniqueViolation` → `409 duplicate_exercise_same_day`.
+   - Przy ocenie: zbuduj ciąg aktywnych prób E po `(local_date ASC, performed_at ASC, id)` (kolumny na **logu**, denorm z sesji — Perf5) i licz streak / progi z tego ciągu (FR-035 / Rel3) — niezależnie od kolejności push. Filtr: `superseded_at IS NULL` (równoważne sesji `deleted_at IS NULL`). **Zakaz** sortu historii po `log.created_at`.
    - Regres (FR-034): 2 kolejne **dni** z zaliczoną nieudaną próbą (po `local_date ASC`), nie 2 sesje tego samego dnia.
    - Awans: zaliczona próba dnia spełnia próg → advance (jedna ocena / dzień / ćwiczenie).
    - Tie-break gdyby kiedyś złagodzono limit: `performed_at`, potem `session.id` — w F1 limit 1 logu czyni to zbędnym.
@@ -664,18 +670,18 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 11. **Usuwanie konta (Rel5 / FR-006a):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
     - Natychmiast: `deleted_at`, `purge_after = today+30`, `purge_status = pending_grace`; revoke `auth_sessions`; NULL `email`/`google_sub`/`display_name`; **hard delete** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, `user_onboarding`, `user_legal_acceptances`.
     - Soft-delete (lub oznaczenie) sesji/logów/eventów/satelitów/progress — niedostępne API (`deleted_at` user ⇒ 401).
-    - Po `purge_after`: hard delete pozostałych wierszy user-owned; `purge_status = done`. Job: cron / `POST /internal/purge-accounts` (compose), bez Redis/ARQ.
-    - Export: FR-006b przed delete.
+    - Po `purge_after`: hard delete pozostałych wierszy user-owned; `purge_status = done`. Job F1: **wyłącznie lokalny cron w Docker Compose** (np. serwis `purge` / `docker compose run --rm api … purge-accounts` na harmonogramie) wołający ten sam kod co `AccountDeletionService` / CLI entrypoint **wewnątrz sieci compose**. **Zakaz** `POST /internal/purge-accounts` i jakiegokolwiek HTTP triggera purge w F1 (public ingress i „internal” API). Bez Redis/ARQ.
+    - Export: FR-006b — **`POST /account/export` + CSRF** przed delete; zakaz GET z samym cookie sesji (CSRF / SameSite=Lax).
     - Re-OAuth po anonimizacji = nowy `users` row.
 12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
-13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
+13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`, w tym `revision_jump` / `mutation_payload_mismatch`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
 14. **Sesja immutable po evaluate (A1 / FR-038):**
    - Sesja jest **oceniona**, gdy istnieje ≥1 `session_exercise_logs` z `goal_evaluated_at IS NOT NULL` (albo równoważny znacznik ustawiony w tej samej tx co silnik).
    - Po ocenie zamrożone: `sets`, `skipped`, `step_number`, skład logów CC wpływający na silnik. Dozwolone: zmiana `notes` (bez re-evaluate).
-   - Push z `revision` wyższym i **innym** content hash pól zamrożonych → **nie** UPDATE; `409` + `conflict_kind=session_immutable_after_evaluate`; klient przywraca winning snapshot.
+   - Push z `revision == existing + 1` i **innym** content hash pól zamrożonych → **nie** UPDATE; `409` + `conflict_kind=session_immutable_after_evaluate`; klient przywraca winning snapshot.
    - Ten sam content hash (idempotent retry) → `200`.
-   - Korekta wyniku: soft-delete sesji (`deleted_at`) + create nowej sesji (nowe `id`, `revision=1`) → silnik ocenia tylko nową; soft-deleted **wykluczone** z fail_streak i z aktywnej historii.
-   - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie kroku wyłącznie przez `manual_override`.
+   - Korekta wyniku: soft-delete sesji (`deleted_at`) **w tej samej TX** ustawia `superseded_at` na child logach + create nowej sesji (nowe `id`, `revision=1`) → silnik ocenia tylko nową; logi z `superseded_at IS NOT NULL` **wykluczone** z fail_streak, UNIQUE FR-039 i aktywnej historii.
+   - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie / zmiana kroku wyłącznie przez **first-class** `manual_override` (FR-038 / US-016b): FOR UPDATE `user_exercise_progress`; nowy `current_step_number`; `fail_streak = 0`; INSERT `progression_events` (`manual_override`); limit ~10/dzień; bez mutacji historycznych logów.
 15. **Content hash (F1):** kanoniczny hash JSON zamrożonych pól logów (np. SHA-256 po stabilnej serializacji `sets` + `skipped` + `step_number` + `exercise_id` + `sort_order`); serwer liczy przy evaluate i przy push compare.
 16. **Sync pull (FR-070/075 — Perf1):**
    - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (każda z zagnieżdżonymi `logs[]`), `progress[]`, `satellites[]`, `measurements[]`, `progression_events[]` (nowe od `since` / okno flush — do surface UI FR-036), `conflicts[]` (ostatnie N / `since` — lista UI FR-073a; bez pełnego `losing_payload` w pull jeśli duży — wtedy detail `GET /sync/conflicts/{id}`), `catalog_version`, `server_time`; opcjonalnie `since` → delta.
@@ -689,11 +695,11 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 18. **Konflikt UX (Pr3 / FR-073a):** serwer zawsze zapisuje `sync_conflict_logs` przy lost/tie/immutable; klient surface per kind; recovery = INSERT nowej encji z `losing_payload` (nowe id), nigdy UPDATE winning przegraną. Ack przeczytania tylko lokalnie.
 19. **Split / timezone (Pr4 / FR-022a, FR-040a):** `resolve_cc_day(enrollment, local_date)` = fixed weekdays (anchor + offset 0/2/4 → D1/D2/D3, else rest; `rotation_offset` przesuwa day_index). GET /today: `local_date` i split liczone w `users.timezone` na serwerze. Zapis: \|local_date − date(performed_at in TZ)\| ≤ 1 else `422 local_date_mismatch`. Rolling cycle **poza F1**.
 20. **Content CC (Pr5 / FR-020a):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; CI gate prod: wszystkie `exercise_steps` CC mają niepusty `description` bez `[DRAFT]`. Ilustracje per-step poza F1.
-21. **Outbox order (Rel3 / FR-072a):** klient i serwer sortują batch: sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`; w batchu sesje→pomiary→satelity. Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
+21. **Outbox order (Rel3 / FR-072a):** klient i serwer sortują batch: sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`; w batchu sesje→pomiary→satelity. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
 22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
 23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
 24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
-25. **Indeks silnika (Perf5):** `session_exercise_logs.performed_at` denorm z sesji przy INSERT logów; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. Soft-delete sesji: filtr JOIN `workout_sessions.deleted_at IS NULL`.
+25. **Indeks silnika (Perf5):** `session_exercise_logs.performed_at` denorm z sesji przy INSERT logów; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE).
 26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox (FR-014a).
 
 ### Kolejność migracji (sugerowana)
