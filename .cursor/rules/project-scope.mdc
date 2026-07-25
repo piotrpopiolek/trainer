@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## Fazy — nie wyprzedzaj scope
 
-- Faza 1 (MVP): Google OAuth, onboarding, CC 6×10, silnik progresji, sesje, satelity (max 10), pomiary sylwetki, offline/outbox, disclaimer. Stack: FastAPI + PG + React PWA. Docker + GitHub Actions.
+- Faza 1 (MVP): Google OAuth, onboarding, CC 6×10, silnik progresji, sesje, satelity (max 10), pomiary sylwetki, offline/outbox, disclaimer, **backup/restore PG (FR-081a)**. Dostawa: **F1.0 → F1.1 → F1.prod** (FR-084 / `prd.md` §1.4a). Stack: FastAPI + PG + React PWA. Docker + GitHub Actions.
 - Faza 2: Agent AI, Garmin (read), Web Push, wykresy, YouTube→ćwiczenie, premium, Redis/ARQ, Cloudflare R2.
 - Faza 3+: Apple OAuth, native app, społeczność, wiele programów, zdjęcia sylwetki, zapis do kalendarza Garmin.
 
@@ -17,14 +17,15 @@ alwaysApply: true
 
 - Nie dodawaj: Redis, ARQ, R2, Apple Sign In, LLM agenta, integracji Garmin, Web Push, wykresów premium, progress photos.
 - Nie buduj ról trenera / multi-client.
-- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL. Content: PCO (founder) akceptuje `ready`; scaffold może iść na `draft`; prod = 60× ready (FR-020a).
+- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL. Content: PCO (founder) akceptuje `ready`; scaffold/`draft` OK; **beta** może częściowy ready + banner; **prod** = 60× ready (FR-020a/084). Content track od tyg. 1.
 - Nie implementuj diagnoz medycznych ani „leczenia” przez AI/rehab.
+- Przy poślizgu stosuj listę de-scope FR-084 — **nie** de-scopuj silnika, CAS, FR-039, backup przed prod, IDOR.
 
 ## Priorytety przy implementacji
 
-1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze).
-2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja po `local_date` / FR-039, SyncPull okna 30/365d bez `rules_snapshot` / FR-075) — dopiero potem polish UI.
-3. Content CC i onboarding w scope MVP (FR-020a: draft OK na scaffold; prod = 60× ready) — nie „później”.
+1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze) — **F1.0**.
+2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja po `local_date` / FR-039, SyncPull okna 30/365d bez `rules_snapshot` / FR-075) — F1.0 happy-path, pełny UX konfliktów **F1.1**; dopiero potem polish UI.
+3. Content CC i onboarding w scope MVP (FR-020a/084) — track content równolegle od tyg. 1; nie „później”.
 4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
 
 ## Stack decyzje (nie zmieniaj bez zgody)

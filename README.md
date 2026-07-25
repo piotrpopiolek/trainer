@@ -21,7 +21,7 @@ Progressive Web App for tracking calisthenics progression (Convict Conditioning�
 
 Trainer helps an individual athlete follow a step-based bodyweight progression program inspired by Convict Conditioning (“Skazany na trening”), log workouts quickly (including offline), track custom satellite work (mobility, prehab, loaded auxiliaries), and record body measurements (weight, waist, biceps, and more).
 
-**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a **server-side** deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / revision-based last-write-wins; sessions/measurements queue offline — progression evaluated only after sync on the backend), and health/privacy compliance.
+**Phase 1 (MVP)** focuses on Google OAuth, onboarding, the CC program (6 exercises × 10 steps), a **server-side** deterministic progression engine, session logging, up to 10 satellite exercises, body measurements, offline sync (outbox / revision-based last-write-wins; sessions/measurements queue offline — progression evaluated only after sync on the backend), and health/privacy compliance. Delivery is staged: **F1.0 → F1.1 → F1.prod** (`docs/prd.md` §1.4a / FR-084).
 
 **Phase 2+** adds a premium AI session coach, Garmin read-only recovery signals, rule-based Web Push, trend charts, YouTube-assisted exercise creation, billing, Redis/ARQ workers, and Cloudflare R2.
 
@@ -67,8 +67,10 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 
 | Phase | Components |
 |-------|------------|
-| Phase 1 | Docker / Compose, GitHub Actions, OpenAPI |
+| Phase 1 | Docker / Compose, GitHub Actions, OpenAPI, **PostgreSQL backup/restore** (FR-081a) |
 | Phase 2+ | Redis + ARQ, Cloudflare R2, OpenTelemetry + Prometheus + Grafana |
+
+**Phase 1 backup (required before public beta/prod):** nightly encrypted `pg_dump` off the app host; RPO ≤ 24h, RTO ≤ 4h, retention ≤ 30 days; Compose cron/service only (no HTTP trigger); restore runbook + drill. Details: [docs/prd.md](docs/prd.md) FR-081a, [docs/db-plan.md](docs/db-plan.md) §5 pkt 27.
 
 **Out of Phase 1:** Apple Sign In, native iOS/Android apps, Redis/ARQ/R2, LLM agent, Garmin integration, Web Push, progress photos.
 
@@ -146,6 +148,7 @@ This section will be updated when real scripts are added to the repository.
 - Body measurements (weight, waist, biceps; optional chest, thigh, neck)
 - Offline support with outbox sync (revision-based last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
 - Health disclaimer and privacy policy
+- Staged delivery **F1.0 → F1.1 → F1.prod** with explicit de-scope order (see `docs/prd.md` §1.4a / FR-084); content CC track from week 1 (prod = 60× ready)
 
 ### In scope — Phase 2
 
@@ -171,8 +174,8 @@ This section will be updated when real scripts are added to the repository.
 
 | Item | Status |
 |------|--------|
-| Product requirements | Done — [docs/prd.md](docs/prd.md) |
-| Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) |
+| Product requirements | Done — [docs/prd.md](docs/prd.md) (incl. FR-081a backup) |
+| Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) (§5 pkt 27 backup/restore) |
 | Cursor project rules | Done — `.cursor/rules/` |
 | Application code (frontend / backend) | Not started |
 | `package.json` / `.nvmrc` | Not present |

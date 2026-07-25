@@ -6,7 +6,7 @@ Konwencje:
 - PK syncowanych encji: `UUID` (v7, generowane też offline)
 - Czas: `TIMESTAMPTZ`; dzień lokalny sesji: `DATE` (`local_date`)
 - Soft-delete: `deleted_at TIMESTAMPTZ NULL`
-- Sync (sesje, pomiary, satelity): LWW po **`revision` (INT)** — accept tylko `existing+1` (create=1); nie po zegarze klienta; `client_updated_at` = hint; `updated_at` = wyłącznie czas serwera po accepted write (pull delta)
+- Sync (sesje, pomiary, satelity): LWW po **`revision` (INT)** — accept tylko `existing+1` (create=1), egzekwowane **atomowym CAS** (`UPDATE … WHERE revision = incoming-1`, FR-072d); nie po zegarze klienta; `client_updated_at` = hint; `updated_at` = wyłącznie czas serwera po accepted write (pull delta)
 - **Silnik progresji wyłącznie na serwerze** — klient nie zapisuje awansu/regresu/`goal_met`; te pola wynikają z `ProgressionEngine` po apply sesji
 - **JSONB = zawsze wersjonowany kontrakt:** każdy dokument JSONB ma wymagane `schema_version` (INT ≥ 1); walidacja Pydantic (backend) / Zod (frontend) per wersja; brak „gołego” JSON bez wersji
 - Izolacja F1: warstwa aplikacji (`user_id`); schemat RLS-ready, RLS wyłączone
@@ -46,7 +46,9 @@ Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik w
 | `google_sub` | `TEXT` | UNIQUE, NULL po anonimizacji |
 | `email` | `CITEXT` | NULL po anonimizacji |
 | `display_name` | `TEXT` | NULL |
-| `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) — źródło „dziś” / walidacji `local_date` (FR-040a); zmiana nie przepisuje historii |
+| `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) — aktywna strefa „dziś” / walidacji (FR-040a); zmiana nie przepisuje historii |
+| `pending_timezone` | `TEXT` | NULL — IANA oczekująca na promote (FR-040c) |
+| `timezone_effective_on` | `DATE` | NULL — `local_date` (w aktywnej TZ przy PATCH), od którego promote pending→active |
 | `body_metric_prefs` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1,"metrics":["weight_kg","waist_cm","biceps_cm"]}'`, CHECK `(body_metric_prefs ? 'schema_version')` |
 | `onboarding_completed_at` | `TIMESTAMPTZ` | NULL |
 | `deleted_at` | `TIMESTAMPTZ` | NULL (soft-delete konta) |
@@ -236,16 +238,37 @@ UNIQUE (`slug`, `schema_version`).
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`exercise_id`, `step_number`).  
-CC: kroki 1–10; satelity z mini-progresją: 2–5 (walidacja aplikacji).  
+CC: kroki 1–10.  
+**Satelity (FR-051a / wariant A):** zawsze **≥1** krok; bez mini-progresji = dokładnie **1** (cel w `rules.goal`); z mini-progresją = **2–5** (FR-053). Walidacja aplikacji przy create/update satelity: brak kroków → 422.  
 `progression_schema_id` obowiązkowe — wiąże krok z wersją kontraktu reguł; `rules.schema_version` musi być równe `progression_schemas.schema_version` (egzekwowane w serwisie seed/write).
 
-Przykładowy kształt `rules` (typ A, v1):
+Przykładowy kształt `rules` (typ A / CC, v1):
 ```json
 {
   "schema_version": 1,
   "advance": { "sets": 3, "min_reps": 10, "require_both_sides": false },
   "regress": { "fail_sessions": 2 },
   "goal": null
+}
+```
+
+Przykład satelita typ B (1 krok-cel, bez mini-progresji):
+```json
+{
+  "schema_version": 1,
+  "advance": null,
+  "regress": null,
+  "goal": { "sets": 3, "min_reps": 10 }
+}
+```
+
+Przykład satelita typ C (1 krok-cel „wykonane”):
+```json
+{
+  "schema_version": 1,
+  "advance": null,
+  "regress": null,
+  "goal": { "type": "completed" }
 }
 ```
 
@@ -259,15 +282,17 @@ Przykładowy kształt `rules` (typ A, v1):
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `program_id` | `UUID` | NOT NULL, FK → `programs(id)` RESTRICT |
 | `started_on` | `DATE` | NOT NULL — w TZ użytkownika; brak planu CC dla `local_date < started_on` |
-| `anchor_weekday` | `SMALLINT` | NOT NULL, DEFAULT `1`, CHECK (`anchor_weekday` BETWEEN 1 AND 7) — ISO weekday dnia **D1** (FR-022a) |
-| `rotation_offset` | `SMALLINT` | NOT NULL, DEFAULT `0`, CHECK (`rotation_offset` BETWEEN 0 AND 2) — przesuwa day_index przy non-rest |
+| `anchor_weekday` | `SMALLINT` | NOT NULL, DEFAULT `1`, CHECK (`anchor_weekday` BETWEEN 1 AND 7) — aktywny ISO weekday dnia **D1** (FR-022a) |
+| `pending_anchor_weekday` | `SMALLINT` | NULL, CHECK (`pending_anchor_weekday IS NULL OR pending_anchor_weekday BETWEEN 1 AND 7`) — FR-022b |
+| `schedule_effective_on` | `DATE` | NULL — od tego `local_date` promote `pending_anchor_weekday`→`anchor_weekday` |
+| `rotation_offset` | `SMALLINT` | NOT NULL, DEFAULT `0`, CHECK (`rotation_offset` BETWEEN 0 AND 2) — przesuwa day_index przy non-rest; **bez UI edycji w F1** |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT `true` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE partial (`user_id`) WHERE `is_active = true`.
 
-**Semantyka splitu (Pr4 / FR-022a):** fixed weekdays — `offset = (iso_weekday(local_date) - anchor_weekday + 7) % 7`; `0→1`, `2→2`, `4→3`, else rest; potem `day_index' = ((day_index - 1 + rotation_offset) % 3) + 1` gdy nie rest. **Nie** rolling od `started_on`. Onboarding default: `anchor_weekday=1`, `rotation_offset=0`.
+**Semantyka splitu (Pr4 / FR-022a/022b):** fixed weekdays — `offset = (iso_weekday(local_date) - anchor_weekday + 7) % 7`; `0→1`, `2→2`, `4→3`, else rest; potem `day_index' = ((day_index - 1 + rotation_offset) % 3) + 1` gdy nie rest. **Nie** rolling od `started_on`. Onboarding default: `anchor_weekday=1`, `rotation_offset=0`. Zmiana w ustawieniach: `pending_*` + `*_effective_on` = jutro; przy `GET /today` / `resolve_cc_day`, jeśli `local_date >= effective_on` i pending ≠ null → promote w TX, potem resolve.
 
 ---
 
@@ -279,7 +304,7 @@ UNIQUE partial (`user_id`) WHERE `is_active = true`.
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `exercise_id` | `UUID` | NOT NULL, FK → `exercises(id)` RESTRICT |
 | `current_step_number` | `SMALLINT` | NOT NULL, CHECK (`current_step_number >= 1`) |
-| `fail_streak` | `INT` | NOT NULL, DEFAULT `0`, CHECK (`fail_streak >= 0`) |
+| `fail_streak` | `INT` | NOT NULL, DEFAULT `0`, CHECK (`fail_streak >= 0`) — **cache** folda historii (FR-034a); źródło prawdy = aktywne logi |
 | `last_session_at` | `TIMESTAMPTZ` | NULL |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT `true` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -316,8 +341,8 @@ Dla `advance`/`regress`: `rules_snapshot` + `progression_schema_version` wypełn
 |---------|-----|--------------|
 | `id` | `UUID` | PK |
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
-| `performed_at` | `TIMESTAMPTZ` | NOT NULL |
-| `local_date` | `DATE` | NOT NULL |
+| `performed_at` | `TIMESTAMPTZ` | NOT NULL — **immutable od create** (FR-038 / Rel4) |
+| `local_date` | `DATE` | NOT NULL — **immutable od create**; = data rozpoczęcia logowania w TZ usera (FR-040a / PROD-06) |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 2000`) |
 | `client_mutation_id` | `UUID` | NOT NULL — ID operacji outbox (FR-072d); generowane przez klienta przy enqueue |
 | `revision` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`revision >= 1`) — arbiter LWW |
@@ -343,8 +368,8 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `exercise_kind` | `TEXT` | NOT NULL, CHECK (`exercise_kind IN ('cc','satellite')`) |
 | `section` | `TEXT` | NOT NULL, CHECK (`section IN ('main','accessories')`) |
 | `step_number` | `SMALLINT` | NULL |
-| `local_date` | `DATE` | NOT NULL — denormalizacja z `workout_sessions.local_date` (FR-039; unikalność próby CC / dzień) |
-| `performed_at` | `TIMESTAMPTZ` | NOT NULL — denormalizacja z `workout_sessions.performed_at` (Perf5 / FR-035; sort silnika bez JOIN) |
+| `local_date` | `DATE` | NOT NULL — denorm z `workout_sessions.local_date` **tylko przy INSERT** (FR-038: brak UPDATE kaskady; sesja.date immutable) |
+| `performed_at` | `TIMESTAMPTZ` | NOT NULL — denorm z `workout_sessions.performed_at` **tylko przy INSERT** (Perf5 / FR-035) |
 | `exercise_name_snapshot` | `TEXT` | NOT NULL |
 | `step_label_snapshot` | `TEXT` | NULL |
 | `skipped` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
@@ -363,8 +388,9 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
 
 CHECK:
-- `skipped = true` ⇒ (`sets IS NULL`) AND `goal_met = false` AND `rules_snapshot IS NULL`
+- `skipped = true` ⇒ (`sets IS NULL`) AND `goal_met = false` AND `rules_snapshot IS NULL` AND `progression_schema_version IS NULL`
 - `skipped = false` ⇒ `sets IS NOT NULL` AND `(sets ? 'schema_version')` AND `rules_snapshot IS NOT NULL` AND `(rules_snapshot ? 'schema_version')` AND `progression_schema_version IS NOT NULL`
+  — egzekwowane po commit TX (evaluate w tej samej TX co INSERT; FR-035/045). Dotyczy **CC i satelitów**: satelity zawsze mają ≥1 `exercise_steps` (FR-051a), więc snapshot jest zawsze dostępny; **nie** ma ścieżki „satelita C bez reguł”.
 
 UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NOT NULL` — na wypadek przyszłego niezależnego syncu logów.
 
@@ -387,7 +413,7 @@ Przykładowy `sets` (v1):
 }
 ```
 
-`rules_snapshot`: głęboka kopia `exercise_steps.rules` **w momencie oceny** (ten sam `schema_version`). Późniejsza zmiana seedu CC nie zmienia znaczenia historycznego `goal_met` / eventów awansu — audyt i support czytają snapshot, nie bieżący katalog.
+`rules_snapshot`: głęboka kopia `exercise_steps.rules` **w momencie oceny** (ten sam `schema_version`) — dla CC i satelitów (FR-051a). Późniejsza zmiana seedu CC / edycja satelity nie zmienia znaczenia historycznego `goal_met` / eventów awansu — audyt i support czytają snapshot, nie bieżący katalog. Test: sesja z samym satelitą C (1 krok `goal.type=completed`) → INSERT OK, `goal_met` zgodny z celem, `rules_snapshot` niepusty.
 
 ---
 
@@ -409,11 +435,11 @@ Przykładowy `sets` (v1):
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
 
 Dozwolone klucze w `metrics` v1 (obok `schema_version`; walidacja Pydantic `BodyMetricsV1`):  
-`weight_kg`, `waist_cm`, `biceps_cm`, `chest_cm`, `thigh_cm`, `neck_cm`.  
+`weight_kg`, `waist_cm`, `biceps_cm`, `chest_cm`, `thigh_cm`, `neck_cm`, `abdomen_cm`, `hips_cm`, `calf_cm`.  
 
 Przykład:
 ```json
-{ "schema_version": 1, "weight_kg": 78.5, "waist_cm": 82, "biceps_cm": 34 }
+{ "schema_version": 1, "weight_kg": 78.5, "waist_cm": 82, "biceps_cm": 34, "hips_cm": 98 }
 ```
 
 UNIQUE (`user_id`, `client_mutation_id`).
@@ -431,7 +457,7 @@ UNIQUE (`user_id`, `client_mutation_id`).
 | `winning_revision` | `INT` | NOT NULL |
 | `losing_revision` | `INT` | NOT NULL |
 | `winning_updated_at` | `TIMESTAMPTZ` | NOT NULL — `updated_at` zwycięzcy (serwer) |
-| `conflict_kind` | `TEXT` | NOT NULL, CHECK (`conflict_kind IN ('lost_push','tie_revision','session_immutable_after_evaluate')`) |
+| `conflict_kind` | `TEXT` | NOT NULL, CHECK (`conflict_kind IN ('lost_push','tie_revision','session_immutable_after_evaluate','session_date_immutable')`) |
 | `losing_payload` | `JSONB` | NOT NULL, CHECK `(losing_payload ? 'schema_version')` |
 | `device_id` | `TEXT` | NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -475,7 +501,7 @@ Rejestr **już przetworzonych** operacji klienta. `client_mutation_id` = UUID wy
 
 UNIQUE (`user_id`, `client_mutation_id`).
 
-**Kolejność w per-item tx (FR-072d):** (1) claim INSERT tutaj → (2) upsert encji → (3) `FOR UPDATE` progress (sesje CC, `exercise_id ASC`) → (4) silnik → COMMIT. Nigdy progress lock przed claim.
+**Kolejność w per-item tx (FR-072d):** (1) claim INSERT tutaj → (2) upsert/CAS encji (`UPDATE … WHERE revision = :incoming - 1` przy update; `rowcount=0` → reklasyfikuj konflikt) → (3) `FOR UPDATE` progress (sesje CC, `exercise_id ASC`) → (4) silnik → COMMIT. Nigdy progress lock przed claim. Zakaz „read revision → decide → write” bez CAS / `FOR UPDATE` na encji.
 
 ---
 
@@ -644,38 +670,55 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Klient ustawia `id` (UUID v7), `client_updated_at` (hint) oraz **`revision`**: create → `1`; każda lokalna edycja → `revision = last_known + 1` (względem serwera/pull).
    - Serwer **nie** rozstrzyga konfliktów po `client_updated_at` / gołym zegarze klienta.
    - **Create:** serwer wymusza `revision = 1` (wyższa wartość z klienta → ignoruj lub `422`).
-   - **Update push:** `incoming.revision == existing.revision + 1` → accept (UPDATE), `updated_at = now()`; przegrana existing → `sync_conflict_logs` (`conflict_kind=lost_push`) — **z wyjątkiem sesji ocenionych (pkt 14)**.
-   - `incoming.revision < existing.revision` → reject overwrite, ACK `conflict_lost`, losing = incoming → log; zwróć winning row.
+   - **Update push (Rel3 concurrency / FR-072d):** **atomowy CAS** — `UPDATE … SET …, updated_at = now() WHERE id = :id AND user_id = :uid AND revision = :incoming - 1`. `rowcount = 1` → accept (`applied`). `rowcount = 0` → ponowny `SELECT` i klasyfikacja: `incoming < existing` → `conflict_lost` + `sync_conflict_logs` (`lost_push`); `incoming == existing` + ten sam content hash → `idempotent`; `incoming == existing` + różny hash → `409` + `conflict_kind=tie_revision`; `incoming > existing + 1` → `revision_jump`. **Zakaz** niesynchronizowanego odczytu `existing.revision` i UPDATE bez guardu (lost update przy dual-device). Alternatywa: `SELECT … FOR UPDATE` na encji przed porównaniem (lock order: claim → encja → progress). **Wyjątek sesji ocenionych (pkt 14):** nawet przy `rowcount` CAS sukcesu nie nadpisuj zamrożonych pól — `session_immutable_after_evaluate`.
+   - `incoming.revision < existing.revision` → reject overwrite, ACK `conflict_lost`, losing = incoming → log; zwróć winning row (wynik reklasyfikacji po `rowcount=0`).
    - `incoming.revision == existing.revision`: ten sam `client_mutation_id` / ten sam content hash → `200` idempotent; różny payload → `409` + `conflict_kind=tie_revision`.
    - **`incoming.revision > existing.revision + 1`** → `rejected` + `error_code=revision_jump` (bez nadpisu); klient → **quarantine** (FR-072b). Zakaz accept dowolnego `incoming > existing`.
+   - Test CI obowiązkowy: dwa równoległe pushe `rev=2` od `rev=1` (różne hashe) → dokładnie jeden `applied`, drugi `conflict_tie` + jeden wpis `sync_conflict_logs`; nigdy dwa `applied`.
    - `|client_updated_at − server_now| > skew_max` (np. 24h) → **nie** blokuje syncu; metryka/log `clock_skew_flag` (defense in depth, nie arbiter).
    - Stan progresji **nie** podlega LWW z klienta — wynik silnika po przyjęciu wygranej sesji.
-3. **Idempotencja (FR-072d / Rel6):** każdy push outbox niesie obowiązkowe `client_mutation_id`. Na start tx: claim w `client_mutations`; duplikat + ten sam `content_hash` → `idempotent`; inny hash → `rejected` `mutation_payload_mismatch`. Ponowne apply nie dubluje `progression_events`. Lock order: claim → session/entity → `user_exercise_progress FOR UPDATE` (exercise_id ASC).
+3. **Idempotencja (FR-072d / Rel6):** każdy push outbox niesie obowiązkowe `client_mutation_id`. Na start tx: claim w `client_mutations`; duplikat + ten sam `content_hash` → `idempotent`; inny hash → `rejected` `mutation_payload_mismatch`. Ponowne apply nie dubluje `progression_events`. Lock order: claim → **CAS/lock encji** → `user_exercise_progress FOR UPDATE` (exercise_id ASC).
 4. **Wiele sesji / dzień (P1 / FR-039/040):** brak UNIQUE `(user_id, local_date)`. Ekran „dzisiejsza sesja” agreguje aktywne wiersze po `local_date`. Dopisanie po evaluate = nowa sesja (spójne z A1).
 5. **Progresja (semantyka):**
    - Ocena tylko dla logów `skipped = false AND superseded_at IS NULL` (soft-delete sesji ustawia `superseded_at` na childach w tej samej TX).
-   - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`.
+   - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`; dzięki UNIQUE FR-039 jedna zaliczona próba na dzień.
    - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039): **obowiązkowy** partial UNIQUE + check serwisowy; konflikt / `UniqueViolation` → `409 duplicate_exercise_same_day`.
    - Przy ocenie: zbuduj ciąg aktywnych prób E po `(local_date ASC, performed_at ASC, id)` (kolumny na **logu**, denorm z sesji — Perf5) i licz streak / progi z tego ciągu (FR-035 / Rel3) — niezależnie od kolejności push. Filtr: `superseded_at IS NULL` (równoważne sesji `deleted_at IS NULL`). **Zakaz** sortu historii po `log.created_at`.
-   - Regres (FR-034): 2 kolejne **dni** z zaliczoną nieudaną próbą (po `local_date ASC`), nie 2 sesje tego samego dnia.
-   - Awans: zaliczona próba dnia spełnia próg → advance (jedna ocena / dzień / ćwiczenie).
+   - Regres (FR-034/034a): 2 kolejne **zaliczone próby** poniżej progu w tym ciągu (`rules.regress.fail_sessions`, MVP: 2) — **nie** sąsiednie daty kalendarzowe; odstęp (tydzień splitu, urlop) **nie** zeruje streaku; **nie** 2 sesje tego samego dnia.
+   - Reset `fail_streak` (FR-034a): fail → `+=1`; przy osiągnięciu progu regresu → regres −1 + **`fail_streak=0`**; sukces / awans / `manual_override` → `0`. Kolumna = cache folda; zapis w TX evaluate.
+   - Awans: zaliczona próba dnia spełnia próg → advance + `fail_streak=0` (jedna ocena / dzień / ćwiczenie).
    - Tie-break gdyby kiedyś złagodzono limit: `performed_at`, potem `session.id` — w F1 limit 1 logu czyni to zbędnym.
-   - `manual_override` zeruje streak; `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
+   - `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
    - Out-of-order apply **nie** voiduje wcześniejszych `progression_events` i **nie** rewinduje `current_step_number`.
-6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu — historia i silnik bez zbędnego JOIN/sortu po `created_at`; odporność na soft-delete satelitów i zmiany harmonogramu.
+   - Testy CI: fail+fail @7d → regres + streak=0; fail → 30d → fail → regres; fail → sukces → fail → streak=1; trzy faile z rzędu → jeden regres, potem streak od nowa.
+6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu (kopiowane **tylko przy INSERT**; daty sesji immutable — Rel4) — historia i silnik bez zbędnego JOIN/sortu po `created_at`.
 7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
 8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`. Treści opisów: status `draft`\|`ready` (FR-020a); scaffold może seedować draft; prod wymaga 60× ready + bump `catalog_version` przy zmianie.
 9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos. **Poza scope F1 także:** rewind+replay progresji po zmianie historycznych `sets` (opcja B) — dopiero gdy produkt tego wymaga.
 10. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
-11. **Usuwanie konta (Rel5 / FR-006a):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
+11. **Usuwanie konta (Rel5 / Rel2 / FR-006a/c):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
     - Natychmiast: `deleted_at`, `purge_after = today+30`, `purge_status = pending_grace`; revoke `auth_sessions`; NULL `email`/`google_sub`/`display_name`; **hard delete** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, `user_onboarding`, `user_legal_acceptances`.
     - Soft-delete (lub oznaczenie) sesji/logów/eventów/satelitów/progress — niedostępne API (`deleted_at` user ⇒ 401).
-    - Po `purge_after`: hard delete pozostałych wierszy user-owned; `purge_status = done`. Job F1: **wyłącznie lokalny cron w Docker Compose** (np. serwis `purge` / `docker compose run --rm api … purge-accounts` na harmonogramie) wołający ten sam kod co `AccountDeletionService` / CLI entrypoint **wewnątrz sieci compose**. **Zakaz** `POST /internal/purge-accounts` i jakiegokolwiek HTTP triggera purge w F1 (public ingress i „internal” API). Bez Redis/ARQ.
+    - **Hard purge job (FR-006c):** lokalny cron Compose (`purge` / `docker compose run --rm api … purge-accounts`) — **zakaz** HTTP triggera (public i `/internal`). Bez Redis/ARQ.
+      - Select: `purge_after ≤ today AND purge_status IS DISTINCT FROM 'done'` (indeks pkt indeksów).
+      - Per user, sekwencyjnie: claim `purge_status = pending_job`; potem **jedna TX**:
+        1. `DELETE session_exercise_logs` WHERE `user_id`
+        2. `DELETE progression_events` WHERE `user_id`
+        3. `DELETE workout_sessions` WHERE `user_id`
+        4. `DELETE user_exercise_progress` WHERE `user_id`
+        5. `DELETE user_program_enrollments` WHERE `user_id`
+        6. `DELETE exercise_steps` dla satelitów usera → `DELETE exercises` WHERE `user_id IS NOT NULL` (satelity)
+        7. pozostałe user-owned (jeśli jakieś)
+        8. `UPDATE users SET purge_status = 'done'` (wiersz users zostaje zanonimizowany — nie hard-delete `users` w F1)
+      - Rerun-safe; fail → `purge.fail`, nie ustawiaj `done`.
+      - Monitoring: `purge.ok` / `purge.fail` + heartbeat; cisza ≥36h = incydent; runbook: `purge_after < today-7 AND status ≠ done`. Opcjonalny egress ping po sukcesie (healthchecks.io) — dozwolony.
+      - Test CI: pełny graf → purge → zero childów + `done`; drugi run no-op; (opcjonalnie) kill mid-TX → rerun kończy czysto.
     - Export: FR-006b — **`POST /account/export` + CSRF** przed delete; zakaz GET z samym cookie sesji (CSRF / SameSite=Lax).
     - Re-OAuth po anonimizacji = nowy `users` row.
 12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
 13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`, w tym `revision_jump` / `mutation_payload_mismatch`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
-14. **Sesja immutable po evaluate (A1 / FR-038):**
+14. **Sesja — immutability (A1 / Rel4 / FR-038):**
+   - **`performed_at` / `local_date` immutable od create** (także przed evaluate). Push zmieniający te pola → **nie** UPDATE; `409` + `error_code=session_date_immutable` (nawet przy `existing+1`). Korekta daty = soft-delete + nowa sesja. Denorm na logach: **tylko INSERT** — **zakaz** kaskady UPDATE denorm (uniknięcie rozjazdu FR-039 / silnika).
    - Sesja jest **oceniona**, gdy istnieje ≥1 `session_exercise_logs` z `goal_evaluated_at IS NOT NULL` (albo równoważny znacznik ustawiony w tej samej tx co silnik).
    - Po ocenie zamrożone: `sets`, `skipped`, `step_number`, skład logów CC wpływający na silnik. Dozwolone: zmiana `notes` (bez re-evaluate).
    - Push z `revision == existing + 1` i **innym** content hash pól zamrożonych → **nie** UPDATE; `409` + `conflict_kind=session_immutable_after_evaluate`; klient przywraca winning snapshot.
@@ -692,15 +735,24 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - **Katalog CC:** sync tylko gdy `catalog_version` (lub ETag) ≠ lokalny; `GET` z `If-None-Match` → **304** (FR-075a); nie w każdym pullu sesji.
    - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
 17. **Offline UX awansu (Pr2 / FR-071a, FR-036, FR-074):** push outbox (lub natychmiastowy follow-up pull) zwraca nowe `progression_events` powstałe w tej transakcji apply; klient surface’uje advance/regress idempotentnie po `event.id`. Brak lokalnego silnika / celebracji przed sync.
+17a. **Persistent storage (Rel5 / FR-070a):** klient — `navigator.storage.persist()` przy starcie / pierwszym enqueue; UX gdy `!persisted` ∧ pending outbox. IndexedDB **nie** zastępuje backupu serwera (FR-081a).
 18. **Konflikt UX (Pr3 / FR-073a):** serwer zawsze zapisuje `sync_conflict_logs` przy lost/tie/immutable; klient surface per kind; recovery = INSERT nowej encji z `losing_payload` (nowe id), nigdy UPDATE winning przegraną. Ack przeczytania tylko lokalnie.
-19. **Split / timezone (Pr4 / FR-022a, FR-040a):** `resolve_cc_day(enrollment, local_date)` = fixed weekdays (anchor + offset 0/2/4 → D1/D2/D3, else rest; `rotation_offset` przesuwa day_index). GET /today: `local_date` i split liczone w `users.timezone` na serwerze. Zapis: \|local_date − date(performed_at in TZ)\| ≤ 1 else `422 local_date_mismatch`. Rolling cycle **poza F1**.
-20. **Content CC (Pr5 / FR-020a):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; CI gate prod: wszystkie `exercise_steps` CC mają niepusty `description` bez `[DRAFT]`. Ilustracje per-step poza F1.
+19. **Split / timezone (Pr4 / FR-022a/022b, FR-024a, FR-040a/040c):** `resolve_cc_day` = fixed weekdays (po promote pending). GET /today: promote jeśli `local_date >= *_effective_on`; rest + opcjonalny `cc_day_override` (FR-024a). `PATCH /account/schedule` (lub równoważny, CSRF): ustaw pending + effective_on=jutro; historia bez rewrite. Zapis: `local_date_mismatch` vs aktywna TZ **lub** `client_timezone` z outbox item (Rel10). Rolling **poza F1**.
+20. **Content CC (Pr5 / FR-020a, FR-084):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; content track od tyg. 1. Beta: częściowy ready + banner OK; CI gate **prod**: wszystkie `exercise_steps` CC niepuste bez `[DRAFT]`. Ilustracje per-step poza F1.
 21. **Outbox order (Rel3 / FR-072a):** klient i serwer sortują batch: sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`; w batchu sesje→pomiary→satelity. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
 22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
 23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
 24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
-25. **Indeks silnika (Perf5):** `session_exercise_logs.performed_at` denorm z sesji przy INSERT logów; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE).
+25. **Indeks silnika (Perf5) + denorm (Rel4):** przy **INSERT** logów skopiuj `local_date`/`performed_at` z sesji; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. **Zakaz** UPDATE denorm przy zmianie sesji — daty sesji immutable od create (pkt 14). Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE). Test: push zmieniający `local_date` przed evaluate → `409 session_date_immutable`; child logi nietknięte.
 26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox (FR-014a).
+27. **Backup & restore (Rel1 / FR-081a) — wymagane F1 przed public beta/prod:**
+    - **Cel:** chronić trwałość danych w spoczynku (historia sesji, `progression_events` append-only, pomiary biometryczne). Spec sync chroni spójność *w locie*; backup chroni przed utratą wolumenu / hosta. IndexedDB klienta (**nie**) jest backupem serwera (okno FR-070).
+    - **Parametry:** RPO **≤ 24 h**; RTO **≤ 4 h**; retencja backupów **≤ 30 dni** (spójna z grace delete FR-006a); zakres = pełny dump bazy aplikacji.
+    - **Mechanizm:** nocny `pg_dump` (custom lub plain) z sieci Compose → szyfrowanie pliku (age/gpg lub równoważne) → transfer **poza host aplikacji** (inny dysk / S3-compatible / inny VPS) → rotacja artefaktów. Job: serwis/cron Compose (np. `backup` / `docker compose run --rm backup`), jak purge — **zakaz** publicznego i internal HTTP triggera.
+    - **Monitoring:** structured log `backup.ok` / `backup.fail` (rozmiar, czas); heartbeat (cisza = incydent). Dostęp do lokalizacji backupów ograniczony.
+    - **Restore:** runbook (świeży Compose → restore dump → `alembic current` = head → smoke: login, counts, health). **Restore drill** przed prod (CI job izolowany lub okresowy checklist). Przed migracją Alembic na prod — świeży backup.
+    - **RODO / FR-081:** polityka prywatności stwierdza, że dane mogą pozostawać w kopiach zapasowych do ≤30 dni po usunięciu konta. Szyfrowanie pliku backupu ≠ column/volume encryption (to nadal poza F1).
+    - **Poza F1:** HA Postgres, streaming replication, PITR — nie wymagane przy RPO 24h.
 
 ### Kolejność migracji (sugerowana)
 
@@ -717,12 +769,12 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006, FR-005a–c, FR-006a/b | `users` (+ `purge_after`/`purge_status`), `auth_sessions`; OAuth; IDOR; CORS/rate limit; delete/export |
+| FR-001–006, FR-005a–c, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions`; OAuth; IDOR; CORS/rate limit; delete/export; hard purge order + TX (FR-006c) |
 | FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` (+ outbox legal) |
-| FR-020–024, FR-020a, FR-022a, FR-040a | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps` (opisy PL + gate ready), `user_program_enrollments`, `users.timezone` |
-| FR-030–039, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress`, `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm); push/pull zwraca eventy do surface UI |
+| FR-020–024, FR-020a, FR-022a, FR-022b, FR-024a, FR-040a, FR-040c | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps`, `user_program_enrollments` (+ pending anchor), `users.timezone` (+ pending TZ); rest override tylko w `/today` |
+| FR-030–039, FR-034a, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress` (`fail_streak` = cache folda), `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm); push/pull zwraca eventy do surface UI |
 | FR-040–046, FR-040a/b, FR-046a | `workout_sessions`, `session_exercise_logs`; TodaySessionDto; write DTO strip |
-| FR-050–058 | `exercises` (satelity), limit trigger |
+| FR-050–058, FR-051a | `exercises` (satelity), `exercise_steps` (≥1 na satelitę — cel w `rules.goal`), limit trigger |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
-| FR-070–075, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; catalog 304 |
-| FR-080–083, FR-081, FR-082a | `legal_documents`, `tags` rehab; at-rest poza F1; analytics allowlist |
+| FR-070–075, FR-070a, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; `storage.persist` UX; catalog 304 |
+| FR-080–084, FR-081, FR-081a, FR-082a | `legal_documents`, `tags` rehab; at-rest kolumn/volume poza F1; **backup/restore PG** (FR-081a); analytics allowlist; kamienie F1 / de-scope (FR-084 — proces, nie tabela) |

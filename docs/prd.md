@@ -14,7 +14,7 @@ Indywidualny użytkownik trenujący dla własnego rozwoju, śledzący progres w 
 
 - Frontend: React PWA (mobile-first), Vite, TypeScript, Tailwind CSS, shadcn/ui
 - Backend: FastAPI, Pydantic v2, SQLAlchemy 2.0, PostgreSQL + JSONB
-- Infrastruktura (Faza 1): Docker, GitHub Actions
+- Infrastruktura (Faza 1): Docker, GitHub Actions, **backup/restore PostgreSQL** (FR-081a)
 - Infrastruktura (Faza 2+): Redis + ARQ (kolejka zadań), Cloudflare R2 (pliki)
 - Observability: OpenTelemetry, Prometheus, Grafana, OpenAPI
 
@@ -58,9 +58,29 @@ flowchart TB
 
 | Faza | Czas | Zakres |
 |------|------|--------|
-| Faza 1 (MVP) | 8–10 tygodni | OAuth Google, onboarding, program CC, silnik progresji (serwer), logowanie sesji, satelity (max 10), pomiary sylwetki, offline sync, compliance |
+| Faza 1 (MVP) | 8–10 tygodni | OAuth Google, onboarding, program CC, silnik progresji (serwer), logowanie sesji, satelity (max 10), pomiary sylwetki, offline sync, compliance — **dostawa w kamieniach F1.0 → F1.1 → F1.prod (FR-084)** |
 | Faza 2 | 6–8 tygodni | Agent AI, Garmin (odczyt), powiadomienia regułowe, wykresy trendów, tworzenie ćwiczeń z YouTube, monetyzacja premium, Cloudflare R2, Redis/ARQ |
 | Faza 3 | TBD | Własne programy, społeczność, płatności rozbudowane, import JSON/CSV, natywna aplikacja (rozważana) |
+
+### 1.4a Kamienie Fazy 1 i de-scope (FR-084)
+
+Faza 1 nie jest monolitem „wszystko w tygodniu 10”. Dostawa i gate’y:
+
+| Kamień | Zakres (minimum) | Gate |
+|--------|------------------|------|
+| **F1.0** | Online pętla: Google OAuth, onboarding, CC 6×10 (seed może `draft`), silnik progresji, sesje, satelity (create+log; max 10), pomiary, disclaimer; sync **happy-path** (push/pull, CAS FR-072d, immutability FR-038, evaluate); backup job wdrożony (FR-081a) | Internal dogfood |
+| **F1.1** | Pełny offline/outbox: quarantine UX (FR-072b), UI konfliktów + recovery (FR-073a), defer-create w batchu (FR-072a), `storage.persist` (FR-070a), Trenuj mimo to (FR-024a), zmiana splitu/TZ (FR-022b/040c) | Public beta |
+| **F1.prod** | Restore drill OK (FR-081a) + katalog CC **60× `ready`** (FR-020a); content = **osobny track od tygodnia 1**, nie „na końcu kodu” | Public prod |
+
+**De-scope przy poślizgu** (wypada z F1.1 najpierw → F1.0 polish / późniejszy patch; **nie** z F1.0 core):
+
+1. Lista konfliktów w Ustawieniach + recovery draft → **toast-only** + winning snapshot (uproszczenie FR-073a).
+2. Autosave draft formularza sesji (PROD-10) — poza F1.0.
+3. `replace_session` jako jedna mutacja — pozostaje opcjonalne F1.1+ (już w FR-072a).
+4. Satelity: klonowanie / bogaty UX harmonogramu — F1.1; create + log zostaje w F1.0.
+5. Content: **public beta** może iść z częścią kroków `ready` + jawny banner „katalog w przygotowaniu”; **prod** nadal wymaga 60× `ready` (FR-020a bez zmiany).
+
+**Nie de-scopować przed F1.prod:** silnik progresji, FR-039, CAS LWW, backup/restore przed prod, IDOR suite.
 
 ### 1.5 Model monetyzacji
 
@@ -116,11 +136,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-004 | Wylogowanie: `auth_sessions.revoked_at` + clear cookie sesji + clear IndexedDB (US-003) |
 | FR-005 | Dostęp do API i danych użytkownika wyłącznie po uwierzytelnieniu (sesja z cookie) |
 | FR-005a | Sesja aplikacji: losowy token w cookie **`HttpOnly; Secure; SameSite=Lax`** (lub Strict przy same-site); w DB wyłącznie `token_hash` (SHA-256); **zakaz** raw tokenu w `localStorage` / IndexedDB / JS. TTL (`expires_at`); API z `credentials` (cookie), nie Bearer z JS storage. CSRF: SameSite + same-origin API (MVP); przy cross-site mutacjach — dodatkowy CSRF token. **Export (FR-006b) i inne wrażliwe „odczyty z side-effect / bulk PII” = POST + CSRF** — nie GET z samym cookie (SameSite=Lax nie chroni top-level GET) |
-| FR-005b | Izolacja tenantów w F1 **bez RLS na większości tabel**: `user_id` wyłącznie z sesji (nie z body/query jako źródło prawdy). Odczyt/mutacja zasobów user-owned wyłącznie przez `… WHERE id = :id AND user_id = :session_user_id` (deny-by-default) — w tym **`POST /sync/push` apply** (UPDATE/DELETE po `entity_id`). INSERT: `user_id` tylko z sesji (inny w body → ignoruj lub 422). Cudzy lub nieistniejący ID → **HTTP 404** / item `rejected` `not_found` (jedna polityka; bez 403 na enumerację). Obowiązkowa **IDOR suite** w CI (`pytest -m idor`) na: sessions, logs, measurements, satelity, progress (GET **i** override), sync_conflict_logs, sync_devices, onboarding, legal acceptances, **`POST /sync/push`** (cudzy `entity_id`), **`GET /sync/conflicts/{id}`**, **`GET /sessions/{id}`** (detail), **`POST /account/export`**, **`POST /account/delete`**. **Wyjątek F1:** RLS **włączone** na `body_measurements` (`SET LOCAL app.user_id`); pozostałe tabele RLS = Faza 2+ |
+| FR-005b | Izolacja tenantów w F1 **bez RLS na większości tabel**: `user_id` wyłącznie z sesji (nie z body/query jako źródło prawdy). Odczyt/mutacja zasobów user-owned wyłącznie przez `… WHERE id = :id AND user_id = :session_user_id` (deny-by-default) — w tym **`POST /sync/push` apply** (UPDATE/DELETE po `entity_id`). INSERT: `user_id` tylko z sesji (inny w body → ignoruj lub 422). Cudzy lub nieistniejący ID → **HTTP 404** / item `rejected` `not_found` (jedna polityka; bez 403 na enumerację). Obowiązkowa **IDOR suite** w CI (`pytest -m idor`) na: sessions, logs, measurements, satelity, progress (GET **i** override), sync_conflict_logs, sync_devices, onboarding, legal acceptances, **`POST /sync/push`** (cudzy `entity_id`), **`GET /sync/conflicts/{id}`**, **`GET /sessions/{id}`** (detail), **`POST /account/export`**, **`POST /account/delete`**, **`PATCH /account/schedule`** (FR-022b/040c). **Wyjątek F1:** RLS **włączone** na `body_measurements` (`SET LOCAL app.user_id`); pozostałe tabele RLS = Faza 2+ |
 | FR-005c | Abuse / CORS (S7): CORS allowlist originów PWA (prod + localhost); `credentials` + cookie SameSite. Rate limit: ok. **100 req/min** / authenticated user oraz **20** `POST /sync/push` / min; OAuth callback osobny niższy limit; przekroczenie → **429** + `Retry-After`. Max body ok. **1 MB** → 422 `payload_too_large` |
 | FR-006 | Identyfikator użytkownika umożliwiający sync między urządzeniami |
-| FR-006a | Usunięcie konta (Rel5): `POST /account/delete` — potwierdzenie w UI; `users.deleted_at`; revoke wszystkich `auth_sessions`; anonimizacja `email`/`google_sub`/`display_name`; clear cookie + IndexedDB. **Natychmiast hard delete:** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, onboarding/legal acceptances. Sesje/logi/`progression_events`/satelity/`user_exercise_progress`: soft + **grace 30 dni** (`purge_after`), potem hard purge **wyłącznie lokalnym cronem w Docker Compose** (wywołanie CLI / entrypoint serwisu w sieci compose — **bez** publicznego ani internal HTTP endpointu w F1; bez Redis/ARQ). Copy UI o retencji. Re-login Google = nowe `users.id`. Zakaz `ON DELETE CASCADE` od `users` — tylko `AccountDeletionService` |
+| FR-006a | Usunięcie konta (Rel5): `POST /account/delete` — potwierdzenie w UI; `users.deleted_at`; revoke wszystkich `auth_sessions`; anonimizacja `email`/`google_sub`/`display_name`; clear cookie + IndexedDB. **Natychmiast hard delete:** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, onboarding/legal acceptances. Sesje/logi/`progression_events`/satelity/`user_exercise_progress`: soft + **grace 30 dni** (`purge_after`), potem hard purge **wyłącznie lokalnym cronem w Docker Compose** (wywołanie CLI / entrypoint serwisu w sieci compose — **bez** publicznego ani internal HTTP **triggera** w F1; bez Redis/ARQ). Szczegóły kolejności / TX / monitoringu: **FR-006c**. Copy UI o retencji. Re-login Google = nowe `users.id`. Zakaz `ON DELETE CASCADE` od `users` — tylko `AccountDeletionService` |
 | FR-006b | Export danych (RODO, F1): **`POST /account/export`** (+ CSRF token — double-submit lub synchronizer) — JSON (skrót sesji, pomiary, progress, satelity); dostępny przed delete; bez `rules_snapshot` w bulk (jak SyncPull). **Zakaz** `GET /account/export` z samym cookie sesji (SameSite=Lax → ryzyko CSRF top-level GET). Odpowiedź: `Cache-Control: no-store`. UI: przycisk „Pobierz”, nie zwykły link nawigacyjny. Alternatywa dopuszczalna: POST wydaje one-time `download_token` (TTL ~60s) → `GET /account/export/{token}` **bez** cookie sesji |
+| FR-006c | **Hard purge job (Rel2 / wariant A):** cron Compose wybiera userów `purge_after ≤ today AND purge_status IS DISTINCT FROM 'done'`. Per user: claim `purge_status = pending_job`, potem **jedna TX** z kolejnością DELETE pod FK RESTRICT: (1) `session_exercise_logs`, (2) `progression_events`, (3) `workout_sessions`, (4) `user_exercise_progress`, (5) `user_program_enrollments`, (6) user-owned `exercises` (satelity) + ich `exercise_steps`, (7) pozostałe user-owned nieusunięte w grace, (8) `purge_status = done` na `users` (wiersz users zostaje zanonimizowany — nie hard-delete users row w F1, albo soft tombstone). Rerun-safe (DELETE idempotentny). Fail TX → log `purge.fail`, status zostaje `pending_job` (lub wraca do retryable); nie oznaczaj `done`. Monitoring: structured log `purge.ok` / `purge.fail` + heartbeat; **cisza ≥ 36 h = incydent**. Runbook query: `purge_after < today - 7 AND status ≠ done` = incydent. **Opcjonalny** egress ping (np. healthchecks.io) po udanym runie — dozwolony (to nie jest HTTP trigger purge). Test CI: pełny graf → purge → zero child rows + `done`; drugi run = no-op |
 
 ### 3.2 Onboarding (Faza 1)
 
@@ -138,12 +159,14 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | ID | Wymaganie |
 |----|-----------|
 | FR-020 | 6 ćwiczeń bazowych × 10 kroków progresji z własnymi opisami PL |
-| FR-020a | Content CC (Pr5): **Product Content Owner (PCO)** = founder/product (akceptacja `ready`). DoD kroku `ready`: `name` + `description` PL (2–6 zdań) + `rules` z `schema_version`; zakaz cytatów z książki CC. Seed może być `draft` (placeholdery `[DRAFT]…`) pod scaffold/CI; **public beta/prod** wymaga 60/60 `ready` (CI: zero pustych description / `[DRAFT]` w katalogu CC). Ilustracje per krok / foto instruktażowe **poza F1**; F1 opcjonalnie 6 ikon per ćwiczenie. Zmiana treści → bump `catalog_version`; bez reinterpretacji `rules_snapshot` |
+| FR-020a | Content CC (Pr5): **Product Content Owner (PCO)** = founder/product (akceptacja `ready`). DoD kroku `ready`: `name` + `description` PL (2–6 zdań) + `rules` z `schema_version`; zakaz cytatów z książki CC. Seed może być `draft` (placeholdery `[DRAFT]…`) pod scaffold/CI; **public beta** może iść z częścią `ready` + banner „katalog w przygotowaniu” (FR-084); **public prod** wymaga 60/60 `ready` (CI: zero pustych description / `[DRAFT]` w katalogu CC). Content = **osobny track od tygodnia 1**, nie na końcu kodu. Ilustracje per krok / foto instruktażowe **poza F1**; F1 opcjonalnie 6 ikon per ćwiczenie. Zmiana treści → bump `catalog_version`; bez reinterpretacji `rules_snapshot` |
 | FR-021 | Predefiniowany split 3-dniowy (Założenie PRD): D1 — pompki + pompki w staniu na rękach; D2 — podciągania + mostek biodrowy; D3 — przysiady + unoszenie nóg |
 | FR-022 | Wyświetlanie ćwiczeń CC przypisanych do bieżącego dnia treningowego |
-| FR-022a | Algorytm dnia CC F1 (**fixed weekdays**, nie rolling): `wd` = ISO weekday `local_date` (1=Mon…7=Sun); `anchor` = `user_program_enrollments.anchor_weekday` (default 1); `offset = (wd - anchor + 7) % 7`; `0→D1`, `2→D2`, `4→D3`, inaczej **rest**. `rotation_offset` ∈ {0,1,2}: gdy nie rest, `day_index' = ((day_index - 1 + rotation_offset) % 3) + 1`. `started_on`: brak planu CC dla `local_date < started_on`. Jedna funkcja domenowa `resolve_cc_day` (serwer źródło prawdy; klient może cache’ować regułę offline) |
+| FR-022a | Algorytm dnia CC F1 (**fixed weekdays**, nie rolling): `wd` = ISO weekday `local_date` (1=Mon…7=Sun); `anchor` = `user_program_enrollments.anchor_weekday` (default 1); `offset = (wd - anchor + 7) % 7`; `0→D1`, `2→D2`, `4→D3`, inaczej **rest**. `rotation_offset` ∈ {0,1,2}: gdy nie rest, `day_index' = ((day_index - 1 + rotation_offset) % 3) + 1`. `started_on`: brak planu CC dla `local_date < started_on`. Jedna funkcja domenowa `resolve_cc_day` (serwer źródło prawdy; klient może cache’ować regułę offline). Późniejsza zmiana: FR-022b |
+| FR-022b | **Zmiana splitu po onboardingu (wariant A):** Ustawienia → wybór Pn/Śr/Pt (`anchor_weekday=1`) lub Wt/Czw/Sob (`=2`). `rotation_offset` **bez UI w F1** (zostaje 0 / bez zmiany). `PATCH` (CSRF) ustawia `pending_anchor_weekday` + `schedule_effective_on = jutro` w bieżącej aktywnej TZ użytkownika; do tego dnia `resolve_cc_day` / `GET /today` używają **aktywnego** (starego) anchora; w dniu `effective_on` serwer **promote** pending→active. Historia logów / `local_date` **bez** przepisywania. Copy: „Nowy plan od jutra”. Nie mutuje `started_on` |
 | FR-023 | Możliwość pominięcia ćwiczenia w sesji bez blokady zapisu sesji |
-| FR-024 | Dni odpoczynku od CC (`resolve_cc_day` = rest) — brak ćwiczeń CC na ekranie sesji; satelity `daily` / `rest_day` nadal wg swojego harmonogramu |
+| FR-024 | Dni odpoczynku od CC (`resolve_cc_day` = rest) — domyślnie brak ćwiczeń CC na ekranie sesji; satelity `daily` / `rest_day` nadal wg swojego harmonogramu. Nadrobienie CC: FR-024a |
+| FR-024a | **„Trenuj mimo to” (wariant A):** w dniu `is_rest_day` obowiązkowe CTA → wybór D1/D2/D3 (bez zmiany `anchor_weekday` / enrollment). UI pokazuje 2 ćwiczenia wybranego dnia; copy ostrzegawcze, że split tygodnia może się rozjechać — **bez** blokady zapisu. Online: `GET /today?cc_day_override=1\|2\|3` (lub równoważny) zwraca `cc_exercises` dla wybranego dnia + `is_rest_day=true`, `cc_day_override`; offline: ten sam wybór z cache `program_days`. Zapis sesji = zwykłe logi CC (FR-039); serwer **nie** odrzuca CC tylko dlatego, że `resolve_cc_day` = rest. Override **nie** mutuje enrollment. Rolling nadal poza F1 |
 
 Ćwiczenia CC (Big Six):
 
@@ -162,25 +185,27 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | FR-031 | Reguły progresji jako konfiguracja JSONB z obowiązkowym `schema_version` + kontrakt Pydantic per wersja; nie hardcode progów |
 | FR-032 | Typ A (progresyjne): kroki z progami awansu i regresu |
 | FR-033 | Awans (Założenie PRD): 3 serie × min. 10 powtórzeń; dla ćwiczeń jednostronnych — min. 10 powtórzeń na lewą i prawą stronę |
-| FR-034 | Regres (Założenie PRD): 2 kolejne **dni** (`local_date`) z zaliczoną próbą poniżej minimum progu = powrót o 1 krok — nie 2 wiersze `workout_sessions` tego samego dnia |
-| FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync). Przy ocenie: `fail_streak` / decyzja advance|regress z **historii** aktywnych logów ćwiczenia uporządkowanej po `(local_date ASC, performed_at ASC, id)` (wraz z bieżącą sesją) — nie z kolejności pushy. Out-of-order apply **nie** voiduje wcześniejszych `progression_events` / nie rewinduje kroku (spójne z FR-038) |
+| FR-034 | Regres (Założenie PRD): 2 kolejne **zaliczone próby** danego ćwiczenia poniżej minimum progu = powrót o 1 krok. „Kolejne” = następne w historii po `(local_date ASC, performed_at ASC, id)` — **nie** sąsiednie daty kalendarzowe i **nie** 2 wiersze `workout_sessions` tego samego dnia (FR-039: max 1 aktywny log CC / ćwiczenie / `local_date`). Odstęp kalendarzowy (tydzień splitu, urlop) **nie** przerywa streaku. Szczegóły resetów: FR-034a |
+| FR-034a | **`fail_streak` (wariant A):** fold aktywnych logów (`skipped=false`, `superseded_at IS NULL`) po `(local_date, performed_at, id)`. Fail poniżej progu → `fail_streak += 1`; gdy `fail_streak >= rules.regress.fail_sessions` (MVP: 2) → regres −1 krok (min 1), potem **`fail_streak = 0`**. Sukces progu / awans → `fail_streak = 0`. `manual_override` → `fail_streak = 0` (FR-038). Kolumna `user_exercise_progress.fail_streak` = **cache** wyniku folda; źródło prawdy = historia logów (zapis obu w tej samej TX co evaluate). Out-of-order: bez rewind `progression_events` / kroku (FR-035/038) |
+| FR-035 | Automatyczna ocena progresji na serwerze po utrwaleniu sesji CC (zapis online lub apply outbox po sync). Przy ocenie: `fail_streak` / decyzja advance|regress z **historii** aktywnych logów ćwiczenia uporządkowanej po `(local_date ASC, performed_at ASC, id)` (wraz z bieżącą sesją) — nie z kolejności pushy; reguły resetu FR-034a. Out-of-order apply **nie** voiduje wcześniejszych `progression_events` / nie rewinduje kroku (spójne z FR-038) |
 | FR-036 | Po nowych `progression_events` (advance/regress) z serwera — **obowiązkowy** surface UI: modal (preferowany) lub sticky banner z nazwą ćwiczenia i nowym krokiem; ta sama ścieżka po zapisie online i po sync. Zakaz cichej-only zmiany numeru kroku. Web Push awansu = Faza 2 |
 | FR-037 | Przy ocenie sesji serwer zapisuje `rules_snapshot` + `progression_schema_version` na logu; późniejsza zmiana seedu nie reinterpretuje historii |
-| FR-038 | Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; push z `revision == existing + 1` i innym content hash pól zamrożonych → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind+replay w F1). Przy soft-delete **ocenionej** sesji UI **musi** pokazać modal no-rewind (PL) z CTA do `manual_override` (US-016b). **`manual_override` = first-class F1** (nie „opcjonalny”): jawna zmiana `current_step_number` + `fail_streak=0` + `progression_events.event_type=manual_override`; bez reinterpretacji historii logów. `notes` wolno zmienić bez re-evaluate |
-| FR-039 | Jednostka progresji CC = `(user, exercise, local_date)`: max **jeden** aktywny log CC danego ćwiczenia na dany `local_date` — aktywny = `skipped=false` AND `superseded_at IS NULL` (soft-delete sesji w tej samej TX ustawia `superseded_at` na child logach). Egzekucja: **obowiązkowy** partial UNIQUE w DB + check serwisowy; drugi INSERT → `409 duplicate_exercise_same_day` (także przy race dual-device). Korekta = soft-delete sesji + nowa sesja (FR-038). `fail_streak` liczy kolejne **dni** z nieudaną zaliczoną próbą. Wiele `workout_sessions` na dzień dozwolone (np. rano satelity, wieczór CC) |
+| FR-038 | **Daty sesji (Rel4 / wariant A):** `workout_sessions.performed_at` i `local_date` są **immutable od create** (także przed evaluate) — push zmieniający te pola przy `existing+1` → `409` + `conflict_kind=session_date_immutable` (lub ten sam `session_immutable_after_evaluate` z `error_code=session_date_immutable`); korekta daty = soft-delete + **nowa** sesja. Denorm na logach kopiowana **tylko przy INSERT** — brak kaskady UPDATE (nieaktualna). Po pierwszej udanej ocenie sesji (A1): pola wpływające na progresję (`sets`, `skipped`, `step_number`, skład logów CC) są **immutable**; push z `revision == existing + 1` i innym content hash pól zamrożonych → `409 session_immutable_after_evaluate` (bez nadpisu). Poprawka wyniku = soft-delete sesji + **nowa** sesja. Soft-delete **nie** cofa automatycznie `progression_events` / kroku (brak rewind+replay w F1). Przy soft-delete **ocenionej** sesji UI **musi** pokazać modal no-rewind (PL) z CTA do `manual_override` (US-016b). **`manual_override` = first-class F1** (nie „opcjonalny”): jawna zmiana `current_step_number` + `fail_streak=0` + `progression_events.event_type=manual_override`; bez reinterpretacji historii logów. `notes` wolno zmienić bez re-evaluate |
+| FR-039 | Jednostka progresji CC = `(user, exercise, local_date)`: max **jeden** aktywny log CC danego ćwiczenia na dany `local_date` — aktywny = `skipped=false` AND `superseded_at IS NULL` (soft-delete sesji w tej samej TX ustawia `superseded_at` na child logach). Egzekucja: **obowiązkowy** partial UNIQUE w DB + check serwisowy; drugi INSERT → `409 duplicate_exercise_same_day` (także przy race dual-device). Korekta = soft-delete sesji + nowa sesja (FR-038). `fail_streak` liczy kolejne **zaliczone próby** (jedna na `local_date` dzięki UNIQUE), nie kalendarzowe sąsiedztwo dat — FR-034a. Wiele `workout_sessions` na dzień dozwolone (np. rano satelity, wieczór CC) |
 
 ### 3.5 Logowanie sesji treningowej (Faza 1)
 
 | ID | Wymaganie |
 |----|-----------|
 | FR-040 | Jeden ekran „dzisiejsza sesja” (widok złożony): agreguje wszystkie aktywne `workout_sessions` z `local_date = dziś`; sekcje Program główny (CC) → Dodatki (satelity) → notatki; dopisanie po evaluate wcześniejszego bloku = **nowa** sesja tego samego dnia (spójne z FR-038) |
-| FR-040a | `local_date` i timezone (Pr4): `users.timezone` (IANA; default `Europe/Warsaw`). Online **GET /today**: `local_date = dziś w users.timezone` (serwer). Offline: ta sama reguła z cache timezone. Zapis sesji: klient wysyła `local_date` + `performed_at`; serwer akceptuje, jeśli \|`local_date` − data(`performed_at` w `users.timezone`)\| ≤ 1 dzień; inaczej `422 local_date_mismatch`. Zmiana timezone **nie** przepisuje historycznych `local_date`. Progresja / FR-039 zawsze po utrwalonym `local_date` wiersza |
-| FR-040b | Read-model dnia (Perf6): **jeden** `GET /today` → `TodaySessionDto`: `local_date`, `timezone`, `split_day`, `is_rest_day`, `cc_exercises[]` (id, name, step, progi), `satellites[]` (dziś), `sessions[]` (aktywne tego `local_date` + logs **bez** `rules_snapshot`), `progress[]` (CC). Offline: ten sam kształt z cache + `resolve_cc_day` |
+| FR-040a | `local_date` i timezone (Pr4 + Rel4/PROD-06): `users.timezone` (IANA; default `Europe/Warsaw`). Online **GET /today**: `local_date = dziś w aktywnej users.timezone` (serwer). Offline: ta sama reguła z cache timezone. **Reguła klienta:** `local_date` sesji = data **rozpoczęcia** logowania w aktywnej TZ (nie data „zapisz” po północy); `performed_at` = moment startu bloku (lub pierwszego zapisu serii). Zapis: klient wysyła `local_date` + `performed_at`; serwer akceptuje, jeśli \|`local_date` − data(`performed_at` w **strefie walidacji**)\| ≤ 1 dzień; inaczej `422 local_date_mismatch`. Strefa walidacji: aktywna `users.timezone`, a dla itemów outbox także opcjonalne `client_timezone` (FR-040c / Rel10). **`local_date` / `performed_at` immutable od create** (FR-038); zmiana timezone **nie** przepisuje historycznych `local_date`. Progresja / FR-039 zawsze po utrwalonym `local_date` wiersza. Flow zmiany TZ: FR-040c |
+| FR-040c | **Zmiana timezone (wariant A):** Ustawienia → IANA (lista / z urządzenia). `PATCH` (CSRF): `pending_timezone` + `timezone_effective_on = jutro` w **bieżącej aktywnej** TZ; do promote jak FR-022b. Historia bez zmian. UI: przed zapisem **preferowany flush** outbox; copy o wejściu od jutra. Outbox apply: nie quarantine tylko dlatego, że TZ się zmieniła — waliduj `local_date_mismatch` względem aktywnej TZ **lub** `client_timezone` zapisanego przy enqueue (FR-040a) |
+| FR-040b | Read-model dnia (Perf6): **jeden** `GET /today` → `TodaySessionDto`: `local_date`, `timezone`, `split_day`, `is_rest_day`, opcjonalnie `cc_day_override` (1–3), `cc_exercises[]` (id, name, step, progi), `satellites[]` (dziś), `sessions[]` (aktywne tego `local_date` + logs **bez** `rules_snapshot`), `progress[]` (CC). Query `cc_day_override` tylko gdy rest (FR-024a); przy non-rest ignoruj lub 422. Offline: ten sam kształt z cache + `resolve_cc_day` |
 | FR-041 | Czas logowania standardowej sesji: docelowo poniżej 3 minut |
 | FR-042 | Metryki logowania per ćwiczenie w kontrakcie JSONB z `schema_version` (np. `SessionSetsV1`: reps, duration_sec, weight_kg, sides, notes) |
 | FR-043 | Formularz dostosowany do aktywnych metryk danego ćwiczenia |
 | FR-044 | Historia sesji z datą, listą ćwiczeń i wynikami |
-| FR-045 | Badge „cel osiągnięty” dla ćwiczeń typu B/C — wyliczany na serwerze przy utrwaleniu sesji (`goal_met`) |
+| FR-045 | Badge „cel osiągnięty” dla ćwiczeń typu B/C — wyliczany na serwerze przy utrwaleniu sesji (`goal_met`) z **`rules_snapshot.goal`** (kopia `exercise_steps.rules` bieżącego kroku; FR-051a) |
 | FR-046 | Każdy payload JSON (reguły, sety, pomiary, onboarding, outbox) musi przejść kontrakt wersjonowany; brak `schema_version` → 422 |
 | FR-046a | Write DTO (S5): modele create/update/push sesji, logów, progress **nie przyjmują** z klienta: `goal_met`, `goal_evaluated_at`, `rules_snapshot`, `progression_schema_version`, `current_step_number`, `fail_streak`, `progression_events`. Pola te ustawia wyłącznie serwer / `ProgressionEngine`. Jeśli klient je wyśle — **strip** (ignoruj) + metryka; nie zapisuj. Test: push z `goal_met: true` nie ustawia pola przed evaluate |
 
@@ -189,9 +214,10 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | ID | Wymaganie |
 |----|-----------|
 | FR-050 | Maksymalnie 10 aktywnych ćwiczeń satelitarnych na konto |
-| FR-051 | Typ B (powtarzalne): stały cel serie × powtórzenia lub czas |
-| FR-052 | Typ C (mobility/recovery): log „wykonane” + opcjonalny czas |
-| FR-053 | Opcjonalna mini-progresja 2–5 kroków dla satelitów (ten sam silnik reguł co CC) |
+| FR-051 | Typ B (powtarzalne): stały cel serie × powtórzenia lub czas — cel w `exercise_steps.rules.goal` (FR-051a) |
+| FR-051a | **Cel B/C = zawsze w `exercise_steps` (wariant A):** każdy satelita (`kind='satellite'`) ma **≥1** wiersz `exercise_steps` z `rules` + `schema_version` + `progression_schema_id`. Bez mini-progresji: dokładnie **1** krok (`step_number=1`) niosący cel (`goal`). Typ C: `goal.type = completed` (wykonane ± opcjonalny czas w `sets`). Typ B: `goal` z progiem (np. `sets`×`min_reps` lub `min_duration_sec`). **Zakaz** satelity bez kroków. Przy evaluate: serwer kopiuje `rules` → `rules_snapshot`, ustawia `goal_met` / `goal_evaluated_at` (FR-045) — ten sam silnik ścieżki co CC |
+| FR-052 | Typ C (mobility/recovery): log „wykonane” + opcjonalny czas; cel z kroku 1 (FR-051a) |
+| FR-053 | Opcjonalna mini-progresja **dodatkowych** kroków: łącznie **2–5** `exercise_steps` (ten sam silnik reguł co CC / `advance`/`regress`); bez mini-progresji pozostaje **1** krok-cel (FR-051a) |
 | FR-054 | Tworzenie od zera lub klonowanie istniejącego ćwiczenia |
 | FR-055 | Pole equipment[]: bodyweight, dumbbell, kettlebell, foam_roller, ball, bench i inne tagi |
 | FR-056 | Harmonogram satelity: dzień tygodnia LUB codziennie LUB kategoria (dowolnie / po treningu / dzień odpoczynku) |
@@ -203,7 +229,7 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | ID | Wymaganie |
 |----|-----------|
 | FR-060 | Logowanie wagi (kg) i obwodów (cm) |
-| FR-061 | Domyślne metryki (Założenie PRD): waga, pas, biceps; opcjonalnie: klatka, udo, szyja |
+| FR-061 | Domyślne metryki (Założenie PRD): waga, pas, biceps; opcjonalnie: klatka, udo, szyja, brzuch, biodra, łydka |
 | FR-062 | Użytkownik wybiera, które metryki śledzi |
 | FR-063 | Wpis pomiarowy z datą i opcjonalną notatką |
 | FR-064 | Historia pomiarów w formie listy chronologicznej |
@@ -213,16 +239,17 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 
 | ID | Wymaganie |
 |----|-----------|
-| FR-070 | Lokalna baza (IndexedDB): pełny program CC + **ostatnie 30** aktywnych sesji + pomiary z okna **365 dni** + cache kroków z serwera (read-only). **Te same limity obowiązują API pull** — klient nie trzyma więcej niż serwer oddaje w sync offline |
+| FR-070 | Lokalna baza (IndexedDB): pełny program CC + **ostatnie 30** aktywnych sesji + pomiary z okna **365 dni** + cache kroków z serwera (read-only). **Te same limity obowiązują API pull** — klient nie trzyma więcej niż serwer oddaje w sync offline. Trwałość storage: FR-070a |
+| FR-070a | **Persistent storage (Rel5 / wariant A):** przy starcie PWA oraz przy **pierwszym** enqueue outbox wywołaj `navigator.storage.persist()` (best-effort; przeglądarka może odmówić). Zapisz wynik lokalnie (`persisted: boolean`); opcjonalna metryka/log bez PII. Gdy `persisted === false` **i** liczba itemów outbox w stanie `pending`/`in_flight`/`quarantine` **> 0**: obowiązkowy badge/banner PL o ryzyku utraty niezsynchronizowanych danych + CTA instalacji PWA / „Dodaj do ekranu początkowego” (iOS). Ustawienia → Synchronizacja: status persistence + wiek najstarszego pending. **Nie** traktuj `persist()` jako twardej gwarancji — warstwa UX |
 | FR-071 | Logowanie sesji i pomiarów bez połączenia z internetem (bez lokalnej oceny progresji) |
 | FR-071a | Po zapisie sesji offline: obowiązkowy badge „Oczekuje na synchronizację” + copy, że ocena awansu/regresu nastąpi po sync; krok CC = ostatni znany z cache z etykietą „Stan z ostatniego syncu”. **Zakaz** celebracji awansu/`goal_met` lokalnie przed wynikiem serwera |
 | FR-072 | Outbox pattern: kolejka zmian lokalnych synchronizowana w tle po powrocie online |
 | FR-072a | Kolejność outbox (Rel3): przed POST klient sortuje; serwer sortuje defensywnie ponownie. Sesje: `(performed_at ASC, id ASC)`; pomiary: `(measured_at ASC, id ASC)`; satelity: `(client_updated_at ASC, id ASC)`. W batchu: sesje → pomiary → satelity. **Korekta A1 / FR-038–039:** soft-delete (tombstone) sesji **przed** create nowej sesji kolidującej po `(exercise_id, local_date)` CC — nawet gdy surowy sort `(performed_at, id)` sugeruje odwrotnie. Serwer: przy `409 duplicate_exercise_same_day`, jeśli w **tym samym batchu** jest jeszcze nieprzetworzony soft-delete rodzica kolidującego aktywnego logu → **odłóż create** (przetwórz delete najpierw / defer w batchu), **nie** od razu quarantine. Zakaz sortu po `updated_at` serwera / FIFO enqueue jako arbiter apply. `replace_session` (jedna mutacja) = opcjonalne uproszczenie F1.1, nie wymagane MVP |
 | FR-072b | Retry outbox (Rel4): klasyfikacja — `applied`/`idempotent` → drop z kolejki; konflikty Pr3 (`conflict_*` / immutable) → ACK+UI, bez retry sieciowego; **401** → stop flush, kolejka nienaruszona, login, po reauth flush; **422** / **409 duplicate_*** / **403** limit / **`revision_jump`** / `mutation_payload_mismatch` → **quarantine** (auto-retry off; UI „Wymaga uwagi”); **408/429/5xx/network** → retryable: backoff `min(15min, 15s×2^attempt) + jitter 0–30%`; po 5 kolejnych transport fail — escalation UI (US-055), ale retry w tle z cap; brak sieci → pause do `online`. Stany itemu: `pending\|in_flight\|quarantine\|synced`. Zakaz drop kolejki po N failach. Kompatybilne z partial ACK (FR-072c) |
 | FR-072c | Batch push (Perf3/Rel8): `POST /sync/push` — max **20** items (po sort FR-072a); `len>20` → `422 batch_too_large`. Serwer: **per-item transakcja** (encja + idempotencja + silnik/conflict); odpowiedź **200** z `results[]` 1:1 (`client_mutation_id` + status); opcjonalnie `truncated: true` + krótsze `results` przy budżecie czasu (~10s) — nieprzetworzone zostają `pending`. Klient: pętla okien ≤20; mutex 1 flush naraz; ACK tylko po jawnym `results[i]` (FR-072b). Response może zawierać `progression_events[]` z requestu. Zakaz jednej TX all-or-nothing na cały batch; zakaz cichego ACK bez wyniku itemu |
-| FR-072d | Idempotencja / races (Rel6): każdy item push / create z klienta **musi** mieć `client_mutation_id` (UUID) — brak → 422. Na początku per-item tx: **claim** `INSERT client_mutations` (UNIQUE `user_id, client_mutation_id`); konflikt → ten sam content hash ⇒ `idempotent`, inny hash ⇒ `rejected` `mutation_payload_mismatch` (quarantine, bez nadpisu). Potem upsert encji; przy sesji CC: `FOR UPDATE` na `user_exercise_progress` (**exercise_id ASC** jeśli wiele) **po** claim i po zapisie sesji — stała kolejność locków (anti-deadlock). Kolumny `client_mutation_id` na encjach syncowanych z klienta (`workout_sessions`, `body_measurements`, satelity): **NOT NULL** + UNIQUE `(user_id, client_mutation_id)`. Klient generuje id przy enqueue, nie zmienia payloadu bez nowego id |
-| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer. **Accept update tylko gdy `incoming.revision == existing.revision + 1`** (create: serwer wymusza `revision=1`). `incoming < existing` → `conflict_lost`; `incoming == existing` + ten sam content hash → idempotent; `incoming == existing` + różny hash → `409 conflict_tie`; **`incoming > existing + 1` → `rejected` `error_code=revision_jump` (quarantine, bez nadpisu)**. Log konfliktów w UI. **Wyjątek sesji ocenionych:** FR-038 (immutable) — nawet przy `existing+1` LWW nie nadpisuje `sets` po evaluate |
-| FR-073a | UX konfliktów sync (Pr3): po ACK `conflict_lost` → toast + link do szczegółów; `conflict_tie` / `session_immutable_after_evaluate` → **modal** (obowiązkowy). Lokalnie zawsze winning snapshot. Lista: Ustawienia → Synchronizacja → Konflikty (`sync_conflict_logs` / pull). Badge „Konflikt” na encji do lokalnego ack (`conflict.id` w IndexedDB). Recovery: CTA „Zapisz przegraną jako nową encję” z `losing_payload` (nowe `id`, `revision=1`) — **zakaz** nadpisu serwera przegraną / merge pól. Batch flush: max 1 modal zbiorczy + lista; lost_push może być toast-only. Retencja logów serwerowych: 90 dni (best-effort F1) |
+| FR-072d | Idempotencja / races (Rel6 / Rel3 concurrency): każdy item push / create z klienta **musi** mieć `client_mutation_id` (UUID) — brak → 422. Na początku per-item tx: **claim** `INSERT client_mutations` (UNIQUE `user_id, client_mutation_id`); konflikt → ten sam content hash ⇒ `idempotent`, inny hash ⇒ `rejected` `mutation_payload_mismatch` (quarantine, bez nadpisu). **Update LWW (anti lost-update):** apply jako atomowy CAS — `UPDATE … SET … WHERE id = :id AND user_id = :session_user_id AND revision = :incoming - 1`; `rowcount = 1` → `applied`; `rowcount = 0` → ponowny `SELECT` i klasyfikacja (`conflict_lost` / `conflict_tie` / `revision_jump` / `not_found`) — **zakaz** ścieżki „odczyt existing.revision → decide → UPDATE bez guardu”. Alternatywa równoważna: `SELECT … FOR UPDATE` na wierszu encji **przed** porównaniem revision (wtedy lock order: claim → encja → progress). Przy sesji CC: `FOR UPDATE` na `user_exercise_progress` (**exercise_id ASC** jeśli wiele) **po** claim i po zapisie/CAS sesji — stała kolejność locków (anti-deadlock). Kolumny `client_mutation_id` na encjach syncowanych z klienta (`workout_sessions`, `body_measurements`, satelity): **NOT NULL** + UNIQUE `(user_id, client_mutation_id)`. Klient generuje id przy enqueue, nie zmienia payloadu bez nowego id. **Test CI:** dwa równoległe pushe `rev = existing+1` (różne hashe) → dokładnie jeden `applied`, drugi `conflict_tie` + `sync_conflict_logs`; nigdy dwa `applied` |
+| FR-073 | Rozwiązywanie konfliktów (Założenie PRD): last-write-wins per encja po **`revision`** (nie po zegarze klienta); `client_updated_at` = hint; `updated_at` tylko serwer. **Accept update tylko gdy `incoming.revision == existing.revision + 1`**, egzekwowane atomowo (CAS / FR-072d) — nie przez niesynchronizowany odczyt `existing`. Create: serwer wymusza `revision=1`. `incoming < existing` → `conflict_lost`; `incoming == existing` + ten sam content hash → idempotent; `incoming == existing` + różny hash → `409 conflict_tie`; **`incoming > existing + 1` → `rejected` `error_code=revision_jump` (quarantine, bez nadpisu)**. Log konfliktów w UI. **Wyjątki sesji:** (1) `local_date`/`performed_at` immutable od create (FR-038) — LWW **nie** zmienia dat nawet przed evaluate; (2) po evaluate: FR-038 — nawet przy `existing+1` LWW nie nadpisuje `sets` |
+| FR-073a | UX konfliktów sync (Pr3): po ACK `conflict_lost` → toast + link do szczegółów; `conflict_tie` / `session_immutable_after_evaluate` → **modal** (obowiązkowy). Lokalnie zawsze winning snapshot. Lista: Ustawienia → Synchronizacja → Konflikty (`sync_conflict_logs` / pull). Badge „Konflikt” na encji do lokalnego ack (`conflict.id` w IndexedDB). Recovery: CTA „Zapisz przegraną jako nową encję” z `losing_payload` (nowe `id`, `revision=1`) — **zakaz** nadpisu serwera przegraną / merge pól. Batch flush: max 1 modal zbiorczy + lista; lost_push może być toast-only. Retencja logów serwerowych: 90 dni (best-effort F1). **De-scope poślizg (FR-084):** lista + recovery draft → toast-only + winning (F1.0/beta); pełny FR-073a = F1.1 gdy czas pozwala |
 | FR-074 | Po sync/apply sesji serwer uruchamia silnik i zwraca zaktualizowane `progress[]` oraz nowe `progression_events[]` (w odpowiedzi push i/lub w `SyncPull`); klient nadpisuje cache i uruchamia surface FR-036 (idempotentnie po `event.id`). Ponowne apply tej samej treści nie dubluje eventów; zmiana treści po evaluate → FR-038 |
 | FR-075 | Pull sync (`SyncPull`): jeden read-model — sesje z **zagnieżdżonymi** logami (bez N+1); w projekcji offline **bez** `rules_snapshot` (zostaje w DB / detail); logi mają `sets`, `goal_met`, `progression_schema_version`, snapshoty nazw; soft-deleted w oknie = tombstone (`id`, `deleted_at`); katalog CC osobno z `catalog_version` / ETag; starsza historia sesji/pomiarów — lazy online |
 | FR-075a | Katalog CC (Perf7): `GET /catalog/cc` (lub równoważny) honoruje `If-None-Match` / `catalog_version` → **304** gdy bez zmian; bump `catalog_version` przy każdej zmianie seedu `ready` |
@@ -232,10 +259,12 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | ID | Wymaganie |
 |----|-----------|
 | FR-080 | Disclaimer: aplikacja nie zastępuje porady lekarskiej ani fizjoterapeutycznej |
-| FR-081 | Polityka prywatności obejmująca dane biometryczne i pomiary ciała; opisuje delete (FR-006a: pomiary od razu, treningi do 30 dni) oraz export (FR-006b). Szyfrowanie at-rest / column encryption — **poza F1** (świadomie) |
+| FR-081 | Polityka prywatności obejmująca dane biometryczne i pomiary ciała; opisuje delete (FR-006a: pomiary od razu, treningi do 30 dni), export (FR-006b) oraz **kopie zapasowe** (FR-081a: dane mogą pozostawać w backupach do ≤30 dni po usunięciu). Szyfrowanie kolumn / at-rest volume — **poza F1** (świadomie); **szyfrowanie plików backupu — wymagane w F1** (FR-081a) |
+| FR-081a | Backup i restore PostgreSQL (Rel1 / F1, **wymagane przed public beta/prod**): nocny pełny `pg_dump` (lub równoważny) **poza hostem aplikacji**; **RPO ≤ 24 h**, **RTO ≤ 4 h**; retencja backupów **≤ 30 dni** (spójna z grace delete FR-006a); pliki backupu **szyfrowane** (np. age/gpg) w spoczynku; job wyłącznie lokalnym cronem / serwisem Compose (jak purge — **zakaz** publicznego ani internal HTTP triggera); structured log `backup.ok` / `backup.fail` + heartbeat (cisza = incydent). Restore: udokumentowany runbook + **restore drill** (CI lub okresowy checklist) przed prod. Przed migracją Alembic na prod — świeży backup (Rel16). Klient IndexedDB **nie** jest backupem serwera. Szczegóły: `docs/db-plan.md` § Backup & restore |
 | FR-082 | Agent AI i satelity rehab oznaczone jako uzupełnienie, nie diagnoza ani leczenie |
 | FR-082a | Analytics (S8): tylko allowlist nazw zdarzeń; **zakaz** w props: wartości cm/kg, email, pełne `sets`, `rules_snapshot`. Dozwolone: `exercise_slug`, `step_number`, counts, booleans, opcjonalnie `local_date`. Dotyczy Mixpanel/PostHog/Plausible |
 | FR-083 | Ostrzeżenie UI przy tworzeniu ćwiczeń z tagiem rehab/prehab (Założenie PRD) |
+| FR-084 | **Kamienie F1 i de-scope (Pr10):** dostawa F1.0 → F1.1 → F1.prod wg §1.4a. F1.0 = online pętla + sync happy-path + backup job; F1.1 = pełny offline/konflikty/persist/Trenuj mimo to/schedule settings; F1.prod = restore drill + 60× `ready` (content track od tyg. 1). Przy poślizgu: lista de-scope z §1.4a (kolejność 1→5). **Zakaz** de-scope silnika, FR-039, CAS, backup przed prod, IDOR suite |
 
 ### 3.10 Agent AI (Faza 2, Premium)
 
@@ -315,8 +344,10 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 - Logowanie sesji (<3 min), historia, badge celu dla B/C (badge/ocena po stronie serwera)
 - Do 10 ćwiczeń satelitarnych (typ B/C, harmonogram w tym „codziennie”)
 - Pomiary sylwetki: log + historia + konfiguracja metryk
-- Offline + outbox sync (LWW po **`revision`**): offline zapisuje sesje/pomiary; awans/regres po sync z obowiązkowym surface UI (FR-036/071a); order FR-072a; retry/quarantine FR-072b; batch ≤20 + partial ACK FR-072c; idempotencja FR-072d; **SyncPull** ≤30 sesji / pomiary 365d / bez `rules_snapshot` (FR-070/075)
-- Disclaimer zdrowotny, polityka prywatności
+- Offline + outbox sync (LWW po **`revision`**, **CAS** FR-072d): offline zapisuje sesje/pomiary; awans/regres po sync z obowiązkowym surface UI (FR-036/071a); order FR-072a; retry/quarantine FR-072b; batch ≤20 + partial ACK FR-072c; idempotencja FR-072d; **SyncPull** ≤30 sesji / pomiary 365d / bez `rules_snapshot` (FR-070/075) — **F1.1** dla pełnego UX konfliktów; F1.0 = happy-path (FR-084)
+- Disclaimer zdrowotny, polityka prywatności (w tym retencja backupów ≤30 dni — FR-081a)
+- Backup/restore PostgreSQL przed public beta/prod (FR-081a)
+- Kamienie F1.0 / F1.1 / F1.prod + lista de-scope (FR-084 / §1.4a)
 
 ### 4.2 W scope — Faza 2
 
@@ -357,34 +388,43 @@ Wymagania oznaczone fazą określają, kiedy funkcja jest dostarczana.
 | Kwestia | Decyzja |
 |---------|---------|
 | Split CC | D1: pompki + HSPU; D2: podciągania + mostek; D3: przysiady + unoszenie nóg |
-| Split / TZ (Pr4) | Fixed weekdays od `anchor_weekday` (+2/+4 → D2/D3); rest w pozostałe; `local_date` w `users.timezone`; walidacja ±1 dzień (FR-022a/040a); rolling poza F1 |
-| Progi progresji | 3×10 = awans; 2 **dni** z zaliczoną próbą poniżej min = regres −1 krok (FR-034/039) |
+| Split / TZ (Pr4) | Fixed weekdays; rest + Trenuj mimo to (FR-024a); zmiana `anchor`/`timezone` w ustawieniach od jutra (FR-022b/040c); historia bez przepisywania; rolling poza F1 |
+| Progi progresji | 3×10 = awans; 2 kolejne **zaliczone próby** poniżej min = regres −1; przerwa kalendarzowa nie zeruje; sukces/awans/regres/override → `fail_streak=0` (FR-034/034a/039) |
 | Silnik progresji | Wyłącznie backend (FastAPI); brak drugiej implementacji w kliencie; offline nie liczy awansu/regresu |
 | Offline UX awansu (Pr2) | Pending: obowiązkowy copy + badge (FR-071a); po sync: obowiązkowy modal/banner awansu/regresu (FR-036/074); bez lokalnej celebracji |
 | Kontrakty JSON | Każdy JSONB/`schema` API ma `schema_version`; Pydantic + Zod; snapshot reguł na logu sesji (FR-037) |
-| Sync konfliktów | LWW po **`revision`**: accept tylko `existing+1` (create=1); jump → `revision_jump` quarantine; remis → 409; `client_updated_at` hint; stan progresji = silnik (FR-073) |
+| Sync konfliktów | LWW po **`revision`**: accept tylko `existing+1` (create=1), **atomowy CAS** (FR-072d); jump → `revision_jump` quarantine; remis → 409; `client_updated_at` hint; stan progresji = silnik (FR-073) |
 | Konflikt UX (Pr3) | Surface per kind (FR-073a); lista + badge; recovery = nowa encja z `losing_payload`; bez merge / overwrite serwera |
-| Sesja po evaluate (A1) | Immutable `sets`/progresja po pierwszej ocenie; poprawka = soft-delete + nowa sesja; soft-delete nie rewinduje kroku + **obowiązkowy** modal no-rewind; `manual_override` first-class F1 (FR-038 / US-016b); rewind+replay poza F1 |
-| Sesje / dzień (P1) | Wiele wierszy sesji na `local_date` OK; UI jeden ekran agregujący; max 1 aktywny log CC / ćwiczenie / dzień (`superseded_at` + partial UNIQUE); streak po dniach (FR-039) |
+| Sesja po evaluate (A1) | Immutable `sets`/progresja po ocenie; **`local_date`/`performed_at` immutable od create** (Rel4); poprawka daty/wyniku = soft-delete + nowa sesja; `local_date` = start logowania (PROD-06); soft-delete nie rewinduje kroku + modal no-rewind; `manual_override` first-class F1 (FR-038/040a) |
+| Sesje / dzień (P1) | Wiele wierszy sesji na `local_date` OK; UI jeden ekran agregujący; max 1 aktywny log CC / ćwiczenie / dzień (`superseded_at` + partial UNIQUE); streak po kolejnych próbach (FR-034a/039) |
 | Sync pull (Perf1) | Okno 30 sesji + pomiary 365 dni = IndexedDB; pull bez `rules_snapshot`; logi zagnieżdżone w sesji; `catalog_version` (FR-070/075) |
 | Outbox order (Rel3) | Sort `(performed_at, id)` + **tombstone przed create** przy korekcie A1; serwer defer create przy duplicate gdy delete w batchu (FR-072a); streak z historii `local_date` |
 | Outbox retry (Rel4) | Macierz 401/422/5xx; backoff+jitter; quarantine poison; bez drop kolejki (FR-072b) |
 | Outbox batch (Perf3/Rel8) | ≤20 items; per-item tx; `results[]` + opcjonalnie `truncated`; pętla okien (FR-072c) |
-| Idempotencja (Rel6) | `client_mutation_id` obowiązkowe; claim-first; lock order; mismatch → reject (FR-072d) |
-| Indeks silnika (Perf5) | Denorm `performed_at` na logu; partial index po `(local_date, performed_at, id)`; bez sortu po `created_at` |
+| Idempotencja (Rel6) | `client_mutation_id` obowiązkowe; claim-first; **CAS na revision** przy update; lock order claim→encja→progress; mismatch → reject (FR-072d) |
+| Indeks silnika (Perf5) | Denorm `performed_at`/`local_date` na logu **tylko INSERT**; daty sesji immutable od create (Rel4); partial index; bez sortu po `created_at` |
 | Write DTO (S5) | Strip `goal_met` / `rules_snapshot` / progress fields z body (FR-046a) |
 | Today read-model (Perf6) | Jeden `GET /today` = TodaySessionDto (FR-040b) |
 | Disclaimer offline (Pr8) | Lokalny gate + outbox legal (FR-014a) |
 | Abuse (S7) | CORS allowlist; rate limit 429; body ≤1MB (FR-005c) |
 | Analytics (S8) | Allowlist event props; zakaz cm/kg (FR-082a) |
 | Catalog cache (Perf7) | `If-None-Match` / 304 (FR-075a) |
-| At-rest encryption | Poza F1 (świadomie; bez wymogu volume encryption w docs) |
+| At-rest encryption | Column / volume encryption poza F1 (świadomie). **Wyjątek F1:** szyfrowanie plików backupu PG (FR-081a) |
+| Backup / restore (Rel1) | F1 wymagane przed prod: nocny dump poza hostem; RPO 24h; RTO 4h; retencja ≤30d; szyfrowanie pliku; cron Compose bez HTTP; restore drill; zapis w polityce prywatności (FR-081/081a) |
 | Auth F1 (S1/S4) | Google Auth Code + PKCE + `state`; sesja w cookie HttpOnly Secure SameSite; `auth_sessions.token_hash`; zakaz Bearer w JS storage (FR-001/005a) |
 | Izolacja (S3) | Deny-by-default `get_for_user` + sync push; IDOR suite (w tym sync/account/session detail); RLS F1 tylko `body_measurements`; reszta RLS F2+ (FR-005b) |
-| Delete account (Rel5) | Pomiary+sync meta hard od razu; treningi grace 30d → hard purge tylko cronem Compose (zakaz `/internal` HTTP w F1); export JSON przez **POST + CSRF** (FR-006a/b) |
-| Pomiary domyślne | waga, pas, biceps; przypomnienie co 7 dni (F2, premium); offline/pull: ostatnie 365 dni |
+| Delete account (Rel5) | Pomiary+sync meta hard od razu; treningi grace 30d → hard purge cron Compose: kolejność FK + 1 TX/user + heartbeat (FR-006a/c); zakaz HTTP trigger; opcjonalny egress ping; export POST+CSRF (FR-006b) |
+| Pomiary domyślne | waga, pas, biceps; opcjonalnie klatka/udo/szyja/brzuch/biodra/łydka; przypomnienie co 7 dni (F2, premium); offline/pull: ostatnie 365 dni |
 | Analiza wideo | Faza 2; transcript + metadata; Vision fallback |
-| Content CC (Pr5) | PCO = founder; scaffold=`draft` OK; prod=60×`ready`; ilustracje per-step poza F1 (FR-020a) |
+| Content CC (Pr5) | PCO = founder; scaffold=`draft` OK; beta = częściowy ready + banner; prod=60×`ready`; content track od tyg. 1 (FR-020a/084) |
+| Satelity cel B/C (Pr6 / FR-051a) | Wariant A: każdy satelita ≥1 `exercise_steps`; cel w `rules.goal`; bez mini-progresji = 1 krok; mini-progresja = 2–5; zakaz satelity bez kroków; `goal_met` z snapshotu przy evaluate |
+| fail_streak (Pr7 / FR-034a) | Wariant A: kolejne zaliczone próby (nie sąsiednie daty); przerwa nie zeruje; sukces/awans/regres/override → 0; kolumna = cache folda |
+| Trenuj mimo to (Pr8 / FR-024a) | Wariant A: rest-day CTA → wybór D1/D2/D3 bez zmiany enrollment; ostrzeżenie bez blokady; serwer akceptuje log CC w rest |
+| Split/TZ ustawienia (Pr9 / FR-022b, FR-040c) | Wariant A: zmiana Pn↔Wt i IANA w ustawieniach; wejście od jutra (pending→promote); historia bez zmian; outbox: `client_timezone` lub flush |
+| Kamienie F1 (Pr10 / FR-084) | F1.0 online+happy-path sync; F1.1 pełny offline/konflikty; F1.prod drill+60×ready; de-scope §1.4a; nie ruszać silnika/CAS/backup/IDOR |
+| Daty sesji (Pr11 / Rel4) | Wariant A: `local_date`/`performed_at` immutable od create; denorm logów tylko INSERT; korekta = soft-delete+nowa; `local_date` = start logowania |
+| Purge kont (Pr12 / FR-006c) | Wariant A: kolejność DELETE pod RESTRICT; 1 TX/user; status pending_grace→pending_job→done; heartbeat cisza≥36h; opcjonalny egress ping |
+| Persistent storage (Pr13 / FR-070a) | Wariant A: `storage.persist()` przy starcie/pierwszym offline; badge gdy !persisted ∧ pending>0; Settings: wiek pending; best-effort |
 
 ---
 
@@ -432,7 +472,7 @@ Opis: Jako użytkownik chcę trwale usunąć konto i powiązane dane, aby skorzy
 Kryteria akceptacji:
 - Ustawienia zawierają „Usuń konto” z potwierdzeniem (np. wpisanie USUŃ).
 - Po potwierdzeniu: sesje auth revoked, cookie wyczyszczone, IndexedDB wyczyszczone; użytkownik na ekranie logowania.
-- Pomiary ciała i meta sync są usunięte od razu; copy informuje, że historia treningów jest usuwana w ciągu 30 dni (FR-006a).
+- Pomiary ciała i meta sync są usunięte od razu; copy informuje, że historia treningów jest usuwana w ciągu 30 dni przez job purge (FR-006a/c — kolejność FK, monitoring).
 - Ponowne logowanie tym samym Google tworzy **nowe** konto (pusty start).
 - Dostępne „Pobierz moje dane” (export JSON) przed usunięciem (FR-006b / US-003b).
 
@@ -447,6 +487,19 @@ Kryteria akceptacji:
 - Endpoint wymaga ważnej sesji; POST bez / z nieprawidłowym CSRF → **403**; po `deleted_at` export niedostępny.
 - Top-level / cross-site **GET** na ścieżkę exportu nie oddaje body z pomiarami (405/404 lub brak trasy GET).
 - (Opcja) POST → one-time download URL z tokenem TTL ~60s bez cookie sesji — też akceptowalne.
+
+### US-003c: Zmiana dni splitu i strefy czasowej
+
+Opis: Jako użytkownik chcę zmienić dni treningowe CC i strefę czasową w ustawieniach, aby dopasować plan do nowego grafiku pracy lub podróży — bez utraty historii.
+
+Kryteria akceptacji:
+- Ustawienia konta: wybór Pn/Śr/Pt ↔ Wt/Czw/Sob (`anchor_weekday` 1|2) oraz strefa IANA (FR-022b / FR-040c).
+- `rotation_offset` nie jest edytowalny w UI F1.
+- Po zapisie copy: „Nowy plan / strefa od jutra”; historia sesji i `local_date` bez zmian.
+- Do dnia wejścia w życie ekran today nadal wg starego anchora / starej TZ; od `effective_on` — nowy układ (promote na serwerze).
+- Mutacja online: `PATCH` + CSRF; IDOR: tylko własne konto.
+- Przed zmianą TZ UI **preferuje** flush outbox; pending itemy nie wpadają w quarantine wyłącznie z powodu nowej TZ (`client_timezone` / FR-040a).
+- Offline: zmiana ustawień wymaga online (brak lokalnego silnika promote) — jasny komunikat; po sync cache enrollment/TZ z pull.
 
 ### US-004: Ochrona chronionych zasobów
 
@@ -483,7 +536,7 @@ Kryteria akceptacji:
 - Wszystkie pytania wymagane muszą być wypełnione przed przejściem dalej.
 - Odpowiedzi są zapisywane na koncie użytkownika.
 - Użytkownik może wrócić do poprzedniego pytania.
-- Onboarding ustawia `users.timezone` (domyślnie z urządzenia / `Europe/Warsaw`) oraz enrollment CC: wybór Pn/Śr/Pt lub Wt/Czw/Sob → `anchor_weekday` (FR-022a).
+- Onboarding ustawia `users.timezone` (domyślnie z urządzenia / `Europe/Warsaw`) oraz enrollment CC: wybór Pn/Śr/Pt lub Wt/Czw/Sob → `anchor_weekday` (FR-022a). Późniejsza zmiana: US-003c.
 
 ### US-007: Opcjonalny test max powtórzeń
 
@@ -527,7 +580,7 @@ Kryteria akceptacji:
 - Online: dane dnia z **jednego** `GET /today` (`TodaySessionDto` — FR-040b): `local_date`, `split_day`, `is_rest_day`, `timezone`, CC, satelity, sesje dnia, progress.
 - Offline: ten sam kształt z cache + `resolve_cc_day`.
 - Każde ćwiczenie wyświetla nazwę, aktualny krok progresji i krótki opis.
-- W dniu odpoczynku CC (`is_rest_day`) sekcja programu głównego jest pusta lub oznaczona jako „dzień odpoczynku”; satelity `daily` / kategoria `rest_day` nadal widoczne (FR-024).
+- W dniu odpoczynku CC (`is_rest_day`) sekcja programu głównego domyślnie pusta / „dzień odpoczynku”; widoczne CTA **„Trenuj mimo to”** (FR-024a / US-053b); satelity `daily` / kategoria `rest_day` nadal widoczne (FR-024).
 - Data sesji (`local_date`) jest widoczna na ekranie.
 - Jeśli tego dnia istnieje już zapisana/oceniona sesja, ekran agreguje jej wyniki i umożliwia **dopisanie** kolejnego bloku jako nowej sesji (np. wieczór po porannych satelitach) — bez edycji ocenionych `sets` (FR-038/039/040).
 - Onboarding ustawia enrollment: domyślnie `anchor_weekday=1` (Pn/Śr/Pt), `rotation_offset=0`, `started_on` = dziś lokalne; opcjonalnie Wt/Czw/Sob (`anchor_weekday=2`).
@@ -541,6 +594,7 @@ Kryteria akceptacji:
 - Dla ćwiczeń jednostronnych dostępny wybór strony (lewa/prawa/obie).
 - Opcjonalne pole notatki per ćwiczenie.
 - Zapis wyniku jest możliwy bez wypełniania wszystkich opcjonalnych pól.
+- Przy starcie bloku sesji klient ustawia `local_date` = data **rozpoczęcia** logowania w TZ użytkownika oraz `performed_at` (FR-040a); **brak** edycji daty po create — korekta daty = soft-delete + nowa sesja (FR-038).
 - Ponowny zapis tego samego ćwiczenia CC na ten sam `local_date` (gdy aktywny log już istnieje) jest odrzucony z komunikatem PL i opcją korekty przez soft-delete + nowa sesja (`409 duplicate_exercise_same_day`, FR-039).
 
 ### US-012: Pominięcie ćwiczenia w sesji
@@ -571,7 +625,7 @@ Opis: Jako użytkownik chcę automatycznie awansować na wyższy krok po spełni
 
 Kryteria akceptacji:
 - Po utrwaleniu sesji na serwerze (zapis online lub po sync outbox) backendowy silnik ocenia próg awansu (3 serie × min. 10 powt.).
-- Przy spełnieniu progu aktualny krok zwiększa się o 1 (max krok 10) wyłącznie po stronie serwera.
+- Przy spełnieniu progu aktualny krok zwiększa się o 1 (max krok 10) wyłącznie po stronie serwera; `fail_streak = 0` (FR-034a).
 - Użytkownik **musi** zobaczyć surface awansu (modal lub sticky banner) z ćwiczeniem i nowym krokiem — po odpowiedzi API zapisu online albo po sync (FR-036); nie wystarczy sama zmiana numeru w UI.
 - Awans jest zapisany w historii progresji na serwerze z datą, powiązaniem z sesją oraz `rules_snapshot` / `progression_schema_version` zgodnymi z regułami użytymi przy ocenie.
 - Klient nie wylicza awansu lokalnie; do czasu sync pokazuje ostatni znany krok z cache z etykietą „Stan z ostatniego syncu” (FR-071a).
@@ -579,12 +633,14 @@ Kryteria akceptacji:
 
 ### US-015: Automatyczny regres kroku progresji
 
-Opis: Jako użytkownik chcę wrócić o krok po dwóch nieudanych sesjach, aby trenować na bezpiecznym poziomie trudności.
+Opis: Jako użytkownik chcę wrócić o krok po dwóch nieudanych próbach, aby trenować na bezpiecznym poziomie trudności.
 
 Kryteria akceptacji:
-- Po 2 kolejnych **dniach** (`local_date`) z zaliczoną próbą poniżej minimum progu (ocena na serwerze) krok zmniejsza się o 1 (min krok 1).
+- Po 2 kolejnych **zaliczonych próbach** poniżej minimum (ocena na serwerze; sort po `local_date` / FR-034a) krok zmniejsza się o 1 (min krok 1); odstęp kalendarzowy (np. tydzień splitu) nie przerywa streaku.
+- Po regresie `fail_streak = 0` (kolejny pojedynczy fail nie powoduje od razu kolejnego regresu).
+- Sukces progu / awans / `manual_override` zerują streak (FR-034a).
 - Dwa fail-logi CC tego samego ćwiczenia w tym samym `local_date` nie są możliwe przy aktywnych sesjach (FR-039); streak nie rośnie o 2 w jeden dzień.
-- Użytkownik **musi** zobaczyć surface regresu (modal lub sticky banner) z wyjaśnieniem po odpowiedzi API / po synchronizacji (copy: nieudane **treningi/dni**, nie „dwa zapisy”) — FR-036.
+- Użytkownik **musi** zobaczyć surface regresu (modal lub sticky banner) po API / sync — copy: „dwie kolejne nieudane **próby**” + obie daty prób (nie „dwa zapisy tego samego dnia”) — FR-036.
 - Regres nie następuje poniżej kroku 1.
 - Regres jest zapisany w historii progresji na serwerze.
 - Klient nie wylicza regresu lokalnie.
@@ -642,10 +698,11 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę utworzyć własne ćwiczenie satelitarne, aby śledzić mobility, rehab lub ćwiczenia uzupełniające poza programem CC.
 
 Kryteria akceptacji:
-- Formularz tworzenia: nazwa, typ (B lub C), aktywne metryki, opcjonalne kroki progresji (min. 2 jeśli progresyjne).
+- Formularz tworzenia: nazwa, typ (B lub C), aktywne metryki; **zawsze** cel w kroku 1 (FR-051a); opcjonalna mini-progresja → łącznie 2–5 kroków (FR-053).
+- Typ C bez mini-progresji: jeden krok z celem „wykonane”; typ B bez mini-progresji: jeden krok z progiem (serie×powt. lub czas).
 - Wybór tagów equipment[].
 - Wybór harmonogramu: dzień tygodnia / codziennie / kategoria.
-- Po zapisie ćwiczenie pojawia się w limicie max 10 satelitów.
+- Po zapisie ćwiczenie pojawia się w limicie max 10 satelitów; serwer odrzuca create bez `exercise_steps` (422).
 
 ### US-019: Klonowanie i edycja ćwiczenia satelitarnego
 
@@ -673,8 +730,8 @@ Opis: Jako użytkownik chcę zalogować wynik satelity z elastycznymi metrykami,
 
 Kryteria akceptacji:
 - Formularz wyświetla tylko metryki skonfigurowane dla danego ćwiczenia (reps, duration_sec, weight_kg, sides).
-- Typ C: minimum akcja „Wykonano” + opcjonalny czas.
-- Typ B: wymagane pola zgodne z celem (np. 3×10 powtórzeń).
+- Typ C: minimum akcja „Wykonano” + opcjonalny czas; zapis sesji (także same satelity / rest day) **nie** wymaga ręcznego `rules_snapshot` — serwer ustawia snapshot z kroku 1 przy evaluate (FR-051a).
+- Typ B: wymagane pola zgodne z celem kroku (np. 3×10 powtórzeń).
 - Satelita zalogowany w tej samej sesji co CC lub w dniu odpoczynku.
 
 ### US-022: Osiągnięcie celu ćwiczenia typu B/C
@@ -682,9 +739,10 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę otrzymać badge „cel osiągnięty” po spełnieniu progu powtarzalnego ćwiczenia, aby mieć potwierdzenie wykonania planu.
 
 Kryteria akceptacji:
-- Po utrwaleniu sesji na serwerze system ocenia spełnienie celu dla typu B/C i ustawia `goal_met`.
+- Po utrwaleniu sesji na serwerze system ocenia spełnienie celu dla typu B/C z **`rules_snapshot.goal`** (kopia kroku — FR-051a) i ustawia `goal_met`.
 - Przy spełnieniu wyświetlany badge „cel osiągnięty” na ekranie sesji i w historii (po odpowiedzi API / po sync).
 - Dla typu B z mini-progresją spełnienie progu może triggerować awans kroku wyłącznie przez silnik na serwerze.
+- Typ C (1 krok `goal.type=completed`): odhaczenie „Wykonano” → `goal_met` po sync; sesja tylko z satelitami zapisuje się poprawnie (US-053).
 - Brak badge, jeśli cel nie został spełniony (bez blokady zapisu sesji).
 - Offline: sesja zapisuje się lokalnie bez lokalnego wyliczania badge; wynik pojawia się po sync.
 
@@ -706,7 +764,7 @@ Opis: Jako użytkownik chcę wybrać, które pomiary ciała śledzę, aby formul
 
 Kryteria akceptacji:
 - Domyślnie włączone: waga, pas, biceps.
-- Opcjonalnie włączalne: klatka, udo, szyja.
+- Opcjonalnie włączalne: klatka, udo, szyja, brzuch, biodra, łydka.
 - Zmiana konfiguracji aktualizuje formularz „dzisiejszy pomiar”.
 - Konfiguracja jest zapisywana na koncie użytkownika.
 
@@ -751,6 +809,7 @@ Kryteria akceptacji:
 - Silnik progresji **nie** działa offline — awans/regres nie są obliczane na urządzeniu.
 - Program CC i ostatni znany stan kroków (cache z serwera) dostępne offline do podglądu i logowania; przy pending sesji etykieta „Stan z ostatniego syncu”.
 - Po zapisie sesji offline użytkownik **musi** zobaczyć: badge „Oczekuje na synchronizację” oraz copy, że ocena awansu/regresu nastąpi po synchronizacji (FR-071a).
+- Przy pierwszym enqueue outbox (oraz przy starcie PWA) klient wywołuje `navigator.storage.persist()` (FR-070a). Gdy `persisted === false` i jest pending outbox — dodatkowy badge/banner o ryzyku utraty danych + CTA instalacji / „Dodaj do ekranu początkowego”.
 - Zakaz toastów/UI sugerujących awans lub zaliczenie progu przed wynikiem serwera.
 
 ### US-029: Automatyczna synchronizacja po powrocie online
@@ -772,7 +831,8 @@ Kryteria akceptacji:
 Opis: Jako użytkownik korzystający z dwóch urządzeń chcę, aby aplikacja rozwiązywała konflikty danych przewidywalnie, gdy te same dane edytowałem offline na dwóch urządzeniach — bez zależności od zegara telefonu.
 
 Kryteria akceptacji:
-- Przy konflikcie wersji wygrywa wyłącznie push z **`revision == existing + 1`** (nie dowolnie wyższy numer; nie timestamp klienta). Create: serwer zapisuje `revision=1` niezależnie od wartości klienta.
+- Przy konflikcie wersji wygrywa wyłącznie push z **`revision == existing + 1`**, egzekwowany **atomowym CAS** na wierszu encji (FR-072d) — nie niesynchronizowanym odczytem `existing`. Create: serwer zapisuje `revision=1` niezależnie od wartości klienta.
+- Dwa równoległe pushe z tym samym `incoming.revision = existing+1` i różną treścią: dokładnie jeden `applied`, drugi `conflict_tie` + wpis `sync_conflict_logs` (nigdy dwa `applied` / cichy lost update).
 - Skok `incoming > existing + 1` → item `rejected` / `error_code=revision_jump` → **quarantine** (FR-072b); serwer bez nadpisu; UI „Wymaga uwagi”.
 - `client_updated_at` jest przechowywany jako hint/diagnostyka; nie rozstrzyga LWW.
 - `conflict_lost` (`incoming < existing`): toast + link do szczegółów; lokalnie winning snapshot; przegrana w `sync_conflict_logs` (`lost_push`).
@@ -793,6 +853,7 @@ Kryteria akceptacji:
 - Akcja wysyła outbox i pobiera aktualizacje z serwera.
 - Wyświetlany status: sukces, błąd, liczba zsynchronizowanych elementów.
 - Przy braku sieci akcja wyświetla komunikat o braku połączenia.
+- Ustawienia → Synchronizacja pokazują status `navigator.storage` persistence oraz wiek najstarszego itemu pending (FR-070a).
 
 ### 5.7 PWA
 
@@ -804,6 +865,7 @@ Kryteria akceptacji:
 - Przeglądarka oferuje prompt instalacji PWA (where supported) lub instrukcja „Dodaj do ekranu początkowego”.
 - Zainstalowana PWA uruchamia się w trybie standalone (bez paska URL).
 - Ikona i nazwa aplikacji na ekranie początkowym są skonfigurowane (manifest).
+- CTA instalacji jest dostępne z bannera FR-070a (gdy `!persisted` ∧ pending outbox > 0), szczególnie na iOS.
 - Po instalacji użytkownik ma dostęp do Web Push na iOS 16.4+ (Faza 2).
 
 ### 5.8 Agent AI (Faza 2, Premium)
@@ -1027,10 +1089,22 @@ Kryteria akceptacji:
 Opis: Jako użytkownik chcę w dniu odpoczynku od CC wykonać i zalogować ćwiczenia satelitarne (np. codzienną mobility), aby utrzymać rutynę uzupełniającą.
 
 Kryteria akceptacji:
-- W dniu odpoczynku CC sekcja programu głównego jest pusta lub oznaczona „odpoczynek”.
+- W dniu odpoczynku CC sekcja programu głównego domyślnie pusta lub oznaczona „odpoczynek”; widoczne CTA „Trenuj mimo to” (US-053b) — ten scenariusz dotyczy ścieżki **bez** override CC.
 - Satelity „codzienne” i przypisane do kategorii „dzień odpoczynku” są widoczne.
-- Sesja składająca się tylko z satelitów zapisuje się poprawnie.
-- Silnik progresji CC nie jest uruchamiany (brak ćwiczeń CC).
+- Sesja składająca się tylko z satelitów zapisuje się poprawnie; serwer ustawia `rules_snapshot` / `goal_met` z kroku satelity (FR-051a).
+- Silnik progresji CC nie jest uruchamiany, gdy w sesji brak ćwiczeń CC.
+
+### US-053b: Trening CC w dniu odpoczynku („Trenuj mimo to”)
+
+Opis: Jako użytkownik chcę w dniu odpoczynku od CC nadrobić pominięty dzień splitu (np. D1 we wtorek po pominiętym poniedziałku), aby nie stracić całego tygodnia Big Six.
+
+Kryteria akceptacji:
+- Na rest-day widoczne CTA **„Trenuj mimo to”** → wybór D1 / D2 / D3 (nazwy dni + 2 ćwiczenia).
+- Po wyborze ekran pokazuje ćwiczenia CC wybranego dnia (online: `GET /today?cc_day_override=…`; offline: cache `program_days`) — enrollment / `anchor_weekday` **bez zmian**.
+- Copy ostrzegawcze PL (np. że to poza planowanym dniem splitu) — zapis **nie** jest blokowany.
+- Zapis sesji z logami CC działa jak w dniu treningowym; evaluate / `fail_streak` / awans działają (FR-039/034a).
+- FR-039 nadal obowiązuje: drugi aktywny log tego samego CC na ten sam `local_date` → `409 duplicate_exercise_same_day`.
+- Użytkownik może wrócić do widoku „tylko odpoczynek + satelity” (wyczyścić override lokalnie).
 
 ### US-054: Osiągnięcie limitu 10 satelitów
 
@@ -1092,8 +1166,8 @@ Kryteria akceptacji:
 ### 6.3 Cele per faza
 
 Faza 1 (MVP):
-- Dostarczyć pełną pętlę: onboarding → sesja → progresja → historia → pomiary.
-- Osiągnąć M-001, M-002, M-003, M-004, M-006, M-010.
+- Dostarczyć pętlę wg kamieni FR-084: F1.0 (online + sync happy-path) → F1.1 (pełny offline) → F1.prod (60× ready + restore drill).
+- Osiągnąć M-001, M-002, M-003, M-004, M-006, M-010 (M-010 w pełni od F1.1).
 - Walidacja product-market fit bez funkcji premium.
 
 Faza 2:
