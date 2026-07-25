@@ -76,9 +76,10 @@ Uwagi: aktywne konta wymagają `google_sub` (egzekwowane w aplikacji / partial U
 
 Uwagi (FR-001 / FR-005a / FR-005d):
 - Klient dostaje **losowy** session token wyłącznie w cookie `__Host-trainer_session` (`HttpOnly; Secure; Path=/; SameSite=Strict`); w kolumnie `token_hash` = SHA-256(token) — raw token **nigdy** w DB ani w logach.
-- OAuth Google: Authorization Code + PKCE (S256); jednorazowy `state` w `oauth_states`; po sukcesie walidacja ID token (FR-001) → upsert user po `google_sub` → INSERT `auth_sessions` (`expires_at = now()+30d`) + Set-Cookie; jeśli user ma już ≥10 aktywnych → revoke najstarszej.
+- OAuth Google: Authorization Code + PKCE (S256); jednorazowy `state` w `oauth_states`; po sukcesie walidacja ID token (FR-001) → upsert user po `google_sub` → INSERT `auth_sessions` (`expires_at = now()+30d`) + Set-Cookie.
+- **Limit 10 aktywnych sesji (FR-005d) — serializacja:** w TX loginu, **przed** COUNT/revoke/INSERT: `SELECT id FROM users WHERE id = :uid FOR UPDATE`. Potem COUNT aktywnych (`revoked_at IS NULL AND expires_at > now() AND created_at > now() - 90d`); dopóki `count >= 10` → revoke najstarszej (`ORDER BY created_at ASC LIMIT 1`); INSERT nowej. **Zakaz** samego nieserializowanego `COUNT(*)` (race dwóch loginów przy 9/10 → >10 aktywnych). Test CI: dwa równoległe loginy przy 9 aktywnych → nadal ≤10.
 - Lookup: hash cookie → wiersz gdzie `revoked_at IS NULL` AND `expires_at > now()` AND `created_at > now() - 90 days`.
-- Sliding (≤1×/24h wg `last_seen_at`): `expires_at = now()+30d`, rotacja tokenu (nowy hash / nowy wiersz + revoke starego), odśwież cookie.
+- Sliding (≤1×/24h wg `last_seen_at`): `expires_at = now()+30d`, rotacja tokenu (nowy hash / nowy wiersz + revoke starego), odśwież cookie. Rotacja w obrębie limitu: revoke starego + INSERT nowego w tej samej TX z tym samym `users FOR UPDATE` gdy ścieżka tworzy dodatkowy wiersz przed revoke.
 - Logout: revoke **tylko** bieżącej sesji. „Wyloguj wszędzie” / delete account: revoke-all aktywnych.
 - Cron: DELETE wierszy `expires_at < now() - 7d` OR `revoked_at < now() - 7d`.
 - **Zakaz** API auth przez Bearer z localStorage jako domyślnej ścieżki F1.
@@ -211,8 +212,10 @@ CHECK:
 UNIQUE partial (system): (`slug`) WHERE `kind = 'cc' AND deleted_at IS NULL`.  
 UNIQUE partial (satelity): (`user_id`, `client_mutation_id`) WHERE `kind = 'satellite' AND client_mutation_id IS NOT NULL`.
 
-Limit 10 aktywnych satelitów: egzekwowany triggerem / aplikacją  
-`COUNT(*) WHERE user_id = X AND kind = 'satellite' AND deleted_at IS NULL ≤ 10`.
+Limit 10 aktywnych satelitów (FR-050) — **serializacja obowiązkowa** (sam `COUNT(*)` bez locka = race):
+1. W TX create / undelete / sync-push create satelity, **przed** COUNT/INSERT: `SELECT id FROM users WHERE id = :uid FOR UPDATE`.
+2. `COUNT(*) … WHERE user_id = X AND kind = 'satellite' AND deleted_at IS NULL`; jeśli `≥ 10` → **403** / push `rejected` (limit); inaczej INSERT.
+3. Trigger `trg_satellite_limit` (defense-in-depth): `PERFORM pg_advisory_xact_lock(hashtextextended('sat-limit:' || NEW.user_id::text, 0));` potem ten sam COUNT; przy `> 10` po INSERT/undelete → `RAISE EXCEPTION` (mapowane na 403). Soft-delete nie wymaga limitu.
 
 ---
 
@@ -325,7 +328,7 @@ UNIQUE partial (`user_id`) WHERE `is_active = true`.
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `exercise_id` | `UUID` | NOT NULL, FK → `exercises(id)` RESTRICT |
 | `current_step_number` | `SMALLINT` | NOT NULL, CHECK (`current_step_number >= 1`) |
-| `fail_streak` | `INT` | NOT NULL, DEFAULT `0`, CHECK (`fail_streak >= 0`) — **cache** folda historii (FR-034a); źródło prawdy = aktywne logi |
+| `fail_streak` | `INT` | NOT NULL, DEFAULT `0`, CHECK (`fail_streak >= 0`) — **cache** folda tipów `counts_for_progression=true` (FR-034a/035); źródło prawdy = aktywne logi tip |
 | `last_session_at` | `TIMESTAMPTZ` | NULL |
 | `is_active` | `BOOLEAN` | NOT NULL, DEFAULT `true` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
@@ -333,7 +336,11 @@ UNIQUE partial (`user_id`) WHERE `is_active = true`.
 
 UNIQUE (`user_id`, `exercise_id`).
 
----
+**Ownership `exercise_id` (FR-005b):** wiersz progress może wskazywać wyłącznie:
+- ćwiczenie CC (`exercises.kind = 'cc'` ∧ `exercises.user_id IS NULL`), **albo**
+- satelitę **tego samego** użytkownika (`kind = 'satellite'` ∧ `exercises.user_id = user_exercise_progress.user_id`).
+
+Egzekucja: trigger `trg_progress_exercise_owner` (BEFORE INSERT/UPDATE OF `user_id`,`exercise_id`) — SELECT exercise; przy naruszeniu → `RAISE EXCEPTION` (mapowane na 422/`not_found`). Serwis: ta sama walidacja przed create/override; sync apply cudzego satelity → `rejected` `not_found`. Test CI: User A nie tworzy progress na `exercise_id` satelity User B.
 
 ### 1.14 `progression_events`
 
@@ -376,6 +383,8 @@ UNIQUE (`user_id`, `client_mutation_id`).
 **Brak** UNIQUE na (`user_id`, `local_date`) — wiele sesji dziennie dozwolone (P1 / FR-039: rano satelity, wieczór CC, A1 = nowa sesja).  
 Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 
+**Composite key pod FK logów:** UNIQUE (`id`, `user_id`) — umożliwia `FOREIGN KEY (session_id, user_id)` z `session_exercise_logs` (ownership: log nie może mieć innego `user_id` niż sesja-rodzic).
+
 ---
 
 ### 1.16 `session_exercise_logs`
@@ -383,7 +392,7 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | Kolumna | Typ | Ograniczenia |
 |---------|-----|--------------|
 | `id` | `UUID` | PK |
-| `session_id` | `UUID` | NOT NULL, FK → `workout_sessions(id)` CASCADE |
+| `session_id` | `UUID` | NOT NULL |
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `exercise_id` | `UUID` | NOT NULL, FK → `exercises(id)` RESTRICT |
 | `exercise_kind` | `TEXT` | NOT NULL, CHECK (`exercise_kind IN ('cc','satellite')`) |
@@ -399,6 +408,7 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `progression_schema_version` | `INT` | NULL, CHECK (`progression_schema_version IS NULL OR progression_schema_version >= 1`) |
 | `goal_met` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
 | `goal_evaluated_at` | `TIMESTAMPTZ` | NULL |
+| `counts_for_progression` | `BOOLEAN` | NOT NULL, DEFAULT `true` — tip = `true`; spóźniony (FR-035) = `false` |
 | `notes` | `TEXT` | NULL, CHECK (`char_length(notes) <= 1000`) |
 | `sort_order` | `SMALLINT` | NOT NULL, DEFAULT `0` |
 | `client_mutation_id` | `UUID` | NULL — F1: logi syncowane **w** sesji (mutation na `workout_sessions`); NULL OK; niezależny push logu poza F1 |
@@ -407,6 +417,10 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `superseded_at` | `TIMESTAMPTZ` | NULL — ustawiane przy soft-delete sesji-rodzica (FR-039 / A1); aktywny log = `NULL` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
+
+**FK ownership (Warstwa A / FR-005b):**  
+`FOREIGN KEY (session_id, user_id) REFERENCES workout_sessions (id, user_id) ON DELETE CASCADE`  
+— **zamiast** gołego FK tylko po `session_id`. Gwarantuje `log.user_id = session.user_id`; INSERT z cudzym `user_id` względem sesji → violation. Serwis ustawia `user_id` logu wyłącznie z sesji (nie z body klienta).
 
 CHECK:
 - `skipped = true` ⇒ (`sets IS NULL`) AND `goal_met = false` AND `rules_snapshot IS NULL` AND `progression_schema_version IS NULL`
@@ -419,7 +433,7 @@ UNIQUE partial (`user_id`, `client_mutation_id`) WHERE `client_mutation_id IS NO
 - Soft-delete `workout_sessions` w **tej samej TX** ustawia na wszystkich child `session_exercise_logs`: `superseded_at = session.deleted_at` (lub `now()`).
 - **Obowiązkowy** partial UNIQUE: `(user_id, exercise_id, local_date)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`.
 - Serwis: przed INSERT check aktywnego logu; `UniqueViolation` → `409 duplicate_exercise_same_day` (chroni race dual-device / równoległe push).
-- Silnik / fail_streak: tylko logi `skipped = false AND superseded_at IS NULL` (oraz sesja-rodzic `deleted_at IS NULL` — spójne z `superseded_at`).
+- Silnik / fail_streak: tylko logi `skipped = false AND superseded_at IS NULL AND counts_for_progression = true` (oraz sesja-rodzic `deleted_at IS NULL` — spójne z `superseded_at`).
 - Korekta A1: soft-delete starej sesji (logi dostają `superseded_at`) + INSERT nowej sesji/logów — UNIQUE nie blokuje nowej próby.
 
 Przykładowy `sets` (v1):
@@ -569,7 +583,7 @@ Uwagi:
 | `users` → `progression_events` | 1:N | Audyt awans/regres/override |
 | `workout_sessions` → `progression_events` | 1:N | Opcjonalne powiązanie |
 | `users` → `workout_sessions` | 1:N | Wiele sesji / `local_date` |
-| `workout_sessions` → `session_exercise_logs` | 1:N | Wpisy ćwiczeń |
+| `workout_sessions` → `session_exercise_logs` | 1:N | Wpisy ćwiczeń; FK composite (`session_id`,`user_id`) |
 | `exercises` → `session_exercise_logs` | 1:N | FK + snapshot nazwy |
 | `users` → `body_measurements` | 1:N | Pomiary sylwetki |
 | `users` → `sync_conflict_logs` | 1:N | Konflikty LWW |
@@ -629,9 +643,11 @@ erDiagram
 | `workout_sessions` | (`user_id`, `local_date`, `performed_at`) WHERE `deleted_at IS NULL` | Sesje „dziś” |
 | `workout_sessions` | (`user_id`, `updated_at`) | Pull sync delta |
 | `workout_sessions` | UNIQUE (`user_id`, `client_mutation_id`) | Idempotencja |
+| `workout_sessions` | UNIQUE (`id`, `user_id`) | Target composite FK z `session_exercise_logs` (ownership) |
 | `session_exercise_logs` | (`session_id`, `sort_order`) | Szczegóły sesji |
+| `session_exercise_logs` | FK (`session_id`, `user_id`) → `workout_sessions` (`id`, `user_id`) ON DELETE CASCADE | Log.user_id = sesja.user_id (FR-005b) |
 | `session_exercise_logs` | **UNIQUE** (`user_id`, `exercise_id`, `local_date`) WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL` | FR-039 — max 1 aktywny log CC / dzień (anti-race) |
-| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date` ASC, `performed_at` ASC, `id` ASC) WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL` | Silnik progresji / fail_streak (FR-035, Perf5) |
+| `session_exercise_logs` | (`user_id`, `exercise_id`, `local_date` ASC, `performed_at` ASC, `id` ASC) WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL AND counts_for_progression = true` | Silnik progresji / fail_streak (FR-035 tip, Perf5) |
 | `session_exercise_logs` | (`user_id`, `updated_at`) | Pull sync (gdyby kiedyś; F1 preferuje nested w sesji) |
 | `body_measurements` | (`user_id`, `measured_at` DESC) WHERE `deleted_at IS NULL` | Historia pomiarów |
 | `body_measurements` | (`user_id`, `updated_at`) | Pull sync |
@@ -669,8 +685,8 @@ Połączenie ORM FastAPI: `trainer_app`.
 
 **IDOR suite (DoD / CI):** User A tworzy zasób → User B woła ten sam `id` / `entity_id` → 404 lub `rejected` `not_found` (nigdy `applied` / 200 z danymi A) dla:
 `workout_sessions`, `session_exercise_logs`, `body_measurements`, `exercises` (satelity), `user_exercise_progress` (GET **oraz** override), `sync_conflict_logs`, `sync_devices`, `user_onboarding`, `user_legal_acceptances`,
-**oraz:** `POST /sync/push` (update/delete cudzego `entity_id`), `GET /sync/conflicts/{id}`, `GET /sessions/{id}` (detail ze snapshotem), `POST /account/export`, `POST /account/delete`.
-Marker: `pytest -m idor`. PR zmieniające repozytoria / routery user-owned / sync **musi** przejść ten job.
+**oraz:** `POST /sync/push` (update/delete cudzego `entity_id`), `GET /sync/conflicts/{id}`, `GET /sessions/{id}` (detail ze snapshotem), `POST /account/export`, `POST /account/delete`, **`PATCH /account/schedule`** (FR-022b/040c — User B nie mutuje enrollment/TZ User A; `user_id` tylko z sesji; cudzy id w body → ignoruj/422, stan A bez zmian).
+Marker: `pytest -m idor`. PR zmieniające repozytoria / routery user-owned / sync / account **musi** przejść ten job.
 
 Konwencja RLS-ready (każda tabela user-owned ma `user_id NOT NULL` — pod F2; `body_measurements` już z RLS w F1):
 - `auth_sessions`, `user_onboarding`, `user_legal_acceptances`
@@ -692,16 +708,25 @@ Szkic polityk (`body_measurements` w F1; pozostałe Faza 2+):
 
 Tabele systemowe (`programs`, `program_days`, `program_day_exercises`, `legal_documents`, `progression_schemas`, CC `exercises`) — odczyt dla wszystkich uwierzytelnionych; zapis tylko przez migrator/seed.
 
-### 4.3 Trigery / logika DB
+### 4.3 Triggery DB
 
-| Trigger / mechanizm | Opis |
-|---------------------|------|
-| `trg_satellite_limit` (BEFORE INSERT/UPDATE na `exercises`) | Odrzuć, gdy aktywnych satelitów użytkownika > 10 |
-| `trg_set_updated_at` | **Nie** ustawiaj `updated_at` z klienta. Po accepted write serwer ustawia `updated_at = now()` (ew. trigger `BEFORE UPDATE` tylko gdy aplikacja przekazuje „server touch”) |
-| Brak `ON DELETE CASCADE` od `users` | Usuwanie konta wyłącznie serwisem (soft-delete + anonimizacja) |
+| Trigger | Opis |
+|---------|------|
+| `trg_satellite_limit` (BEFORE INSERT/UPDATE na `exercises`) | Tylko gdy wynikowy wiersz będzie aktywny satelitą (`kind='satellite' AND deleted_at IS NULL`): `pg_advisory_xact_lock(hashtextextended('sat-limit:' \|\| user_id, 0))` → COUNT aktywnych **wraz z NEW** → jeśli > 10 → EXCEPTION. Aplikacja **musi** też brać `users FOR UPDATE` przed create (FR-050). **Zakaz** limitu samym COUNT bez locka |
+| `trg_progress_exercise_owner` (BEFORE INSERT/UPDATE OF `user_id`,`exercise_id` na `user_exercise_progress`) | Exercise musi być CC systemowe (`kind='cc'`, `user_id IS NULL`) **lub** satelitą z `exercises.user_id = NEW.user_id`. Inaczej EXCEPTION — blokuje progress na cudzym satelicie |
+
+### 4.4 Jawna logika aplikacyjna — bez triggerów
+
+- **Limit `auth_sessions` (FR-005d):** w TX loginu `SELECT users … FOR UPDATE` → COUNT aktywnych → revoke najstarszej aż `< 10` → INSERT. Test CI równoległych loginów. **Nie tworzyć triggera.**
+- **`updated_at`:** repozytorium ustawia jawnie `updated_at = now()` wyłącznie po accepted write; klient nie może przesłać wartości źródłowej. **Nie tworzyć `trg_set_updated_at`.**
+- **Log ↔ sesja:** ownership egzekwuje composite FK (`session_id`, `user_id`); serwis kopiuje `user_id` z sesji. **Nie tworzyć triggera.**
+- **Denormalizacja logu:** przy INSERT serwis kopiuje `local_date` i `performed_at` z `workout_sessions` oraz `exercise_kind`/`section` z `exercises`; daty sesji są immutable. Wszystko w tej samej TX co zapis/evaluate. **Nie tworzyć triggera denormalizacji.**
+- **Soft-delete sesji:** `SessionService` w jednej TX ustawia `workout_sessions.deleted_at` oraz `session_exercise_logs.superseded_at`; silnik dodatkowo filtruje `session.deleted_at IS NULL`. **Nie tworzyć triggera kaskady soft-delete.**
+- **Usuwanie konta:** wyłącznie `AccountDeletionService`; brak `ON DELETE CASCADE` od `users`.
 
 FK od `users`: `ON DELETE RESTRICT`.  
-Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-delete.
+Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-delete.  
+`session_exercise_logs` → `workout_sessions`: **composite** FK (`session_id`, `user_id`) ON DELETE CASCADE — nie sam `session_id`.
 
 ---
 
@@ -725,18 +750,20 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Ocena tylko dla logów `skipped = false AND superseded_at IS NULL` (soft-delete sesji ustawia `superseded_at` na childach w tej samej TX).
    - **Jednostka fail_streak / regresu / „kolejnej próby”** = `(user_id, exercise_id, local_date)` — nie surowy wiersz `workout_sessions`; dzięki UNIQUE FR-039 jedna zaliczona próba na dzień.
    - Max **jeden** aktywny non-skipped log CC danego `exercise_id` na dany `local_date` (FR-039): **obowiązkowy** partial UNIQUE + check serwisowy; konflikt / `UniqueViolation` → `409 duplicate_exercise_same_day`.
-   - Przy ocenie: zbuduj ciąg aktywnych prób E po `(local_date ASC, performed_at ASC, id)` (kolumny na **logu**, denorm z sesji — Perf5) i licz streak / progi z tego ciągu (FR-035 / Rel3) — niezależnie od kolejności push. Filtr: `superseded_at IS NULL` (równoważne sesji `deleted_at IS NULL`). **Zakaz** sortu historii po `log.created_at`.
-   - Regres (FR-034/034a): 2 kolejne **zaliczone próby** poniżej progu w tym ciągu (`rules.regress.fail_sessions`, MVP: 2) — **nie** sąsiednie daty kalendarzowe; odstęp (tydzień splitu, urlop) **nie** zeruje streaku; **nie** 2 sesje tego samego dnia.
-   - Reset `fail_streak` (FR-034a): fail → `+=1`; przy osiągnięciu progu regresu → regres −1 + **`fail_streak=0`**; sukces / awans / `manual_override` → `0`. Kolumna = cache folda; zapis w TX evaluate.
-   - Awans: zaliczona próba dnia spełnia próg → advance + `fail_streak=0` (jedna ocena / dzień / ćwiczenie).
+   - **Tip vs spóźniony (FR-035):** przed evaluate, dla każdego CC logu w apply: tip ⇔ **nie** istnieje aktywny oceniony log tego samego `(user_id, exercise_id)` o ściśle większym `(local_date, performed_at, id)`. Inaczej = spóźniony.
+   - **Tip:** `counts_for_progression = true`; zbuduj ciąg E po `(local_date ASC, performed_at ASC, id)` tylko z `counts_for_progression = true` (kolumny na **logu** — Perf5); licz streak / progi (FR-034a). Filtr: `superseded_at IS NULL`. **Zakaz** sortu historii po `log.created_at`.
+   - **Spóźniony:** `counts_for_progression = false`; nadal ustaw `goal_met` / `rules_snapshot` / `goal_evaluated_at` / `step_number` względem **bieżącego** kroku (audyt + immutability); **zakaz** mutacji `user_exercise_progress` i INSERT `advance`/`regress`; item ACK: `applied` + `progression_skipped=late_log`.
+   - Regres (FR-034/034a): 2 kolejne **zaliczone próby tip** poniżej progu w ciągu E (`rules.regress.fail_sessions`, MVP: 2) — **nie** sąsiednie daty kalendarzowe; odstęp (tydzień splitu, urlop) **nie** zeruje; **nie** 2 sesje tego samego dnia; spóźnione **nie** wchodzą do ciągu.
+   - Reset `fail_streak` (FR-034a): fail → `+=1`; przy osiągnięciu progu regresu → regres −1 + **`fail_streak=0`**; sukces / awans / `manual_override` → `0`. Kolumna = cache folda tipów; zapis w TX evaluate tip.
+   - Awans: zaliczona próba tip dnia spełnia próg → advance + `fail_streak=0` (jedna ocena tip / dzień / ćwiczenie).
    - Tie-break gdyby kiedyś złagodzono limit: `performed_at`, potem `session.id` — w F1 limit 1 logu czyni to zbędnym.
-   - `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie.
-   - Out-of-order apply **nie** voiduje wcześniejszych `progression_events` i **nie** rewinduje `current_step_number`.
-   - Testy CI: fail+fail @7d → regres + streak=0; fail → 30d → fail → regres; fail → sukces → fail → streak=1; trzy faile z rzędu → jeden regres, potem streak od nowa.
-6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu (kopiowane **tylko przy INSERT**; daty sesji immutable — Rel4) — historia i silnik bez zbędnego JOIN/sortu po `created_at`.
+   - `SELECT … FOR UPDATE` na `user_exercise_progress` przy ocenie tip (spóźniony: lock opcjonalny / pomiń silnik).
+   - Spóźniony apply **nie** voiduje wcześniejszych `progression_events` i **nie** rewinduje `current_step_number`; **nie** ma późniejszego „dogrywania” spóźnionego do folda.
+   - Testy CI: fail+fail @7d → regres + streak=0; fail → 30d → fail → regres; fail → sukces → fail → streak=1; trzy faile z rzędu → jeden regres, potem streak od nowa; **tip awans → późniejszy push starszego logu → applied/`late_log`, krok i `fail_streak` bez zmian; kolejny tip nie liczy spóźnionego**.
+6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu (kopiowane **tylko przy INSERT**; daty sesji immutable — Rel4) — historia i silnik bez zbędnego JOIN/sortu po `created_at`. **`user_id` na logu:** denorm + **composite FK** do sesji (`session_id`,`user_id`) — niemożliwy rozjazd ownership (Warstwa A).
 7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
 8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`. Treści opisów: status `draft`\|`ready` (FR-020a); scaffold może seedować draft; prod wymaga 60× ready + bump `catalog_version` przy zmianie.
-9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos. **Poza scope F1 także:** rewind+replay progresji po zmianie historycznych `sets` (opcja B) — dopiero gdy produkt tego wymaga.
+9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos. **Poza scope F1 także:** rewind+replay progresji po zmianie historycznych `sets` **oraz** dogrywanie/ocena spóźnionych logów do `fail_streak` (FR-035 = skip) — dopiero gdy produkt wymaga pełnego deterministic replay.
 10. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
 11. **Usuwanie konta (Rel5 / Rel2 / FR-006a/c):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
     - Natychmiast: `deleted_at`, `purge_after = today+30`, `purge_status = pending_grace`; revoke `auth_sessions`; NULL `email`/`google_sub`/`display_name`; **hard delete** `body_measurements`, `sync_conflict_logs`, `sync_devices`, `client_mutations`, `user_onboarding`, `user_legal_acceptances`.
@@ -774,7 +801,7 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - **Incremental** (`since=<TIMESTAMPTZ>`): encje z `updated_at > since` w tych samych oknach + tombstones. Klient **musi** używać `since` po pierwszym udanym pullu. **Zakaz** traktowania delty jako opcjonalnej optymalizacji.
    - `since` nieparsowalny lub `since < now() - 30d` → `resync_required: true` + body jak initial (200).
    - Po push: klient robi incremental (nie full) chyba że `resync_required`.
-   - **Projekcja logów:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync. **Zakaz** `rules_snapshot` w SyncPull.
+   - **Projekcja logów:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `counts_for_progression`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync. **Zakaz** `rules_snapshot` w SyncPull.
    - **Zakaz** unbounded `GET` wszystkich logów po `updated_at` jako ścieżki offline.
    - **Katalog CC:** osobno FR-075a (304); nie w każdym pullu sesji.
    - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
@@ -787,8 +814,8 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
 23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
 24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
-25. **Indeks silnika (Perf5) + denorm (Rel4):** przy **INSERT** logów skopiuj `local_date`/`performed_at` z sesji; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. **Zakaz** UPDATE denorm przy zmianie sesji — daty sesji immutable od create (pkt 14). Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE). Test: push zmieniający `local_date` przed evaluate → `409 session_date_immutable`; child logi nietknięte.
-26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox **przed** sesjami; serwer `legal_required` na apply sesji (FR-014a).
+25. **Indeks silnika (Perf5) + denorm (Rel4):** przy **INSERT** logów skopiuj `user_id`/`local_date`/`performed_at` **wyłącznie z sesji** (composite FK egzekwuje `user_id`); partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL AND counts_for_progression = true`; evaluate tip sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. **Zakaz** UPDATE denorm przy zmianie sesji — daty sesji immutable od create (pkt 14). Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE). Test: push zmieniający `local_date` przed evaluate → `409 session_date_immutable`; child logi nietknięte; spóźniony apply → `counts_for_progression=false` (FR-035); INSERT logu z `user_id` ≠ sesji → FK violation.
+26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields w tym `counts_for_progression` (FR-046a); `legal_acceptance` w outbox **przed** sesjami; serwer `legal_required` na apply sesji (FR-014a).
 27. **Backup & restore (Rel1 / FR-081a) — wymagane F1 przed public beta/prod:**
     - **Cel:** chronić trwałość danych w spoczynku (historia sesji, `progression_events` append-only, pomiary biometryczne). Spec sync chroni spójność *w locie*; backup chroni przed utratą wolumenu / hosta. IndexedDB klienta (**nie**) jest backupem serwera (okno FR-070).
     - **Parametry:** RPO **≤ 24 h**; RTO **≤ 4 h**; retencja backupów **≤ 30 dni** (spójna z grace delete FR-006a); zakres = pełny dump bazy aplikacji.
@@ -806,19 +833,19 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 4. `programs` → `exercises` → `program_days` → `program_day_exercises` → `progression_schemas` → `exercise_steps`
 5. `user_program_enrollments` → `user_exercise_progress` → `workout_sessions` → `session_exercise_logs` → `progression_events`
 6. `body_measurements` → `sync_*` → `client_mutations` → `rate_limit_buckets`
-7. Indeksy partial / triggery limitu satelitów
+7. Indeksy partial / triggery limitu satelitów + `trg_progress_exercise_owner`
 8. Seed CC + legal
 
 ### Mapowanie FR (skrót)
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006, FR-005a–d, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions` (+ `last_seen_at`, TTL FR-005d), `oauth_states` (FR-001), **`rate_limit_buckets` (FR-005c)**; OAuth JWKS; IDOR; CORS/rate limit PG; delete/export; hard purge order + TX (FR-006c) |
+| FR-001–006, FR-005a–d, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions` (+ `last_seen_at`, TTL FR-005d, limit 10 z `users FOR UPDATE`), `oauth_states` (FR-001), **`rate_limit_buckets` (FR-005c)**; OAuth JWKS; IDOR; CORS/rate limit PG; delete/export; hard purge order + TX (FR-006c) |
 | FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` (+ outbox legal) |
 | FR-020–024, FR-020a, FR-022a, FR-022b, FR-024a, FR-040a, FR-040c | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps`, `user_program_enrollments` (+ pending anchor), `users.timezone` (+ pending TZ); rest override tylko w `/today` |
-| FR-030–039, FR-034a, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress` (`fail_streak` = cache folda), `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm); push/pull zwraca eventy do surface UI |
-| FR-040–046, FR-040a/b, FR-046a | `workout_sessions`, `session_exercise_logs`; TodaySessionDto; write DTO strip |
-| FR-050–058, FR-051a | `exercises` (satelity), `exercise_steps` (≥1 na satelitę — cel w `rules.goal`), limit trigger |
+| FR-030–039, FR-034a, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress` (`fail_streak` = cache folda tipów), `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm, `counts_for_progression`); tip vs late (FR-035); push/pull zwraca eventy tip do surface UI |
+| FR-040–046, FR-040a/b, FR-046a | `workout_sessions` (UNIQUE `(id,user_id)`), `session_exercise_logs` (FK composite ownership); TodaySessionDto; write DTO strip |
+| FR-050–058, FR-051a | `exercises` (satelity), `exercise_steps` (≥1 na satelitę — cel w `rules.goal`), limit 10 z `users FOR UPDATE` + `trg_satellite_limit`/`pg_advisory_xact_lock` |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
 | FR-070–075, FR-070a, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; `storage.persist` UX; catalog 304 |
 | FR-080–084, FR-081, FR-081a, FR-082a | `legal_documents`, `tags` rehab; at-rest kolumn/volume poza F1; **backup/restore PG** (FR-081a); analytics allowlist; kamienie F1 / de-scope (FR-084 — proces, nie tabela) |

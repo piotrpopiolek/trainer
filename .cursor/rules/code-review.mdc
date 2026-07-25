@@ -1,0 +1,41 @@
+---
+description: Review zmian w Trainer pod kątem regresji, bezpieczeństwa, zgodności z PRD i brakujących testów
+alwaysApply: false
+---
+
+# CODE REVIEW - Trainer
+
+Źródło prawdy: `docs/prd.md`, następnie `docs/db-plan.md` i właściwe reguły backendu/frontendu. Oceniaj wyłącznie zmiany objęte diffem oraz ich bezpośrednie skutki.
+
+## Model review
+
+- Jeden reviewer prowadzący odpowiada za cały diff, zależności między warstwami, deduplikację uwag i raport końcowy.
+- Dla małej zmiany w jednej warstwie wykonaj review samodzielnie.
+- Uruchamiaj równolegle tylko potrzebnych specjalistów: backend/domena/DB dla progresji, sync i migracji; frontend/PWA dla offline, outbox i kontraktów; security dla auth, IDOR, CSRF, danych konta i sekretów; ops dla CI, Docker, backup/restore i purge.
+- Nie dziel review mechanicznie według plików. Reviewer prowadzący musi sprawdzić kontrakty API/Zod/Pydantic, transakcje i przepływy end-to-end.
+
+## Kolejność kontroli
+
+1. Zgodność ze scope F1/F1.1/F1.prod oraz wymaganiami i zakazami PRD.
+2. Poprawność domenowa: backend-only progression, tip vs spóźniony log (FR-035), `counts_for_progression`, `local_date`, immutable sessions, `rules_snapshot`, idempotencja, CAS/LWW i kolejność locków.
+3. Bezpieczeństwo: `user_id` z sesji, deny-by-default/404, IDOR sync i account, cookie/PKCE/CSRF, brak PII i sekretów w logach.
+4. Spójność danych i kontraktów: `schema_version`, migracje wstecz/naprzód, atomowość, retry, partial ACK, kompatybilność API–PWA.
+5. Testy i operacyjność: scenariusz pozytywny, negatywny, współbieżność i regresja; IDOR marker; backup przed migracją prod; monitoring purge.
+6. Utrzymywalność tylko wtedy, gdy powoduje realne ryzyko błędu; nie zgłaszaj preferencji stylistycznych pokrywanych przez formatter/linter.
+
+## Podstawowe zasady inżynierskie
+
+- **DRY:** zgłaszaj duplikację logiki domenowej, walidacji, kontraktów i reguł bezpieczeństwa; nie zgłaszaj przypadkowego podobieństwa kilku prostych linii.
+- **SOLID / separacja odpowiedzialności:** wykrywaj mieszanie HTTP, domeny, persistencji i UI, klasy „god object”, ukryte zależności oraz zależność logiki od szczegółów infrastruktury.
+- **KISS:** kwestionuj złożoność, jeśli istnieje wyraźnie prostsze rozwiązanie spełniające te same wymagania i inwarianty.
+- **YAGNI:** zgłaszaj abstrakcje, integracje i infrastrukturę bez aktualnego przypadku użycia, szczególnie elementy z faz późniejszych niż bieżący scope.
+- Preferuj małe, testowalne jednostki, jawne kontrakty, czytelny przepływ błędów i jedną odpowiedzialność; finding musi wskazywać konkretny skutek, nie samą nazwę zasady.
+
+## Raport
+
+- Zgłaszaj tylko konkretne, naprawialne problemy wprowadzone przez diff. Nie traktuj istniejącego długu jako findingu.
+- Każdy finding zawiera: priorytet `P0`–`P3`, plik i linię, scenariusz awarii, naruszone wymaganie/inwariant oraz minimalny kierunek naprawy i test regresyjny.
+- `P0`: utrata danych/krytyczny incydent; `P1`: bezpieczeństwo lub błędny stan domeny; `P2`: istotna regresja; `P3`: lokalny problem o małym wpływie.
+- Nie zgaduj. Gdy brakuje dowodu, oznacz punkt jako pytanie lub założenie, nie finding.
+- Najpierw findings od najwyższego priorytetu, potem pytania i luki testowe. Jeśli brak findingów, napisz to wprost i wskaż tylko ryzyka nieweryfikowalne bez testów.
+- Review jest read-only: nie zmieniaj kodu, dopóki użytkownik wyraźnie nie poprosi o poprawki.

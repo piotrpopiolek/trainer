@@ -24,7 +24,7 @@ alwaysApply: true
 ## Priorytety przy implementacji
 
 1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze) — **F1.0**.
-2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja po `local_date` / FR-039, SyncPull okna 30/365d + **obowiązkowa delta `since`** / FR-075) — F1.0 happy-path, pełny UX konfliktów **F1.1**; dopiero potem polish UI.
+2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja tip-only / spóźnione logi bez oceny / FR-035, SyncPull okna 30/365d + **obowiązkowa delta `since`** / FR-075) — F1.0 happy-path, pełny UX konfliktów **F1.1**; dopiero potem polish UI.
 3. Content CC i onboarding w scope MVP (FR-020a/084) — track content równolegle od tyg. 1; nie „później”.
 4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
 
