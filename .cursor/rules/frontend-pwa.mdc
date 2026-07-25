@@ -18,11 +18,14 @@ alwaysApply: false
 
 ## 2) Auth i dostęp
 
-- MVP: wyłącznie „Zaloguj przez Google” (Auth Code + PKCE). Brak przycisku Apple (Faza 3+).
-- Sesja: cookie HttpOnly Secure SameSite — **zakaz** raw tokenu w localStorage/IndexedDB. `fetch` / TanStack Query z `credentials: 'include'`.
+- MVP: wyłącznie „Zaloguj przez Google” (Auth Code + PKCE). Backend waliduje ID token / `email_verified` (FR-001). Brak przycisku Apple (Faza 3+).
+- Przy reject `email_verified=false`: komunikat PL o weryfikacji e-mail w Google (bez tworzenia lokalnego konta).
+- **Topologia F1 (FR-005a):** same-origin — API pod `/api` (nie osobny host). Sesja: cookie `__Host-…` HttpOnly Secure SameSite=Strict — **zakaz** raw tokenu w localStorage/IndexedDB. `fetch` / TanStack Query z `credentials: 'include'` na relative `/api/…`.
+- CSRF token na: `POST /account/export`, `POST /account/delete`, `PATCH /account/schedule`. Sync push **bez** CSRF w F1.
+- Logout = bieżące urządzenie; Ustawienia: „Wyloguj ze wszystkich urządzeń” (FR-005d). Po TTL/401: outbox bez drop; po reauth flush.
 - 401 z API → clear lokalnego stanu auth + redirect na login; zachowaj intended path; **outbox nie dropuj** — itemy wracają do `pending`; po reauth automatyczny flush (FR-072b).
 - Po wylogowaniu nie mieszaj danych lokalnych między kontami (clear IndexedDB / namespace per user).
-- Usuń konto (FR-006a): potwierdzenie → clear lokalny store; copy o retencji pomiarów vs 30 dni treningów; oferuj export (FR-006b) przed delete — **przycisk** → `POST /account/export` z CSRF (`credentials: 'include'`); nie `<a href>` na GET export.
+- Usuń konto (FR-006a): potwierdzenie → clear lokalny store; copy o retencji pomiarów vs 30 dni treningów; oferuj export (FR-006b) przed delete — **przycisk** → `POST /account/export` (stream NDJSON → plik) i delete z CSRF (`credentials: 'include'`); nie `<a href>` na GET export.
 
 ## 3) Offline i sync (Faza 1)
 
@@ -33,10 +36,10 @@ alwaysApply: false
 - **FR-073a (Pr3):** handler `onSyncConflict` — lost → toast+link; tie / immutable → modal; lista konfliktów w ustawieniach; badge do lokalnego ack; recovery = draft nowej encji z `losing_payload` (nie overwrite serwera, nie merge). Batch: max 1 modal zbiorczy. **F1.0 / poślizg (FR-084):** toast-only + winning snapshot OK; pełna lista+recovery = F1.1.
 - **FR-038 (A1 / Rel4):** `local_date`/`performed_at` ustaw przy starcie bloku — **nie edytuj** po create (korekta daty = soft-delete + nowa sesja; obsłuż `409 session_date_immutable`). Po ocenie sesji nie edytuj `sets` lokalnie w oczekiwaniu na LWW — UI: soft-delete + nowa sesja; obsłuż `409 session_immutable_after_evaluate` (przywróć snapshot serwera, modal PL). Soft-delete **nie** obiecuje cofnięcia awansu: przy soft-delete ocenionej sesji **obowiązkowy modal no-rewind** + CTA „Dostosuj krok” (US-016b). `manual_override` tylko online (brak lokalnego silnika kroku).
 - **FR-040a:** `local_date` = data rozpoczęcia logowania w TZ (nie „teraz” po północy przy zapisie).
-- Pull: oczekuj sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; honoruj `catalog_version`; nie cache’uj pełnej historii poza oknami.
-- Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync. Przed POST sortuj outbox wg FR-072a (sesje `performed_at,id` → pomiary → satelity); przy korekcie A1 **soft-delete przed create** kolidującym CC dnia.
+- Pull: initial bez `since` → full window + zapisz `server_time`; potem zawsze `since=last_pull_server_time` (FR-075). Honoruj `resync_required` (nadpisz store full window). Oczekuj sesji z zagnieżdżonymi logami **bez** `rules_snapshot`; `progress[]` pełny; honoruj `catalog_version`; nie cache’uj pełnej historii poza oknami. Po push — incremental pull, nie full.
+- Outbox flush przy powrocie online + akcja „Synchronizuj teraz”; nie usuwaj lokalnych danych przy błędzie sync. Przed POST sortuj outbox wg FR-072a (**legal → sesje `performed_at,id` → pomiary → satelity**); przy korekcie A1 **soft-delete przed create** kolidującym CC dnia.
 - **FR-072c:** flush w oknach ≤20; jeden flush naraz; ACK tylko z `results[i]`; honoruj `truncated` (reszta zostaje pending); pętla kolejnych batchy aż pusto / 401 / offline.
-- **FR-072b (Rel4):** macierz retry — quarantine na 422/409 duplicate/403 limit/`revision_jump`/`mutation_payload_mismatch`; konflikty → FR-073a; retryable → backoff+jitter (cap 15 min); stany `pending|in_flight|quarantine|synced`; UI escalation po 5 transport fail bez stopu tła.
+- **FR-072b (Rel4):** macierz retry — quarantine na 422/409 duplicate/403 limit/`revision_jump`/`mutation_payload_mismatch`/`legal_required`; konflikty → FR-073a; retryable → backoff+jitter (cap 15 min); stany `pending|in_flight|quarantine|synced`; UI escalation po 5 transport fail bez stopu tła.
 - **FR-071a / FR-036 (Pr2):** po offline save — obowiązkowy badge pending + copy o ocenie po sync; krok = cache z etykietą „Stan z ostatniego syncu”; **zakaz** lokalnej celebracji awansu. Po sync/online apply — jedna ścieżka `onProgressionEvents` (modal/sticky banner); idempotencja po `event.id`. Surface regresu: „dwie kolejne nieudane **próby**” + daty (FR-034a / US-015) — nie „dwa zapisy”.
 - Nie wprowadzaj Service Worker cache’ującego wrażliwe API responses bez świadomej polityki prywatności.
 
@@ -49,7 +52,7 @@ alwaysApply: false
 - Limit 10 satelitów: komunikat + licznik X/10 przed próbą zapisu.
 - Create/edycja satelity: zawsze cel w kroku 1 (FR-051a); mini-progresja opcjonalnie 2–5 kroków łącznie; nie wysyłaj create bez kroków.
 - Pomiary: domyślnie waga, pas, biceps; opcjonalnie klatka, udo, szyja, brzuch (`abdomen_cm`), biodra (`hips_cm`), łydka (`calf_cm`); jednostki kg/cm; walidacja zakresów po stronie Zod.
-- Disclaimer zdrowotny wymagany przed pierwszą sesją (także offline — lokalny gate + outbox legal, FR-014a); dostępny też w ustawieniach.
+- Disclaimer zdrowotny wymagany przed pierwszą sesją (także offline — lokalny gate + outbox `legal_acceptance` **przed** sesjami, FR-014a); serwer egzekwuje `legal_required`; po bumpie wersji — ponowna akceptacja; dostępny też w ustawieniach.
 - **FR-040b:** ekran dnia z jednego `GET /today` / cache tego samego kształtu; nie składaj dnia z N osobnych requestów online.
 - Analytics (jeśli włączone): tylko allowlist props (FR-082a) — bez wartości pomiarów.
 - Teksty UI po polsku; brak dosłownych cytatów z książki CC. Prod: opisy kroków bez `[DRAFT]` (FR-020a); nie wymagaj ilustracji per krok w F1.
@@ -64,5 +67,5 @@ alwaysApply: false
 
 - TypeScript strict; unikaj `any`.
 - Komponenty funkcyjne; logikę wyciągaj do hooków.
-- Testuj krytyczne ścieżki: login redirect, outbox enqueue, rest-day → „Trenuj mimo to” → D1 → evaluate, limit satelitów, offline save → pending copy, `storage.persist` + banner gdy !persisted∧pending, sync → modal awansu (idempotent), conflict_lost/tie/immutable → surface + recovery draft, soft-delete ocenionej → modal no-rewind + CTA override, soft-delete+create (obie kolejności enqueue) → applied bez quarantine, override online → nowy krok, 422→quarantine, 503→backoff.
+- Testuj krytyczne ścieżki: login redirect, outbox enqueue, legal→sesja (defer), sesja bez legal → `legal_required`, rest-day → „Trenuj mimo to” → D1 → evaluate, limit satelitów, offline save → pending copy, `storage.persist` + banner gdy !persisted∧pending, sync → modal awansu (idempotent), conflict_lost/tie/immutable → surface + recovery draft, soft-delete ocenionej → modal no-rewind + CTA override, soft-delete+create (obie kolejności enqueue) → applied bez quarantine, override online → nowy krok, 422→quarantine, 503→backoff.
 - Mobile-first; nie zakładaj natywnych API (HealthKit, Garmin SDK).

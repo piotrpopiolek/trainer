@@ -57,7 +57,7 @@ Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik w
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
-Uwagi: aktywne konta wymagają `google_sub` (egzekwowane w aplikacji / partial UNIQUE gdzie `deleted_at IS NULL`).
+Uwagi: aktywne konta wymagają `google_sub` (egzekwowane w aplikacji / partial UNIQUE gdzie `deleted_at IS NULL`). Tożsamość logowania = wyłącznie `google_sub` z zwalidowanego ID tokenu (FR-001); email nie jest kluczem.
 
 ---
 
@@ -71,14 +71,35 @@ Uwagi: aktywne konta wymagają `google_sub` (egzekwowane w aplikacji / partial U
 | `expires_at` | `TIMESTAMPTZ` | NOT NULL |
 | `revoked_at` | `TIMESTAMPTZ` | NULL |
 | `user_agent` | `TEXT` | NULL |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — hard cap sesji: `created_at + 90d` (FR-005d) |
+| `last_seen_at` | `TIMESTAMPTZ` | NULL — ostatni sliding bump (throttle 24h) |
+
+Uwagi (FR-001 / FR-005a / FR-005d):
+- Klient dostaje **losowy** session token wyłącznie w cookie `__Host-trainer_session` (`HttpOnly; Secure; Path=/; SameSite=Strict`); w kolumnie `token_hash` = SHA-256(token) — raw token **nigdy** w DB ani w logach.
+- OAuth Google: Authorization Code + PKCE (S256); jednorazowy `state` w `oauth_states`; po sukcesie walidacja ID token (FR-001) → upsert user po `google_sub` → INSERT `auth_sessions` (`expires_at = now()+30d`) + Set-Cookie; jeśli user ma już ≥10 aktywnych → revoke najstarszej.
+- Lookup: hash cookie → wiersz gdzie `revoked_at IS NULL` AND `expires_at > now()` AND `created_at > now() - 90 days`.
+- Sliding (≤1×/24h wg `last_seen_at`): `expires_at = now()+30d`, rotacja tokenu (nowy hash / nowy wiersz + revoke starego), odśwież cookie.
+- Logout: revoke **tylko** bieżącej sesji. „Wyloguj wszędzie” / delete account: revoke-all aktywnych.
+- Cron: DELETE wierszy `expires_at < now() - 7d` OR `revoked_at < now() - 7d`.
+- **Zakaz** API auth przez Bearer z localStorage jako domyślnej ścieżki F1.
+
+---
+
+### 1.2a `oauth_states` (jednorazowy state OAuth — FR-001)
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `state` | `TEXT` | PK — losowy ≥128 bit |
+| `code_verifier` | `TEXT` | NOT NULL — PKCE |
+| `expires_at` | `TIMESTAMPTZ` | NOT NULL — ≤ now()+10 min przy INSERT |
+| `consumed_at` | `TIMESTAMPTZ` | NULL — ustawiane przy udanym callbacku |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
-Uwagi (FR-001 / FR-005a):
-- Klient dostaje **losowy** session token wyłącznie w cookie `HttpOnly; Secure; SameSite=Lax` (nazwa np. `trainer_session`); w kolumnie `token_hash` = SHA-256(token) — raw token **nigdy** w DB ani w logach.
-- OAuth Google: Authorization Code + PKCE; `state` jednorazowy (store server-side / encrypted cookie krótkoterminowe); po sukcesie INSERT `auth_sessions` + Set-Cookie.
-- Lookup: hash cookie → wiersz gdzie `revoked_at IS NULL` AND `expires_at > now()`.
-- Logout / delete account: ustaw `revoked_at` (revoke-all opcjonalnie: wszystkie sesje usera).
-- **Zakaz** API auth przez Bearer z localStorage jako domyślnej ścieżki F1.
+Uwagi:
+- Start OAuth: INSERT `oauth_states`; redirect do Google z `state` + `code_challenge`.
+- Callback: SELECT WHERE `state` AND `consumed_at IS NULL` AND `expires_at > now()` → atomowo ustaw `consumed_at` (lub DELETE); brak / już consumed / expired → reject.
+- Cron: DELETE `expires_at < now() - 1h` OR `consumed_at IS NOT NULL` starsze niż 1h.
+- **Zakaz** polegania wyłącznie na porównaniu state z cookie bez consume w DB.
 
 ---
 
@@ -505,6 +526,27 @@ UNIQUE (`user_id`, `client_mutation_id`).
 
 ---
 
+### 1.21 `rate_limit_buckets` (FR-005c / Perf7)
+
+Fixed-window limity bez Redis (F1).
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `bucket_key` | `TEXT` | NOT NULL — np. `u:{uuid}:api`, `u:{uuid}:sync_push`, `ip:{sha256}:oauth` |
+| `window_start` | `TIMESTAMPTZ` | NOT NULL — np. `date_trunc('minute', now())` lub start dnia TZ dla override |
+| `count` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`count >= 0`) |
+
+PK (`bucket_key`, `window_start`).
+
+Uwagi:
+- Bump: `INSERT … ON CONFLICT DO UPDATE SET count = rate_limit_buckets.count + 1 RETURNING count`; jeśli `count > limit` → 429 + `Retry-After`.
+- Limity domyślne: api 100/min, sync_push 20/min, oauth 10/min/IP; override 10/dzień (klucz dzienny).
+- **Zakaz** in-memory store w prod/staging. Dev: `RATE_LIMIT_STORE=memory` OK.
+- Cron cleanup: DELETE WHERE `window_start < now() - interval '2 hours'` (okna minutowe); okna dzienne — retencja ≥2 dni.
+- Brak FK do `users` (klucze tekstowe; IP hash) — tabela techniczna, nie user-owned cascade.
+
+---
+
 ## 2. Relacje między tabelami
 
 | Relacja | Kardynalność | Opis |
@@ -713,7 +755,7 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
       - Rerun-safe; fail → `purge.fail`, nie ustawiaj `done`.
       - Monitoring: `purge.ok` / `purge.fail` + heartbeat; cisza ≥36h = incydent; runbook: `purge_after < today-7 AND status ≠ done`. Opcjonalny egress ping po sukcesie (healthchecks.io) — dozwolony.
       - Test CI: pełny graf → purge → zero childów + `done`; drugi run no-op; (opcjonalnie) kill mid-TX → rerun kończy czysto.
-    - Export: FR-006b — **`POST /account/export` + CSRF** przed delete; zakaz GET z samym cookie sesji (CSRF / SameSite=Lax).
+    - Export: FR-006b — **`POST /account/export` + CSRF**; **pełny** zakres user-owned; **streaming** per kolekcja (zakaz full JSON w RAM); bez `rules_snapshot`/sekretów; zakaz GET z samym cookie sesji.
     - Re-OAuth po anonimizacji = nowy `users` row.
 12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
 13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`, w tym `revision_jump` / `mutation_payload_mismatch`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
@@ -726,25 +768,27 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Korekta wyniku: soft-delete sesji (`deleted_at`) **w tej samej TX** ustawia `superseded_at` na child logach + create nowej sesji (nowe `id`, `revision=1`) → silnik ocenia tylko nową; logi z `superseded_at IS NOT NULL` **wykluczone** z fail_streak, UNIQUE FR-039 i aktywnej historii.
    - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie / zmiana kroku wyłącznie przez **first-class** `manual_override` (FR-038 / US-016b): FOR UPDATE `user_exercise_progress`; nowy `current_step_number`; `fail_streak = 0`; INSERT `progression_events` (`manual_override`); limit ~10/dzień; bez mutacji historycznych logów.
 15. **Content hash (F1):** kanoniczny hash JSON zamrożonych pól logów (np. SHA-256 po stabilnej serializacji `sets` + `skipped` + `step_number` + `exercise_id` + `sort_order`); serwer liczy przy evaluate i przy push compare.
-16. **Sync pull (FR-070/075 — Perf1):**
-   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (każda z zagnieżdżonymi `logs[]`), `progress[]`, `satellites[]`, `measurements[]`, `progression_events[]` (nowe od `since` / okno flush — do surface UI FR-036), `conflicts[]` (ostatnie N / `since` — lista UI FR-073a; bez pełnego `losing_payload` w pull jeśli duży — wtedy detail `GET /sync/conflicts/{id}`), `catalog_version`, `server_time`; opcjonalnie `since` → delta.
-   - **Okno sesji (initial + offline cache):** max **30** aktywnych (`deleted_at IS NULL`), sort `performed_at DESC` (tie-break `id`). Soft-deleted w oknie: tombstone `{ id, deleted_at, revision }` bez `sets` / `rules_snapshot`.
-   - **Projekcja logów w pull:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync (`revision`, `updated_at`, …). **Zakaz** pola `rules_snapshot` w `SyncPull` / liście — snapshot zostaje w DB; opcjonalny `GET /sessions/{id}` dla audytu/support.
-   - **Zakaz** osobnego unbounded `GET` wszystkich `session_exercise_logs` usera po `updated_at` jako ścieżki offline sync (N+1 / rozrost).
-   - **Pomiary:** okno **365 dni** (`measured_at` / `local_date`); starsze — lazy online.
-   - **Katalog CC:** sync tylko gdy `catalog_version` (lub ETag) ≠ lokalny; `GET` z `If-None-Match` → **304** (FR-075a); nie w każdym pullu sesji.
+16. **Sync pull (FR-070/075 — Perf1 / wariant A):**
+   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (zagnieżdżone `logs[]`), `progress[]` (**zawsze pełny** snapshot CC), `satellites[]`, `measurements[]`, `progression_events[]`, `conflicts[]`, `catalog_version`, **`server_time`**, opcjonalnie `resync_required`.
+   - **Initial** (brak `since`): pełne okno — max **30** aktywnych sesji (`performed_at DESC`), pomiary **365 dni**, aktywne satelity; soft-deleted w oknie = tombstone `{ id, deleted_at, revision }` bez `sets` / `rules_snapshot`.
+   - **Incremental** (`since=<TIMESTAMPTZ>`): encje z `updated_at > since` w tych samych oknach + tombstones. Klient **musi** używać `since` po pierwszym udanym pullu. **Zakaz** traktowania delty jako opcjonalnej optymalizacji.
+   - `since` nieparsowalny lub `since < now() - 30d` → `resync_required: true` + body jak initial (200).
+   - Po push: klient robi incremental (nie full) chyba że `resync_required`.
+   - **Projekcja logów:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync. **Zakaz** `rules_snapshot` w SyncPull.
+   - **Zakaz** unbounded `GET` wszystkich logów po `updated_at` jako ścieżki offline.
+   - **Katalog CC:** osobno FR-075a (304); nie w każdym pullu sesji.
    - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
 17. **Offline UX awansu (Pr2 / FR-071a, FR-036, FR-074):** push outbox (lub natychmiastowy follow-up pull) zwraca nowe `progression_events` powstałe w tej transakcji apply; klient surface’uje advance/regress idempotentnie po `event.id`. Brak lokalnego silnika / celebracji przed sync.
 17a. **Persistent storage (Rel5 / FR-070a):** klient — `navigator.storage.persist()` przy starcie / pierwszym enqueue; UX gdy `!persisted` ∧ pending outbox. IndexedDB **nie** zastępuje backupu serwera (FR-081a).
 18. **Konflikt UX (Pr3 / FR-073a):** serwer zawsze zapisuje `sync_conflict_logs` przy lost/tie/immutable; klient surface per kind; recovery = INSERT nowej encji z `losing_payload` (nowe id), nigdy UPDATE winning przegraną. Ack przeczytania tylko lokalnie.
 19. **Split / timezone (Pr4 / FR-022a/022b, FR-024a, FR-040a/040c):** `resolve_cc_day` = fixed weekdays (po promote pending). GET /today: promote jeśli `local_date >= *_effective_on`; rest + opcjonalny `cc_day_override` (FR-024a). `PATCH /account/schedule` (lub równoważny, CSRF): ustaw pending + effective_on=jutro; historia bez rewrite. Zapis: `local_date_mismatch` vs aktywna TZ **lub** `client_timezone` z outbox item (Rel10). Rolling **poza F1**.
 20. **Content CC (Pr5 / FR-020a, FR-084):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; content track od tyg. 1. Beta: częściowy ready + banner OK; CI gate **prod**: wszystkie `exercise_steps` CC niepuste bez `[DRAFT]`. Ilustracje per-step poza F1.
-21. **Outbox order (Rel3 / FR-072a):** klient i serwer sortują batch: sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`; w batchu sesje→pomiary→satelity. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
+21. **Outbox order (Rel3 / Rel9 / FR-072a):** klient i serwer sortują batch: **`legal_acceptance` → sesje → pomiary → satelity**; sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`, legal `(accepted_at, id)`. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). **Legal gate (FR-014a):** przed apply sesji wymagany `user_legal_acceptances` dla aktualnego `health_disclaimer`; brak + pending legal w batchu → defer; brak całkowity → `legal_required` quarantine. Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
 22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
 23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
 24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
 25. **Indeks silnika (Perf5) + denorm (Rel4):** przy **INSERT** logów skopiuj `local_date`/`performed_at` z sesji; partial index `(user_id, exercise_id, local_date, performed_at, id)` WHERE `exercise_kind = 'cc' AND skipped = false AND superseded_at IS NULL`; evaluate sortuje po tych kolumnach — **zakaz** `ORDER BY created_at`. **Zakaz** UPDATE denorm przy zmianie sesji — daty sesji immutable od create (pkt 14). Soft-delete sesji: w TX ustaw `superseded_at` na childach (FR-039 UNIQUE). Test: push zmieniający `local_date` przed evaluate → `409 session_date_immutable`; child logi nietknięte.
-26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox (FR-014a).
+26. **Today / write DTO / legal offline:** `GET /today` = TodaySessionDto (FR-040b); write path strip server-owned fields (FR-046a); `legal_acceptance` w outbox **przed** sesjami; serwer `legal_required` na apply sesji (FR-014a).
 27. **Backup & restore (Rel1 / FR-081a) — wymagane F1 przed public beta/prod:**
     - **Cel:** chronić trwałość danych w spoczynku (historia sesji, `progression_events` append-only, pomiary biometryczne). Spec sync chroni spójność *w locie*; backup chroni przed utratą wolumenu / hosta. IndexedDB klienta (**nie**) jest backupem serwera (okno FR-070).
     - **Parametry:** RPO **≤ 24 h**; RTO **≤ 4 h**; retencja backupów **≤ 30 dni** (spójna z grace delete FR-006a); zakres = pełny dump bazy aplikacji.
@@ -758,10 +802,10 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 1. Extensions (`citext` jeśli używane)
 2. Role `trainer_app` / `trainer_migrator`
-3. `users` → `auth_sessions` → `legal_documents` → `user_legal_acceptances` → `user_onboarding`
+3. `users` → `auth_sessions` → `oauth_states` → `legal_documents` → `user_legal_acceptances` → `user_onboarding`
 4. `programs` → `exercises` → `program_days` → `program_day_exercises` → `progression_schemas` → `exercise_steps`
 5. `user_program_enrollments` → `user_exercise_progress` → `workout_sessions` → `session_exercise_logs` → `progression_events`
-6. `body_measurements` → `sync_*` → `client_mutations`
+6. `body_measurements` → `sync_*` → `client_mutations` → `rate_limit_buckets`
 7. Indeksy partial / triggery limitu satelitów
 8. Seed CC + legal
 
@@ -769,7 +813,7 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006, FR-005a–c, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions`; OAuth; IDOR; CORS/rate limit; delete/export; hard purge order + TX (FR-006c) |
+| FR-001–006, FR-005a–d, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions` (+ `last_seen_at`, TTL FR-005d), `oauth_states` (FR-001), **`rate_limit_buckets` (FR-005c)**; OAuth JWKS; IDOR; CORS/rate limit PG; delete/export; hard purge order + TX (FR-006c) |
 | FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` (+ outbox legal) |
 | FR-020–024, FR-020a, FR-022a, FR-022b, FR-024a, FR-040a, FR-040c | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps`, `user_program_enrollments` (+ pending anchor), `users.timezone` (+ pending TZ); rest override tylko w `/today` |
 | FR-030–039, FR-034a, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress` (`fail_streak` = cache folda), `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm); push/pull zwraca eventy do surface UI |

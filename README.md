@@ -61,13 +61,13 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | Database | PostgreSQL + JSONB |
 | Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
 | Tooling | uv, Ruff, mypy, pytest |
-| Auth (MVP) | Google OAuth (Auth Code + PKCE); session cookie HttpOnly |
+| Auth (MVP) | Google OAuth (Auth Code + PKCE S256); ID token JWKS (iss/aud/exp/sub); email_verified required; identity = google_sub; same-origin; `__Host-` cookie; sliding TTL 30d / hard cap 90d (FR-001/005a/005d); CSRF on account mutations |
 
 ### Infrastructure
 
 | Phase | Components |
 |-------|------------|
-| Phase 1 | Docker / Compose, GitHub Actions, OpenAPI, **PostgreSQL backup/restore** (FR-081a) |
+| Phase 1 | Docker / Compose, GitHub Actions, OpenAPI, **PostgreSQL backup/restore** (FR-081a), **PG rate-limit buckets** (FR-005c; no Redis) |
 | Phase 2+ | Redis + ARQ, Cloudflare R2, OpenTelemetry + Prometheus + Grafana |
 
 **Phase 1 backup (required before public beta/prod):** nightly encrypted `pg_dump` off the app host; RPO ≤ 24h, RTO ≤ 4h, retention ≤ 30 days; Compose cron/service only (no HTTP trigger); restore runbook + drill. Details: [docs/prd.md](docs/prd.md) FR-081a, [docs/db-plan.md](docs/db-plan.md) §5 pkt 27.
