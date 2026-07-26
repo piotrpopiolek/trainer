@@ -35,10 +35,21 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "https://localhost/api/auth/google/callback"
     session_cookie_name: str = "__Host-trainer_session"
+    oauth_state_cookie_name: str = "__Host-trainer_oauth"
     csrf_secret: str = ""
     rate_limit_store: str = "memory"
+    oauth_rate_limit_per_minute: int = 10
     trainer_app_password: str = ""
     trainer_migrator_password: str = ""
+    # Auth TTL (FR-005d) — overridable in tests
+    session_sliding_days: int = 30
+    session_hard_cap_days: int = 90
+    session_bump_min_hours: int = 24
+    session_max_active: int = 10
+    oauth_state_ttl_minutes: int = 10
+    google_jwks_url: str = "https://www.googleapis.com/oauth2/v3/certs"
+    google_token_url: str = "https://oauth2.googleapis.com/token"
+    google_auth_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
 
     @cached_property
     def resolved_database_url(self) -> str:

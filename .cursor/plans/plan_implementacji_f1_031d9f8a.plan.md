@@ -19,7 +19,7 @@ todos:
     status: completed
   - id: auth-session
     content: OAuth Google PKCE z oauth_states i walidacja JWKS, cookie __Host-, sliding TTL 30d z rotacja, hard cap 90d, limit 10 sesji z users FOR UPDATE
-    status: pending
+    status: in_progress
   - id: platform-guards
     content: Rate limit na rate_limit_buckets, limit body, CSRF na mutacjach konta, warstwa get_for_user deny-by-default i pierwsza suite IDOR
     status: pending

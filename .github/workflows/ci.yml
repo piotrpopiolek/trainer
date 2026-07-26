@@ -82,7 +82,8 @@ jobs:
           done
           exit 1
       - name: Pytest IDOR
-        run: docker compose run --rm api pytest -m idor
+        # Marker suite only — coverage gate stays on the full pytest job
+        run: docker compose run --rm api pytest -m idor --no-cov
       - name: Tear down
         if: always()
         run: docker compose down -v

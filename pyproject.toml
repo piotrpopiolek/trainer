@@ -13,6 +13,8 @@ dependencies = [
   "pydantic>=2.10",
   "pydantic-settings>=2.6",
   "uuid6>=2025.0.0",
+  "httpx>=0.27",
+  "PyJWT[crypto]>=2.9",
 ]
 
 [dependency-groups]
@@ -80,6 +82,7 @@ src = ["backend"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
 
 [tool.mypy]
 python_version = "3.13"
