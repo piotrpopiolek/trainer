@@ -173,10 +173,11 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | Cursor project rules | Done — `.cursor/rules/` |
 | Monorepo scaffold | Done — `backend/`, `frontend/`, `infra/`, Compose + Caddy |
 | CI (GitHub Actions) | Done — `.github/workflows/ci.yml` + weekly `security.yml` |
-| Migrations / domain API | Not started |
+| DB core (auth/legal/onboarding/RLS) | Done — Alembic `20260726_0001` |
+| Catalog / sessions / sync schema | Not started |
 | License file | Not chosen |
 
-Current focus: **Phase 1 F1.0 — next is DB migrations (db-core).**
+Current focus: **Phase 1 F1.0 — next is db-catalog-sync migrations.**
 
 ## License
 

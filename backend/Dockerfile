@@ -20,6 +20,9 @@ RUN uv sync --frozen --group dev --no-install-project
 COPY backend ./backend
 ENV PYTHONPATH=/app/backend
 
+# Alembic config is under backend/
+WORKDIR /app
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

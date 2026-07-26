@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: db-core
     content: "Migracje Alembic czesc 1: role trainer_app/trainer_migrator, users z locale, auth_sessions, oauth_states, legal_documents + translations, onboarding, RLS na body_measurements"
-    status: pending
+    status: completed
   - id: db-catalog-sync
     content: "Migracje Alembic czesc 2: katalog CC z tabelami *_translations, sesje i logi z composite FK oraz partial UNIQUE FR-039, progresja, sync, rate_limit_buckets, oba triggery"
     status: pending

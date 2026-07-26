@@ -13,7 +13,7 @@ api-shell:
 	docker compose run --rm api sh
 
 migrate:
-	docker compose run --rm api alembic upgrade head
+	docker compose run --rm api alembic -c backend/alembic.ini upgrade head
 
 test:
 	docker compose run --rm api pytest

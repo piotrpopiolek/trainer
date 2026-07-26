@@ -51,8 +51,8 @@ jobs:
           exit 1
       - name: Alembic upgrade (when configured)
         run: |
-          if docker compose run --rm --no-deps api sh -c 'test -f alembic.ini || test -f backend/alembic.ini'; then
-            docker compose run --rm api alembic upgrade head
+          if docker compose run --rm --no-deps api sh -c 'test -f backend/alembic.ini'; then
+            docker compose run --rm api alembic -c backend/alembic.ini upgrade head
           else
             echo "Alembic not configured yet — skip migrate (db-core)"
           fi
