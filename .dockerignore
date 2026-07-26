@@ -1,0 +1,15 @@
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.git
+.cursor
+frontend/node_modules
+frontend/dist
+infra/caddy/data
+infra/caddy/config
+infra/backup/out
+*.pyc

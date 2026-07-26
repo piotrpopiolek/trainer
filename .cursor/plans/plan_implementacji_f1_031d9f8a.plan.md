@@ -4,10 +4,10 @@ overview: Budowa Fazy 1 aplikacji Trainer od zera w monorepo (FastAPI + React PW
 todos:
   - id: repo-scaffold
     content: "Scaffold monorepo: backend/, frontend/, infra/, Docker Compose z Caddy (same-origin / i /api), tooling uv/ruff/mypy/pytest oraz Vite/TS strict/Tailwind/i18next"
-    status: pending
+    status: completed
   - id: ci-pipeline
     content: "GitHub Actions: lint, mypy, migracje na czystej bazie, pytest, osobny job pytest -m idor, build frontendu, gate kompletnosci i18n i content"
-    status: pending
+    status: completed
   - id: db-core
     content: "Migracje Alembic czesc 1: role trainer_app/trainer_migrator, users z locale, auth_sessions, oauth_states, legal_documents + translations, onboarding, RLS na body_measurements"
     status: pending
@@ -169,6 +169,6 @@ UPDATE workout_sessions
 ## Przyjęte założenia (do korekty przed startem)
 
 - SQLAlchemy 2.0 w trybie async z `asyncpg`, jeden styl w całym projekcie.
-- PostgreSQL 16, Python 3.12, Node LTS, UUID v7 generowane w aplikacji.
+- PostgreSQL 16, Python 3.13+, Node LTS, UUID v7 generowane w aplikacji.
 - Testy integracyjne na realnej bazie w Compose (bez sqlite), `pytest-asyncio` i `httpx.AsyncClient`.
 - Brak Redis, ARQ, R2 i OpenTelemetry poza podstawowym logowaniem strukturalnym; pełna obserwowalność to Faza 2.

@@ -1,0 +1,12 @@
+{
+  "app": {
+    "name": "Trainer",
+    "tagline": "Progresja kalisteniki — faza scaffold"
+  },
+  "shell": {
+    "apiStatus": "Status API",
+    "apiOk": "API działa",
+    "apiDown": "API niedostępne",
+    "loading": "Ładowanie…"
+  }
+}

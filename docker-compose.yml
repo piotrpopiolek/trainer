@@ -1,0 +1,88 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trainer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainer}
+      POSTGRES_DB: ${POSTGRES_DB:-trainer}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainer} -d ${POSTGRES_DB:-trainer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      # Avoid clashing with a host Postgres; app traffic stays on the Compose network
+      - "5433:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://trainer:trainer@db:5432/trainer}
+      APP_ENV: ${APP_ENV:-development}
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    volumes:
+      # Hot-reload for local API work (image still owns deps)
+      - ./backend:/app/backend:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+
+  proxy:
+    image: caddy:2.9-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/caddy/data:/data
+      - ./infra/caddy/config:/config
+    depends_on:
+      - api
+      - web
+
+  # One-shot ops services (invoked by host cron / compose run — no HTTP triggers)
+  backup:
+    profiles: ["ops"]
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    volumes:
+      - ./infra/backup:/scripts:ro
+      - ./infra/backup/out:/backup
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  purge:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://trainer:trainer@db:5432/trainer}
+    entrypoint: ["python", "-m", "app.jobs.purge"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

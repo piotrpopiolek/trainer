@@ -1,0 +1,35 @@
+.PHONY: up down logs api-shell migrate test test-idor lint frontend-install frontend-dev trust-ca
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f proxy api web db
+
+api-shell:
+	docker compose run --rm api sh
+
+migrate:
+	docker compose run --rm api alembic upgrade head
+
+test:
+	docker compose run --rm api pytest
+
+test-idor:
+	docker compose run --rm api pytest -m idor
+
+lint:
+	docker compose run --rm api ruff check backend
+	docker compose run --rm api mypy
+
+frontend-install:
+	cd frontend && npm ci
+
+frontend-dev:
+	cd frontend && npm run dev
+
+trust-ca:
+	powershell -ExecutionPolicy Bypass -File infra/caddy/trust-root.ps1

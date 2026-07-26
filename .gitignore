@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/dev-dist/
+*.tsbuildinfo
+npm-debug.log*
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker / local TLS
+infra/caddy/data/
+infra/caddy/config/
+infra/caddy/root.crt
+
+# Test / coverage artifacts
+coverage/
+playwright-report/
+test-results/
+blob-report/
+frontend/playwright/.cache/
+
+# Misc
+*.log
+tmp/
+.temp/

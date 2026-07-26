@@ -1,7 +1,7 @@
 # Trainer
 
-[![Status](https://img.shields.io/badge/status-pre--scaffold-yellow)](#project-status)
-[![Phase](https://img.shields.io/badge/phase-1%20MVP%20planning-blue)](#project-scope)
+[![Status](https://img.shields.io/badge/status-scaffold-yellow)](#project-status)
+[![Phase](https://img.shields.io/badge/phase-1%20MVP%20F1.0-blue)](#project-scope)
 [![Docs](https://img.shields.io/badge/docs-PRD-informational)](docs/prd.md)
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)](#license)
 
@@ -38,108 +38,107 @@ This app is **not** a medical device and does not replace professional advice. R
 
 ## Tech stack
 
-Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` are not in the repository yet.
-
 ### Frontend (Phase 1)
 
 | Area | Choice |
 |------|--------|
 | App | React PWA (mobile-first) |
-| Build | Vite + TypeScript |
+| Build | Vite + TypeScript (strict) |
 | PWA | `vite-plugin-pwa` |
-| UI | Tailwind CSS, shadcn/ui, Lucide React |
+| UI | Tailwind CSS (shadcn/ui primitives as features land) |
 | Server state | TanStack Query |
 | Client / offline UI | Zustand + IndexedDB + outbox |
 | Forms | React Hook Form + Zod |
-| Localization | `react-i18next`; F1 ships `pl-PL`, with fallback and locale-namespaced catalog cache |
-| Frontend tests | Vitest (unit, coverage ≥80%) + Playwright (E2E against Compose same-origin) |
+| Localization | `react-i18next`; F1 ships `pl-PL` |
+| Frontend tests | Vitest (coverage ≥80%) + Playwright (E2E against Compose same-origin) |
 
 ### Backend (Phase 1)
 
 | Area | Choice |
 |------|--------|
 | API | FastAPI + Pydantic v2 |
-| ORM | SQLAlchemy 2.0 + Alembic |
-| Database | PostgreSQL + JSONB |
-| Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
-| Localized content | Relational `*_translations`; BCP 47 `users.locale`; locale-aware catalog ETag and historical `content_locale` snapshots |
-| Tooling | uv, Ruff, mypy, pytest + pytest-cov (`fail_under = 80` in root `pyproject.toml`) |
-| Auth (MVP) | Google OAuth (Auth Code + PKCE S256); ID token JWKS (iss/aud/exp/sub); email_verified required; identity = google_sub; same-origin; `__Host-` cookie; sliding TTL 30d / hard cap 90d (FR-001/005a/005d); CSRF on account mutations |
+| ORM | SQLAlchemy 2.0 (async) + Alembic |
+| Database | PostgreSQL 16 + JSONB |
+| Tooling | uv, Ruff, mypy (strict), pytest + pytest-cov (`fail_under = 80`) |
+| Auth (MVP) | Google OAuth (Auth Code + PKCE) — not wired yet |
 
 ### Infrastructure
 
 | Phase | Components |
 |-------|------------|
-| Phase 1 | Docker / Compose, GitHub Actions, OpenAPI, **PostgreSQL backup/restore** (FR-081a), **PG rate-limit buckets** (FR-005c; no Redis) |
-| Phase 2+ | Redis + ARQ, Cloudflare R2, OpenTelemetry + Prometheus + Grafana |
-
-**Phase 1 backup (required before public beta/prod):** nightly encrypted `pg_dump` off the app host; RPO ≤ 24h, RTO ≤ 4h, retention ≤ 30 days; Compose cron/service only (no HTTP trigger); restore runbook + drill. Details: [docs/prd.md](docs/prd.md) FR-081a, [docs/db-plan.md](docs/db-plan.md) §5 pkt 27.
-
-**Out of Phase 1:** Apple Sign In, native iOS/Android apps, Redis/ARQ/R2, LLM agent, Garmin integration, Web Push, progress photos.
+| Phase 1 | Docker Compose + Caddy (same-origin `/` + `/api`), GitHub Actions (next), PG backup/restore |
+| Phase 2+ | Redis + ARQ, Cloudflare R2, OpenTelemetry |
 
 ## Getting started locally
 
-> **Note:** The app is not scaffolded yet. There is no runnable `frontend/` or `backend/` package in this repo. The steps below describe the intended local workflow once the stack is initialized.
+### Prerequisites
 
-### Prerequisites (planned)
-
-- Node.js (version will be pinned in `.nvmrc` when the frontend is scaffolded)
-- Python 3.12+ and [uv](https://github.com/astral-sh/uv)
+- Node.js 24 (see `.nvmrc`) and npm
 - Docker and Docker Compose
-- Google OAuth credentials (for auth)
+- Google OAuth credentials (when auth is implemented)
 
-### Planned setup
-
-```bash
-# Clone
-git clone <repository-url>
-cd trainer
-
-# Frontend (after scaffold)
-# nvm use          # respects .nvmrc when present
-# cd frontend && npm install && npm run dev
-
-# Backend (after scaffold)
-# docker compose up -d db api
-# docker compose run --rm api alembic upgrade head
-```
-
-Migrations and backend tests should run **inside Docker**, matching CI/production, once compose services exist.
-
-Until scaffold lands, use the PRD as the source of truth for behavior and phases:
+### Setup
 
 ```bash
-# Product docs only
-open docs/prd.md   # or view in your editor
+cp .env.example .env
+docker compose up -d --build
 ```
+
+Same-origin stack: **https://localhost** (Caddy) → PWA (`web`) and `/api/*` (`api`).
+
+Caddy uses a **local CA**. On first visit Windows browsers show a certificate warning until you trust it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File infra/caddy/trust-root.ps1
+```
+
+Then restart the browser and open https://localhost. (Cursor Simple Browser often stays blank on untrusted TLS — use Chrome/Edge after trusting the CA.)
+
+```bash
+# Migrations (once Alembic revisions exist)
+docker compose run --rm api alembic upgrade head
+
+# Backend tests / lint (inside Compose — matches CI)
+docker compose run --rm api pytest
+docker compose run --rm api ruff check backend
+docker compose run --rm api mypy
+
+# Frontend (host)
+cd frontend && npm ci
+npm run test:coverage
+npm run dev   # optional Vite-only; prefer Compose for cookie/same-origin parity
+```
+
+Host Postgres tooling (optional) maps to `localhost:5433`.
 
 ## Available scripts
 
-No `package.json` or root `Makefile` is present yet. Expected scripts after scaffolding:
+### Makefile
 
-### Frontend (typical Vite / React)
+| Target | Purpose |
+|--------|---------|
+| `make up` | `docker compose up -d --build` |
+| `make down` | Stop stack |
+| `make test` | Backend pytest in Compose |
+| `make test-idor` | `pytest -m idor` |
+| `make migrate` | `alembic upgrade head` |
+
+### Frontend (`frontend/`)
 
 | Script | Purpose |
 |--------|---------|
-| `npm run dev` | Start Vite development server |
+| `npm run dev` | Vite dev server (proxies `/api` → `:8000`) |
 | `npm run build` | Production build |
-| `npm run preview` | Preview production build |
-| `npm run lint` | Lint TypeScript / ESLint |
-| `npm run test` | Vitest unit tests |
-| `npm run test:coverage` | Vitest with coverage (fails if &lt; 80%) |
-| `npx playwright test` | Playwright E2E (Compose up; Chromium) |
+| `npm run test` / `test:coverage` | Vitest |
+| `npm run test:e2e` | Playwright (Compose base URL) |
 
-### Backend (typical)
+### Backend (Compose)
 
 | Command | Purpose |
 |---------|---------|
-| `docker compose up -d` | Start API + PostgreSQL |
-| `docker compose run --rm api alembic upgrade head` | Apply migrations |
-| `docker compose run --rm api pytest` | Run backend tests with coverage (fails if &lt; 80%) |
-| `docker compose run --rm api pytest -m idor` | IDOR suite only (required CI job) |
-| `uv run ruff check` / `uv run mypy` | Lint and type-check (host tooling; runtime tests in Docker) |
-
-This section will be updated when real scripts are added to the repository.
+| `docker compose run --rm api pytest` | Tests + coverage ≥80% |
+| `docker compose run --rm api pytest -m idor` | IDOR suite |
+| `docker compose run --rm api alembic upgrade head` | Migrations |
 
 ## Project scope
 
@@ -148,24 +147,13 @@ This section will be updated when real scripts are added to the repository.
 - React PWA (installable, mobile-first)
 - Google OAuth (no email/password; no Apple Sign In)
 - CC program: 6 big exercises × 10 steps, 3-day split
-- Deterministic progression engine **on the backend only** (versioned JSONB rules + `schema_version` contracts; `rules_snapshot` on session logs; no dual JS engine)
+- Deterministic progression engine **on the backend only**
 - Fast session logging (&lt; 3 minutes target)
-- Up to 10 satellite exercises (types B/C, including **daily** schedule)
-- Body measurements (weight, waist, biceps; optional chest, thigh, neck)
-- Offline support with outbox sync (revision-based last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
+- Up to 10 satellite exercises
+- Body measurements
+- Offline support with outbox sync
 - Health disclaimer and privacy policy
-- Translation-ready architecture from the first migration (FR-007); F1 content/UI remains Polish-only (`pl-PL`)
-- Staged delivery **F1.0 → F1.1 → F1.prod** with explicit de-scope order (see `docs/prd.md` §1.4a / FR-084); content CC track from week 1 (F1 prod = 60× `pl-PL` ready)
-
-### In scope — Phase 2
-
-- AI agent (premium): next-session proposal with rationale
-- YouTube link → satellite exercise draft (premium)
-- Garmin read-only: sleep, HRV/Body Battery, training load (premium)
-- Rule-based Web Push; body-measurement reminders
-- Trend charts (training + body)
-- Premium subscription gating
-- Cloudflare R2, Redis + ARQ
+- Staged delivery **F1.0 → F1.1 → F1.prod**
 
 ### Explicitly out of scope (Phases 1–2)
 
@@ -174,26 +162,25 @@ This section will be updated when real scripts are added to the repository.
 - Progress photos
 - Trainer / multi-client coaching
 - Medical diagnosis or treatment claims
-- Writing workouts back to Garmin calendar
-- Verbatim Convict Conditioning book text
+- Redis/ARQ/R2 in Phase 1
 
 ## Project status
 
 | Item | Status |
 |------|--------|
-| Product requirements | Done — [docs/prd.md](docs/prd.md) (incl. FR-081a backup) |
-| Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) (§5 pkt 27 backup/restore) |
+| Product requirements | Done — [docs/prd.md](docs/prd.md) |
+| Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) |
 | Cursor project rules | Done — `.cursor/rules/` |
-| Application code (frontend / backend) | Not started |
-| `package.json` / `.nvmrc` | Not present |
-| Docker Compose / CI | Not present |
+| Monorepo scaffold | Done — `backend/`, `frontend/`, `infra/`, Compose + Caddy |
+| CI (GitHub Actions) | Done — `.github/workflows/ci.yml` + weekly `security.yml` |
+| Migrations / domain API | Not started |
 | License file | Not chosen |
 
-Current focus: **Phase 1 MVP design complete; implementation pending scaffolding.**
+Current focus: **Phase 1 F1.0 — next is DB migrations (db-core).**
 
 ## License
 
-License is **TBD**. No `LICENSE` file has been added yet. Do not assume open-source terms until a license is committed.
+License is **TBD**. No `LICENSE` file has been added yet.
 
 ---
 

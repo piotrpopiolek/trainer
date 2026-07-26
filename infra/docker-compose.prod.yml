@@ -1,0 +1,20 @@
+# Production-oriented overrides (compose -f docker-compose.yml -f infra/docker-compose.prod.yml)
+# Fill secrets via env / vault; do not bake credentials into the image.
+
+services:
+  db:
+    ports: []
+    restart: unless-stopped
+
+  api:
+    restart: unless-stopped
+    volumes: []
+    environment:
+      APP_ENV: production
+      RATE_LIMIT_STORE: postgres
+
+  web:
+    restart: unless-stopped
+
+  proxy:
+    restart: unless-stopped
