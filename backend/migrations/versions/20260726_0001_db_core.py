@@ -17,8 +17,12 @@ branch_labels = None
 depends_on = None
 
 
-def _role_password(env_name: str, default: str) -> str:
-    value = os.environ.get(env_name, default)
+def _role_password(env_name: str) -> str:
+    value = os.environ.get(env_name)
+    if not value:
+        raise RuntimeError(
+            f"{env_name} must be set for role bootstrap (see .env.example)"
+        )
     return value.replace("'", "''")
 
 
@@ -28,8 +32,8 @@ def _sql(statement: str) -> None:
 
 
 def upgrade() -> None:
-    app_pw = _role_password("TRAINER_APP_PASSWORD", "trainer_app")
-    migrator_pw = _role_password("TRAINER_MIGRATOR_PASSWORD", "trainer_migrator")
+    app_pw = _role_password("TRAINER_APP_PASSWORD")
+    migrator_pw = _role_password("TRAINER_MIGRATOR_PASSWORD")
 
     _sql("CREATE EXTENSION IF NOT EXISTS citext")
 

@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Prepare env
-        run: cp .env.example .env
+        run: bash scripts/gen_dev_env.sh
       - name: Build API image
         run: docker compose build api
       - name: Ruff
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Prepare env
-        run: cp .env.example .env
+        run: bash scripts/gen_dev_env.sh
       - name: Build API image
         run: docker compose build api
       - name: Start database
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Prepare env
-        run: cp .env.example .env
+        run: bash scripts/gen_dev_env.sh
       - name: Build API image
         run: docker compose build api
       - name: Start database
@@ -134,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Prepare env
-        run: cp .env.example .env
+        run: bash scripts/gen_dev_env.sh
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc

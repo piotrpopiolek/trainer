@@ -3,8 +3,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trainer}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-trainer}
+      TRAINER_APP_PASSWORD: ${TRAINER_APP_PASSWORD:?set TRAINER_APP_PASSWORD in .env}
+      TRAINER_MIGRATOR_PASSWORD: ${TRAINER_MIGRATOR_PASSWORD:?set TRAINER_MIGRATOR_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -24,12 +26,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://trainer_app:trainer_app@db:5432/trainer}
-      ALEMBIC_DATABASE_URL: ${ALEMBIC_DATABASE_URL:-postgresql+asyncpg://trainer:trainer@db:5432/trainer}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      ALEMBIC_DATABASE_URL: ${ALEMBIC_DATABASE_URL:?set ALEMBIC_DATABASE_URL in .env}
       APP_ENV: ${APP_ENV:-development}
       RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
-      TRAINER_APP_PASSWORD: ${TRAINER_APP_PASSWORD:-trainer_app}
-      TRAINER_MIGRATOR_PASSWORD: ${TRAINER_MIGRATOR_PASSWORD:-trainer_migrator}
+      TRAINER_APP_PASSWORD: ${TRAINER_APP_PASSWORD:?set TRAINER_APP_PASSWORD in .env}
+      TRAINER_MIGRATOR_PASSWORD: ${TRAINER_MIGRATOR_PASSWORD:?set TRAINER_MIGRATOR_PASSWORD in .env}
     depends_on:
       db:
         condition: service_healthy
@@ -82,7 +84,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://trainer:trainer@db:5432/trainer}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
     entrypoint: ["python", "-m", "app.jobs.purge"]
     depends_on:
       db:

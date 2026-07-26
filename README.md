@@ -80,7 +80,10 @@ This app is **not** a medical device and does not replace professional advice. R
 ### Setup
 
 ```bash
-cp .env.example .env
+# Generate private .env with random local DB credentials (gitignored)
+bash scripts/gen_dev_env.sh
+# Or: cp .env.example .env  and fill POSTGRES_*/TRAINER_*_PASSWORD + DATABASE_URL yourself
+
 docker compose up -d --build
 ```
 
