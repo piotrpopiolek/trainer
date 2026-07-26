@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: seed-catalog
     content: "Seed: neutralne encje CC i progression_schemas oddzielone od tlumaczen pl-PL, legal_document_translations, catalog_version per locale"
-    status: pending
+    status: completed
   - id: auth-session
     content: OAuth Google PKCE z oauth_states i walidacja JWKS, cookie __Host-, sliding TTL 30d z rotacja, hard cap 90d, limit 10 sesji z users FOR UPDATE
     status: pending

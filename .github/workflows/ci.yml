@@ -53,6 +53,7 @@ jobs:
         run: |
           if docker compose run --rm --no-deps api sh -c 'test -f backend/alembic.ini'; then
             docker compose run --rm api alembic -c backend/alembic.ini upgrade head
+            docker compose run --rm api python -m app.seed
           else
             echo "Alembic not configured yet — skip migrate (db-core)"
           fi

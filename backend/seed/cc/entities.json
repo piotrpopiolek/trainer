@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "progression_schemas": [
+    {
+      "slug": "cc_default",
+      "schema_version": 1,
+      "description": "Default CC advance/regress contract v1"
+    }
+  ],
+  "program": {
+    "slug": "cc_big_six",
+    "is_system": true
+  },
+  "days": [
+    {"day_index": 1, "sort_order": 1, "exercise_slugs": ["push_ups", "squats"]},
+    {"day_index": 2, "sort_order": 2, "exercise_slugs": ["pull_ups", "leg_raises"]},
+    {"day_index": 3, "sort_order": 3, "exercise_slugs": ["bridges", "handstand_push_ups"]}
+  ],
+  "exercises": [
+    {
+      "slug": "push_ups",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    },
+    {
+      "slug": "squats",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    },
+    {
+      "slug": "pull_ups",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    },
+    {
+      "slug": "leg_raises",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    },
+    {
+      "slug": "bridges",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    },
+    {
+      "slug": "handstand_push_ups",
+      "exercise_type": "A",
+      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+    }
+  ],
+  "steps_per_exercise": 10,
+  "step_rules_default": {
+    "schema_version": 1,
+    "advance": {"sets": 3, "min_reps": 10, "require_both_sides": false},
+    "regress": {"fail_sessions": 2},
+    "goal": null
+  }
+}

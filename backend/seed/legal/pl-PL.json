@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "locale": "pl-PL",
+  "translations": [
+    {
+      "document_slug": "health_disclaimer",
+      "document_version": "1",
+      "title": "[DRAFT] Ostrzeżenie zdrowotne",
+      "body": "[DRAFT] Aplikacja Trainer nie zastępuje porady medycznej. Trening siłowy z masą własnego ciała może wiązać się z ryzykiem kontuzji. Skonsultuj się z lekarzem przed rozpoczęciem programu, zwłaszcza przy istniejących schorzeniach. Kontynuując, potwierdzasz, że ćwiczysz na własną odpowiedzialność."
+    },
+    {
+      "document_slug": "privacy_policy",
+      "document_version": "1",
+      "title": "[DRAFT] Polityka prywatności",
+      "body": "[DRAFT] Przetwarzamy dane konta (Google OAuth), logi treningowe, pomiary sylwetki i ustawienia wyłącznie w celu świadczenia usługi Trainer. Dane nie są sprzedawane. Po usunięciu konta dane treningowe mogą pozostawać w kopiach zapasowych do 30 dni. Pełna treść polityki zostanie uzupełniona przed F1.prod."
+    }
+  ]
+}

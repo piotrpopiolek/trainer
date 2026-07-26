@@ -1,0 +1,468 @@
+{
+  "schema_version": 1,
+  "locale": "pl-PL",
+  "catalog_version": 1,
+  "program": {
+    "name": "[DRAFT] Program Big Six",
+    "description": "[DRAFT] Sześć podstawowych wzorców ruchowych z progresją kroków. Treści własne — nie cytat z książki."
+  },
+  "days": [
+    {"day_index": 1, "name": "[DRAFT] Dzień 1"},
+    {"day_index": 2, "name": "[DRAFT] Dzień 2"},
+    {"day_index": 3, "name": "[DRAFT] Dzień 3"}
+  ],
+  "exercises": [
+    {
+      "slug": "push_ups",
+      "name": "[DRAFT] Pompki",
+      "description": "[DRAFT] Progresja pompek od wersji ściennych do trudniejszych wariantów."
+    },
+    {
+      "slug": "squats",
+      "name": "[DRAFT] Przysiady",
+      "description": "[DRAFT] Progresja przysiadów z naciskiem na kontrolę i zakres ruchu."
+    },
+    {
+      "slug": "pull_ups",
+      "name": "[DRAFT] Podciągania",
+      "description": "[DRAFT] Progresja podciągnięć od wariantów poziomych do pełnych."
+    },
+    {
+      "slug": "leg_raises",
+      "name": "[DRAFT] Unoszenie nóg",
+      "description": "[DRAFT] Progresja pracy tułowia i bioder w pozycji zwisu lub leżenia."
+    },
+    {
+      "slug": "bridges",
+      "name": "[DRAFT] Mostek biodrowy",
+      "description": "[DRAFT] Progresja mostka z naciskiem na tylny łańcuch i kontrolę."
+    },
+    {
+      "slug": "handstand_push_ups",
+      "name": "[DRAFT] Pompki w staniu na rękach",
+      "description": "[DRAFT] Progresja pompek pionowych od pozycji przy ścianie."
+    }
+  ],
+  "steps": [
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 1,
+      "name": "[DRAFT] Pompki — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 2,
+      "name": "[DRAFT] Pompki — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 3,
+      "name": "[DRAFT] Pompki — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 4,
+      "name": "[DRAFT] Pompki — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 5,
+      "name": "[DRAFT] Pompki — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 6,
+      "name": "[DRAFT] Pompki — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 7,
+      "name": "[DRAFT] Pompki — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 8,
+      "name": "[DRAFT] Pompki — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 9,
+      "name": "[DRAFT] Pompki — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 10,
+      "name": "[DRAFT] Pompki — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 1,
+      "name": "[DRAFT] Przysiady — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 2,
+      "name": "[DRAFT] Przysiady — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 3,
+      "name": "[DRAFT] Przysiady — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 4,
+      "name": "[DRAFT] Przysiady — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 5,
+      "name": "[DRAFT] Przysiady — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 6,
+      "name": "[DRAFT] Przysiady — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 7,
+      "name": "[DRAFT] Przysiady — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 8,
+      "name": "[DRAFT] Przysiady — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 9,
+      "name": "[DRAFT] Przysiady — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 10,
+      "name": "[DRAFT] Przysiady — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 1,
+      "name": "[DRAFT] Podciągania — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 2,
+      "name": "[DRAFT] Podciągania — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 3,
+      "name": "[DRAFT] Podciągania — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 4,
+      "name": "[DRAFT] Podciągania — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 5,
+      "name": "[DRAFT] Podciągania — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 6,
+      "name": "[DRAFT] Podciągania — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 7,
+      "name": "[DRAFT] Podciągania — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 8,
+      "name": "[DRAFT] Podciągania — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 9,
+      "name": "[DRAFT] Podciągania — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 10,
+      "name": "[DRAFT] Podciągania — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 1,
+      "name": "[DRAFT] Unoszenie nóg — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 2,
+      "name": "[DRAFT] Unoszenie nóg — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 3,
+      "name": "[DRAFT] Unoszenie nóg — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 4,
+      "name": "[DRAFT] Unoszenie nóg — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 5,
+      "name": "[DRAFT] Unoszenie nóg — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 6,
+      "name": "[DRAFT] Unoszenie nóg — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 7,
+      "name": "[DRAFT] Unoszenie nóg — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 8,
+      "name": "[DRAFT] Unoszenie nóg — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 9,
+      "name": "[DRAFT] Unoszenie nóg — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 10,
+      "name": "[DRAFT] Unoszenie nóg — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 1,
+      "name": "[DRAFT] Mostek — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 2,
+      "name": "[DRAFT] Mostek — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 3,
+      "name": "[DRAFT] Mostek — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 4,
+      "name": "[DRAFT] Mostek — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 5,
+      "name": "[DRAFT] Mostek — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 6,
+      "name": "[DRAFT] Mostek — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 7,
+      "name": "[DRAFT] Mostek — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 8,
+      "name": "[DRAFT] Mostek — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 9,
+      "name": "[DRAFT] Mostek — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 10,
+      "name": "[DRAFT] Mostek — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 1,
+      "name": "[DRAFT] HSPU — krok 1",
+      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 2,
+      "name": "[DRAFT] HSPU — krok 2",
+      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 3,
+      "name": "[DRAFT] HSPU — krok 3",
+      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 4,
+      "name": "[DRAFT] HSPU — krok 4",
+      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 5,
+      "name": "[DRAFT] HSPU — krok 5",
+      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 6,
+      "name": "[DRAFT] HSPU — krok 6",
+      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 7,
+      "name": "[DRAFT] HSPU — krok 7",
+      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 8,
+      "name": "[DRAFT] HSPU — krok 8",
+      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 9,
+      "name": "[DRAFT] HSPU — krok 9",
+      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 10,
+      "name": "[DRAFT] HSPU — krok 10",
+      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
+      "content_status": "draft"
+    }
+  ]
+}

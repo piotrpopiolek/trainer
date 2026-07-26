@@ -99,7 +99,8 @@ Then restart the browser and open https://localhost. (Cursor Simple Browser ofte
 
 ```bash
 # Migrations (once Alembic revisions exist)
-docker compose run --rm api alembic upgrade head
+docker compose run --rm api alembic -c backend/alembic.ini upgrade head
+docker compose run --rm api python -m app.seed
 
 # Backend tests / lint (inside Compose — matches CI)
 docker compose run --rm api pytest
@@ -125,6 +126,7 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | `make test` | Backend pytest in Compose |
 | `make test-idor` | `pytest -m idor` |
 | `make migrate` | `alembic upgrade head` |
+| `make seed` | CC + legal seed (idempotent) |
 
 ### Frontend (`frontend/`)
 

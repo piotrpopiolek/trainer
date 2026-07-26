@@ -1,4 +1,4 @@
-.PHONY: up down logs api-shell migrate test test-idor lint frontend-install frontend-dev trust-ca
+.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca
 
 up:
 	docker compose up -d --build
@@ -14,6 +14,9 @@ api-shell:
 
 migrate:
 	docker compose run --rm api alembic -c backend/alembic.ini upgrade head
+
+seed:
+	docker compose run --rm api python -m app.seed
 
 test:
 	docker compose run --rm api pytest

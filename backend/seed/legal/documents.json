@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "slug": "health_disclaimer",
+      "version": "1",
+      "published_at": "2026-07-01T00:00:00+00:00"
+    },
+    {
+      "slug": "privacy_policy",
+      "version": "1",
+      "published_at": "2026-07-01T00:00:00+00:00"
+    }
+  ]
+}
