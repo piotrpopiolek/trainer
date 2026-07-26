@@ -26,7 +26,7 @@ async def test_db_core_tables_exist() -> None:
         "body_measurements",
         "alembic_version",
     }
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.resolved_database_url, pool_pre_ping=True)
     try:
         async with engine.connect() as conn:
             rows = await conn.execute(
@@ -43,7 +43,7 @@ async def test_db_core_tables_exist() -> None:
 
 @pytest.mark.asyncio
 async def test_body_measurements_rls_enabled() -> None:
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(settings.resolved_database_url, pool_pre_ping=True)
     try:
         async with engine.connect() as conn:
             row = await conn.execute(
