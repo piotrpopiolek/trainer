@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "20260726_0001"
 down_revision = None
@@ -23,12 +24,34 @@ def _role_password(env_name: str) -> str:
         raise RuntimeError(
             f"{env_name} must be set for role bootstrap (see .env.example)"
         )
-    return value.replace("'", "''")
+    return value
 
 
 def _sql(statement: str) -> None:
     # Avoid SQLAlchemy bind parsing of JSON ':1' etc.
     op.get_bind().exec_driver_sql(statement)
+
+
+def _ensure_role(role: str) -> None:
+    _sql(
+        f"""
+        DO $$
+        BEGIN
+          CREATE ROLE {role} NOLOGIN;
+        EXCEPTION WHEN duplicate_object THEN
+          NULL;
+        END
+        $$
+        """
+    )
+
+
+def _set_role_login_password(role: str, password: str) -> None:
+    # Bound parameter — do not interpolate secrets into the SQL source string.
+    op.get_bind().execute(
+        text(f"ALTER ROLE {role} WITH LOGIN PASSWORD :password"),
+        {"password": password},
+    )
 
 
 def upgrade() -> None:
@@ -37,30 +60,12 @@ def upgrade() -> None:
 
     _sql("CREATE EXTENSION IF NOT EXISTS citext")
 
-    _sql(
-        f"""
-        DO $$
-        BEGIN
-          CREATE ROLE trainer_migrator LOGIN PASSWORD '{migrator_pw}';
-        EXCEPTION WHEN duplicate_object THEN
-          ALTER ROLE trainer_migrator WITH LOGIN PASSWORD '{migrator_pw}';
-        END
-        $$
-        """
-    )
+    _ensure_role("trainer_migrator")
+    _set_role_login_password("trainer_migrator", migrator_pw)
     _sql("ALTER ROLE trainer_migrator WITH BYPASSRLS")
 
-    _sql(
-        f"""
-        DO $$
-        BEGIN
-          CREATE ROLE trainer_app LOGIN PASSWORD '{app_pw}';
-        EXCEPTION WHEN duplicate_object THEN
-          ALTER ROLE trainer_app WITH LOGIN PASSWORD '{app_pw}';
-        END
-        $$
-        """
-    )
+    _ensure_role("trainer_app")
+    _set_role_login_password("trainer_app", app_pw)
 
     _sql("GRANT CONNECT ON DATABASE trainer TO trainer_migrator")
     _sql("GRANT CONNECT ON DATABASE trainer TO trainer_app")

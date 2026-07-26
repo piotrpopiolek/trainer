@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Generate a private .env for CI / local bootstrap (never commit the result).
+# Writes discrete secrets only — the app builds DSNs from them (no credentials-URI in git).
 set -euo pipefail
 
 ROOT_PW="$(openssl rand -hex 16)"
@@ -11,10 +12,10 @@ cat > .env <<EOF
 POSTGRES_USER=trainer
 POSTGRES_PASSWORD=${ROOT_PW}
 POSTGRES_DB=trainer
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
 TRAINER_APP_PASSWORD=${APP_PW}
 TRAINER_MIGRATOR_PASSWORD=${MIG_PW}
-DATABASE_URL=postgresql+asyncpg://trainer_app:${APP_PW}@db:5432/trainer
-ALEMBIC_DATABASE_URL=postgresql+asyncpg://trainer:${ROOT_PW}@db:5432/trainer
 APP_ENV=development
 PUBLIC_ORIGIN=https://localhost
 LOG_LEVEL=info

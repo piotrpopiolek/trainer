@@ -6,11 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 
-if not settings.database_url:
-    raise RuntimeError("DATABASE_URL must be set (see .env.example / scripts/gen_dev_env.sh)")
-
 engine = create_async_engine(
-    settings.database_url,
+    settings.resolved_database_url,
     pool_pre_ping=True,
 )
 
