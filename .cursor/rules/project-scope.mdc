@@ -17,7 +17,8 @@ alwaysApply: true
 
 - Nie dodawaj: Redis, ARQ, R2, Apple Sign In, LLM agenta, integracji Garmin, Web Push, wykresów premium, progress photos.
 - Nie buduj ról trenera / multi-client.
-- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL. Content: PCO (founder) akceptuje `ready`; scaffold/`draft` OK; **beta** może częściowy ready + banner; **prod** = 60× ready (FR-020a/084). Content track od tyg. 1.
+- Nie kopiuj tekstów z książki Convict Conditioning — własne opisy PL. Content: PCO (founder) akceptuje `ready` per locale; scaffold/`draft` OK; **beta** może częściowy PL ready + banner; **F1 prod** = 60× `pl-PL` ready (FR-020a/084). Content track od tyg. 1.
+- F1 dostarcza tylko `pl-PL`, ale od pierwszej migracji jest i18n-ready (FR-007): UI przez klucze i18n, `users.locale`, systemowy content/legal w `*_translations`, katalog/ETag/cache per locale, historyczne snapshoty z `content_locale`. Nie dodawaj kolejnego języka bez kompletnego content gate i zgody scope.
 - Nie implementuj diagnoz medycznych ani „leczenia” przez AI/rehab.
 - Przy poślizgu stosuj listę de-scope FR-084 — **nie** de-scopuj silnika, CAS, FR-039, backup przed prod, IDOR.
 
@@ -31,6 +32,6 @@ alwaysApply: true
 ## Stack decyzje (nie zmieniaj bez zgody)
 
 - Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
-- Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`.
+- Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`. Slugi, enumy i `error_code` neutralne językowo; zakaz hardcoded tekstów domenowych w UI.
 - Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; cookie `__Host-…` / FR-005a; claimy FR-001). **Topologia F1:** same-origin PWA + `/api`; CSRF na export/delete/schedule. **TTL:** sliding 30d / hard cap 90d / max 10 sesji (FR-005d). Izolacja: app-layer `user_id` + IDOR suite (w tym sync push / account); RLS F1 na `body_measurements`, reszta F2+ (FR-005b).
 - Na logu sesji: `rules_snapshot` z wersją reguł użytych przy ocenie — seed nie reinterpretuje historii.

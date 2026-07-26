@@ -20,8 +20,9 @@ alwaysApply: false
 2. Poprawność domenowa: backend-only progression, tip vs spóźniony log (FR-035), `counts_for_progression`, `local_date`, immutable sessions, `rules_snapshot`, idempotencja, CAS/LWW i kolejność locków.
 3. Bezpieczeństwo: `user_id` z sesji, deny-by-default/404, IDOR sync i account, cookie/PKCE/CSRF, brak PII i sekretów w logach.
 4. Spójność danych i kontraktów: `schema_version`, migracje wstecz/naprzód, atomowość, retry, partial ACK, kompatybilność API–PWA.
-5. Testy i operacyjność: scenariusz pozytywny, negatywny, współbieżność i regresja; IDOR marker; backup przed migracją prod; monitoring purge.
-6. Utrzymywalność tylko wtedy, gdy powoduje realne ryzyko błędu; nie zgłaszaj preferencji stylistycznych pokrywanych przez formatter/linter.
+5. i18n (FR-007): brak tekstów domenowych hardcoded w UI; stabilne `error_code`; systemowy content/legal w `*_translations`; fallback całego katalogu do PL; locale w ETag/cache/snapshotach; legal acceptance wiąże dokładny locale/hash.
+6. Testy i operacyjność: scenariusz pozytywny, negatywny, współbieżność i regresja; IDOR marker; komplet kluczy `pl-PL`; brak mieszanego locale; backup przed migracją prod; monitoring purge.
+7. Utrzymywalność tylko wtedy, gdy powoduje realne ryzyko błędu; nie zgłaszaj preferencji stylistycznych pokrywanych przez formatter/linter.
 
 ## Podstawowe zasady inżynierskie
 

@@ -51,6 +51,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | Server state | TanStack Query |
 | Client / offline UI | Zustand + IndexedDB + outbox |
 | Forms | React Hook Form + Zod |
+| Localization | `react-i18next`; F1 ships `pl-PL`, with fallback and locale-namespaced catalog cache |
 
 ### Backend (Phase 1)
 
@@ -60,6 +61,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | ORM | SQLAlchemy 2.0 + Alembic |
 | Database | PostgreSQL + JSONB |
 | Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
+| Localized content | Relational `*_translations`; BCP 47 `users.locale`; locale-aware catalog ETag and historical `content_locale` snapshots |
 | Tooling | uv, Ruff, mypy, pytest |
 | Auth (MVP) | Google OAuth (Auth Code + PKCE S256); ID token JWKS (iss/aud/exp/sub); email_verified required; identity = google_sub; same-origin; `__Host-` cookie; sliding TTL 30d / hard cap 90d (FR-001/005a/005d); CSRF on account mutations |
 
@@ -148,7 +150,8 @@ This section will be updated when real scripts are added to the repository.
 - Body measurements (weight, waist, biceps; optional chest, thigh, neck)
 - Offline support with outbox sync (revision-based last-write-wins): queue sessions/measurements offline; **progression runs after sync on the server**
 - Health disclaimer and privacy policy
-- Staged delivery **F1.0 → F1.1 → F1.prod** with explicit de-scope order (see `docs/prd.md` §1.4a / FR-084); content CC track from week 1 (prod = 60× ready)
+- Translation-ready architecture from the first migration (FR-007); F1 content/UI remains Polish-only (`pl-PL`)
+- Staged delivery **F1.0 → F1.1 → F1.prod** with explicit de-scope order (see `docs/prd.md` §1.4a / FR-084); content CC track from week 1 (F1 prod = 60× `pl-PL` ready)
 
 ### In scope — Phase 2
 

@@ -9,6 +9,7 @@ Konwencje:
 - Sync (sesje, pomiary, satelity): LWW po **`revision` (INT)** — accept tylko `existing+1` (create=1), egzekwowane **atomowym CAS** (`UPDATE … WHERE revision = incoming-1`, FR-072d); nie po zegarze klienta; `client_updated_at` = hint; `updated_at` = wyłącznie czas serwera po accepted write (pull delta)
 - **Silnik progresji wyłącznie na serwerze** — klient nie zapisuje awansu/regresu/`goal_met`; te pola wynikają z `ProgressionEngine` po apply sesji
 - **JSONB = zawsze wersjonowany kontrakt:** każdy dokument JSONB ma wymagane `schema_version` (INT ≥ 1); walidacja Pydantic (backend) / Zod (frontend) per wersja; brak „gołego” JSON bez wersji
+- **Locale:** kanoniczny BCP 47 (`pl-PL` w F1); systemowe teksty w relacyjnych `*_translations`; identyfikatory, slugi, reguły i `error_code` neutralne językowo
 - Izolacja F1: warstwa aplikacji (`user_id`); schemat RLS-ready, RLS wyłączone
 - Role DB: `trainer_app` (DML), `trainer_migrator` (DDL/Alembic)
 
@@ -34,6 +35,15 @@ Envelope (płaski obiekt z top-level `schema_version`):
 CHECK w DB (minimum): `(col ? 'schema_version') AND (col->>'schema_version')::int >= 1` dla NOT NULL JSONB.  
 Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik wybiera parser po `schema_version` (brak cichego fallbacku na „najnowszy” przy starych logach).
 
+### Kontrakt i18n (FR-007)
+
+- F1 allowlist: wyłącznie `pl-PL`; architektura i seed od pierwszej migracji używają tabel translacji.
+- Resolver dla zalogowanego użytkownika: jawne `?locale` (jeśli wspierane) → `users.locale` → `pl-PL`; wartości kanonizowane jako BCP 47. API zwraca `requested_locale` i `resolved_locale`.
+- Katalog jest atomowy językowo: jeśli locale nie ma kompletnego gate contentu, **cały** katalog wraca w `pl-PL`; zakaz fallbacku pojedynczych wierszy powodującego mieszany język.
+- Statyczne teksty PWA nie są przechowywane w DB; zasoby `react-i18next`/równoważne, fallback `pl-PL`.
+- `error_code`, slugi, enumy, reguły progresji i dane sync są neutralne językowo. Tekst błędu nie jest kontraktem API.
+- Satelity i notatki są treścią użytkownika — przechowywane bez locale i bez automatycznego tłumaczenia.
+
 ---
 
 ## 1. Lista tabel
@@ -46,6 +56,7 @@ Pełna walidacja kształtu: wyłącznie warstwa kontraktów (Pydantic); silnik w
 | `google_sub` | `TEXT` | UNIQUE, NULL po anonimizacji |
 | `email` | `CITEXT` | NULL po anonimizacji |
 | `display_name` | `TEXT` | NULL |
+| `locale` | `TEXT` | NOT NULL, DEFAULT `'pl-PL'`, CHECK (`char_length(locale) BETWEEN 2 AND 35`) — kanoniczny BCP 47; F1 allowlist = `pl-PL` |
 | `timezone` | `TEXT` | NOT NULL, DEFAULT `'Europe/Warsaw'` (IANA) — aktywna strefa „dziś” / walidacji (FR-040a); zmiana nie przepisuje historii |
 | `pending_timezone` | `TEXT` | NULL — IANA oczekująca na promote (FR-040c) |
 | `timezone_effective_on` | `DATE` | NULL — `local_date` (w aktywnej TZ przy PATCH), od którego promote pending→active |
@@ -111,12 +122,28 @@ Uwagi:
 | `id` | `UUID` | PK |
 | `slug` | `TEXT` | NOT NULL (np. `health_disclaimer`, `privacy_policy`) |
 | `version` | `TEXT` | NOT NULL |
-| `title` | `TEXT` | NOT NULL |
-| `body` | `TEXT` | NOT NULL |
 | `published_at` | `TIMESTAMPTZ` | NOT NULL |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`slug`, `version`).
+
+---
+
+### 1.3a `legal_document_translations`
+
+Dokładna, audytowalna treść wersji prawnej w danym locale. Istniejący wiersz po publikacji jest immutable; każda zmiana `title/body` wymaga nowego `legal_documents.version` (można później dodać nowe locale do tej samej wersji).
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `document_id` | `UUID` | NOT NULL, FK → `legal_documents(id)` RESTRICT |
+| `locale` | `TEXT` | NOT NULL, CHECK (`char_length(locale) BETWEEN 2 AND 35`) |
+| `title` | `TEXT` | NOT NULL |
+| `body` | `TEXT` | NOT NULL |
+| `content_hash` | `BYTEA` | NOT NULL — SHA-256 kanonicznego UTF-8 JSON `{title,body}` (NFC + stabilna serializacja); API/outbox = lowercase hex |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+PK (`document_id`, `locale`).
+UNIQUE (`document_id`, `locale`, `content_hash`) — target composite FK acceptance.
 
 ---
 
@@ -127,9 +154,12 @@ UNIQUE (`slug`, `version`).
 | `id` | `UUID` | PK |
 | `user_id` | `UUID` | NOT NULL, FK → `users(id)` RESTRICT |
 | `document_id` | `UUID` | NOT NULL, FK → `legal_documents(id)` RESTRICT |
+| `accepted_locale` | `TEXT` | NOT NULL — faktycznie wyświetlone locale |
+| `accepted_content_hash` | `BYTEA` | NOT NULL — dokładna zaakceptowana translacja |
 | `accepted_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`user_id`, `document_id`).
+FK (`document_id`, `accepted_locale`, `accepted_content_hash`) → `legal_document_translations(document_id, locale, content_hash)` RESTRICT.
 
 ---
 
@@ -154,11 +184,26 @@ UNIQUE (`user_id`, `document_id`).
 |---------|-----|--------------|
 | `id` | `UUID` | PK |
 | `slug` | `TEXT` | NOT NULL, UNIQUE (np. `cc_big_six`) |
-| `name` | `TEXT` | NOT NULL |
-| `description` | `TEXT` | NULL |
 | `is_system` | `BOOLEAN` | NOT NULL, DEFAULT `true` |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+---
+
+### 1.6a `program_translations`
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `program_id` | `UUID` | NOT NULL, FK → `programs(id)` CASCADE |
+| `locale` | `TEXT` | NOT NULL, CHECK (`char_length(locale) BETWEEN 2 AND 35`) |
+| `name` | `TEXT` | NOT NULL |
+| `description` | `TEXT` | NULL |
+| `catalog_version` | `INT` | NOT NULL, DEFAULT `1`, CHECK (`catalog_version >= 1`) — wersja całego katalogu programu dla locale |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+PK (`program_id`, `locale`).
+ETag katalogu = hash/stabilny token z `(program.slug, locale, catalog_version)`.
 
 ---
 
@@ -169,10 +214,21 @@ UNIQUE (`user_id`, `document_id`).
 | `id` | `UUID` | PK |
 | `program_id` | `UUID` | NOT NULL, FK → `programs(id)` RESTRICT |
 | `day_index` | `SMALLINT` | NOT NULL, CHECK (`day_index` BETWEEN 1 AND 3) |
-| `name` | `TEXT` | NOT NULL |
 | `sort_order` | `SMALLINT` | NOT NULL, DEFAULT `0` |
 
 UNIQUE (`program_id`, `day_index`).
+
+---
+
+### 1.7a `program_day_translations`
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `program_day_id` | `UUID` | NOT NULL, FK → `program_days(id)` CASCADE |
+| `locale` | `TEXT` | NOT NULL, CHECK (`char_length(locale) BETWEEN 2 AND 35`) |
+| `name` | `TEXT` | NOT NULL |
+
+PK (`program_day_id`, `locale`).
 
 ---
 
@@ -184,10 +240,10 @@ UNIQUE (`program_id`, `day_index`).
 | `user_id` | `UUID` | NULL, FK → `users(id)` RESTRICT (NULL = system/CC) |
 | `program_id` | `UUID` | NULL, FK → `programs(id)` RESTRICT |
 | `slug` | `TEXT` | NULL (wymagany dla systemowych) |
-| `name` | `TEXT` | NOT NULL |
+| `name` | `TEXT` | NULL — tylko nazwa własnego satelity; CC używa `exercise_translations` |
 | `kind` | `TEXT` | NOT NULL, CHECK (`kind IN ('cc','satellite')`) |
 | `exercise_type` | `TEXT` | NOT NULL, CHECK (`exercise_type IN ('A','B','C')`) |
-| `description` | `TEXT` | NULL |
+| `description` | `TEXT` | NULL — tylko treść własnego satelity; CC używa `exercise_translations` |
 | `active_metrics` | `JSONB` | NOT NULL, DEFAULT `'{"schema_version":1,"metrics":["reps"]}'`, CHECK `(active_metrics ? 'schema_version')` |
 | `equipment` | `TEXT[]` | NOT NULL, DEFAULT `'{}'` |
 | `tags` | `TEXT[]` | NOT NULL, DEFAULT `'{}'` |
@@ -203,8 +259,8 @@ UNIQUE (`program_id`, `day_index`).
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` — **tylko serwer** po accepted write |
 
 CHECK:
-- CC: `kind = 'cc'` ⇒ `user_id IS NULL` AND `program_id IS NOT NULL` AND `schedule_kind IS NULL` AND `client_mutation_id IS NULL`
-- Satelita: `kind = 'satellite'` ⇒ `user_id IS NOT NULL` AND `schedule_kind IS NOT NULL` AND `client_mutation_id IS NOT NULL`
+- CC: `kind = 'cc'` ⇒ `user_id IS NULL` AND `program_id IS NOT NULL` AND `name IS NULL` AND `description IS NULL` AND `schedule_kind IS NULL` AND `client_mutation_id IS NULL`
+- Satelita: `kind = 'satellite'` ⇒ `user_id IS NOT NULL` AND `name IS NOT NULL` AND `schedule_kind IS NOT NULL` AND `client_mutation_id IS NOT NULL`
 - `schedule_kind = 'weekdays'` ⇒ `weekdays IS NOT NULL AND cardinality(weekdays) > 0`
 - `schedule_kind = 'category'` ⇒ `schedule_category IS NOT NULL`
 - `schedule_kind = 'daily'` ⇒ `weekdays IS NULL AND schedule_category IS NULL`
@@ -216,6 +272,22 @@ Limit 10 aktywnych satelitów (FR-050) — **serializacja obowiązkowa** (sam `C
 1. W TX create / undelete / sync-push create satelity, **przed** COUNT/INSERT: `SELECT id FROM users WHERE id = :uid FOR UPDATE`.
 2. `COUNT(*) … WHERE user_id = X AND kind = 'satellite' AND deleted_at IS NULL`; jeśli `≥ 10` → **403** / push `rejected` (limit); inaczej INSERT.
 3. Trigger `trg_satellite_limit` (defense-in-depth): `PERFORM pg_advisory_xact_lock(hashtextextended('sat-limit:' || NEW.user_id::text, 0));` potem ten sam COUNT; przy `> 10` po INSERT/undelete → `RAISE EXCEPTION` (mapowane na 403). Soft-delete nie wymaga limitu.
+
+---
+
+### 1.8a `exercise_translations` (systemowe CC)
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `exercise_id` | `UUID` | NOT NULL, FK → `exercises(id)` CASCADE |
+| `locale` | `TEXT` | NOT NULL, CHECK (`char_length(locale) BETWEEN 2 AND 35`) |
+| `name` | `TEXT` | NOT NULL |
+| `description` | `TEXT` | NULL |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+PK (`exercise_id`, `locale`).
+Tylko `kind='cc'`; satelity zachowują tekst użytkownika w `exercises.name/description` i nie są automatycznie tłumaczone.
 
 ---
 
@@ -253,8 +325,8 @@ UNIQUE (`slug`, `schema_version`).
 | `id` | `UUID` | PK |
 | `exercise_id` | `UUID` | NOT NULL, FK → `exercises(id)` CASCADE |
 | `step_number` | `SMALLINT` | NOT NULL, CHECK (`step_number >= 1`) |
-| `name` | `TEXT` | NOT NULL |
-| `description` | `TEXT` | NULL |
+| `name` | `TEXT` | NULL — tylko label kroku satelity; CC używa `exercise_step_translations` |
+| `description` | `TEXT` | NULL — tylko opis kroku satelity; CC używa `exercise_step_translations` |
 | `rules` | `JSONB` | NOT NULL, CHECK `(rules ? 'schema_version') AND (rules->>'schema_version')::int >= 1` |
 | `progression_schema_id` | `UUID` | NOT NULL, FK → `progression_schemas(id)` RESTRICT |
 | `sort_order` | `SMALLINT` | NOT NULL, DEFAULT `0` |
@@ -262,9 +334,26 @@ UNIQUE (`slug`, `schema_version`).
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
 
 UNIQUE (`exercise_id`, `step_number`).  
-CC: kroki 1–10.  
-**Satelity (FR-051a / wariant A):** zawsze **≥1** krok; bez mini-progresji = dokładnie **1** (cel w `rules.goal`); z mini-progresją = **2–5** (FR-053). Walidacja aplikacji przy create/update satelity: brak kroków → 422.  
+CC: kroki 1–10; `name`/`description` NULL w encji bazowej, tekst w translacjach.
+
+**Satelity (FR-051a / wariant A):** zawsze **≥1** krok z `name NOT NULL`; bez mini-progresji = dokładnie **1** (cel w `rules.goal`); z mini-progresją = **2–5** (FR-053). Walidacja aplikacji przy create/update satelity: brak kroków → 422.
+
 `progression_schema_id` obowiązkowe — wiąże krok z wersją kontraktu reguł; `rules.schema_version` musi być równe `progression_schemas.schema_version` (egzekwowane w serwisie seed/write).
+
+### 1.11a `exercise_step_translations` (systemowe CC)
+
+| Kolumna | Typ | Ograniczenia |
+|---------|-----|--------------|
+| `exercise_step_id` | `UUID` | NOT NULL, FK → `exercise_steps(id)` CASCADE |
+| `locale` | `TEXT` | NOT NULL, CHECK (`char_length(locale) BETWEEN 2 AND 35`) |
+| `name` | `TEXT` | NOT NULL |
+| `description` | `TEXT` | NOT NULL |
+| `content_status` | `TEXT` | NOT NULL, DEFAULT `'draft'`, CHECK (`content_status IN ('draft','ready')`) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `now()` |
+
+PK (`exercise_step_id`, `locale`).
+F1 prod gate: komplet `pl-PL` obejmuje translation programu, 3 dni, 6 ćwiczeń i dokładnie 60 kroków ze statusem `ready`, bez pustych wymaganych pól / `[DRAFT]`. Włączenie kolejnego locale wymaga analogicznego gate; każda zmiana bumpuje `program_translations.catalog_version` dla tego locale.
 
 Przykładowy kształt `rules` (typ A / CC, v1):
 ```json
@@ -400,8 +489,9 @@ Ekran „dzisiejsza sesja” = widok złożony po `local_date`.
 | `step_number` | `SMALLINT` | NULL |
 | `local_date` | `DATE` | NOT NULL — denorm z `workout_sessions.local_date` **tylko przy INSERT** (FR-038: brak UPDATE kaskady; sesja.date immutable) |
 | `performed_at` | `TIMESTAMPTZ` | NOT NULL — denorm z `workout_sessions.performed_at` **tylko przy INSERT** (Perf5 / FR-035) |
-| `exercise_name_snapshot` | `TEXT` | NOT NULL |
-| `step_label_snapshot` | `TEXT` | NULL |
+| `content_locale` | `TEXT` | NOT NULL, DEFAULT `'pl-PL'` — faktycznie rozwiązane locale snapshotów (`resolved_locale`) |
+| `exercise_name_snapshot` | `TEXT` | NOT NULL — nazwa w `content_locale`; dla satelity tekst użytkownika |
+| `step_label_snapshot` | `TEXT` | NULL — label w `content_locale`; dla satelity tekst użytkownika |
 | `skipped` | `BOOLEAN` | NOT NULL, DEFAULT `false` |
 | `sets` | `JSONB` | NULL |
 | `rules_snapshot` | `JSONB` | NULL |
@@ -448,7 +538,7 @@ Przykładowy `sets` (v1):
 }
 ```
 
-`rules_snapshot`: głęboka kopia `exercise_steps.rules` **w momencie oceny** (ten sam `schema_version`) — dla CC i satelitów (FR-051a). Późniejsza zmiana seedu CC / edycja satelity nie zmienia znaczenia historycznego `goal_met` / eventów awansu — audyt i support czytają snapshot, nie bieżący katalog. Test: sesja z samym satelitą C (1 krok `goal.type=completed`) → INSERT OK, `goal_met` zgodny z celem, `rules_snapshot` niepusty.
+`rules_snapshot`: głęboka kopia `exercise_steps.rules` **w momencie oceny** (ten sam `schema_version`) — dla CC i satelitów (FR-051a). `content_locale` + snapshoty tekstowe zachowują dokładnie język wyświetlony przy zapisie; późniejsza zmiana locale/tłumaczenia/seedu lub edycja satelity nie zmienia historycznego znaczenia `goal_met` ani etykiet historii. Audyt i support czytają snapshot, nie bieżący katalog. Test: zmiana `users.locale` po sesji nie zmienia snapshotów; sesja z samym satelitą C → INSERT OK, `goal_met` zgodny z celem, `rules_snapshot` niepusty.
 
 ---
 
@@ -569,12 +659,17 @@ Uwagi:
 | `users` → `user_onboarding` | 1:1 | Audyt onboardingu |
 | `users` → `user_legal_acceptances` | 1:N | Akceptacje dokumentów |
 | `legal_documents` → `user_legal_acceptances` | 1:N | Wersje dokumentów |
+| `legal_documents` → `legal_document_translations` | 1:N | Dokładna treść per locale/hash |
 | `programs` → `program_days` | 1:N | Split 3-dniowy |
+| `programs` → `program_translations` | 1:N | Nazwa + `catalog_version` per locale |
+| `program_days` → `program_day_translations` | 1:N | Nazwa dnia per locale |
 | `program_days` → `program_day_exercises` | 1:N | Ćwiczenia dnia |
 | `exercises` → `program_day_exercises` | 1:N | CC w splcie (M:N przez łączącą) |
 | `programs` → `exercises` | 1:N | Ćwiczenia CC programu |
 | `users` → `exercises` | 1:N | Satelity użytkownika |
+| `exercises` → `exercise_translations` | 1:N | Systemowe teksty CC per locale |
 | `exercises` → `exercise_steps` | 1:N | Kroki + `rules` JSONB |
+| `exercise_steps` → `exercise_step_translations` | 1:N | Teksty/status contentu per locale |
 | `progression_schemas` → `exercise_steps` | 1:N | Wersja schematu reguł |
 | `exercises` → `exercises` | 1:N | `cloned_from_exercise_id` |
 | `users` → `user_program_enrollments` | 1:N | Max 1 aktywny |
@@ -596,14 +691,19 @@ erDiagram
     users ||--o{ auth_sessions : has
     users ||--o{ user_legal_acceptances : accepts
     legal_documents ||--o{ user_legal_acceptances : versioned
+    legal_documents ||--o{ legal_document_translations : translated
     users ||--o{ user_program_enrollments : enrolled
     programs ||--o{ user_program_enrollments : program
     programs ||--o{ program_days : days
+    programs ||--o{ program_translations : translated
+    program_days ||--o{ program_day_translations : translated
     program_days ||--o{ program_day_exercises : slots
     exercises ||--o{ program_day_exercises : cc
     programs ||--o{ exercises : catalog
     users ||--o{ exercises : satellites
+    exercises ||--o{ exercise_translations : translated
     exercises ||--o{ exercise_steps : steps
+    exercise_steps ||--o{ exercise_step_translations : translated
     progression_schemas ||--o{ exercise_steps : schema
     users ||--o{ user_exercise_progress : progress
     exercises ||--o{ user_exercise_progress : tracks
@@ -627,13 +727,18 @@ erDiagram
 | `auth_sessions` | (`user_id`, `expires_at`) WHERE `revoked_at IS NULL` | Aktywne sesje |
 | `auth_sessions` | UNIQUE (`token_hash`) | Lookup tokenu |
 | `legal_documents` | UNIQUE (`slug`, `version`) | Wersjonowanie |
+| `legal_document_translations` | UNIQUE (`document_id`, `locale`, `content_hash`) | Dokładna zaakceptowana treść |
 | `user_legal_acceptances` | (`user_id`, `accepted_at` DESC) | Gate / historia |
+| `program_translations` | PK (`program_id`, `locale`) | Katalog/ETag per locale |
 | `program_days` | (`program_id`, `day_index`) | Split lookup |
+| `program_day_translations` | PK (`program_day_id`, `locale`) | Nazwa dnia per locale |
 | `program_day_exercises` | (`program_day_id`, `sort_order`) | Ekran dnia |
 | `exercises` | (`user_id`) WHERE `kind = 'satellite' AND deleted_at IS NULL` | Lista satelitów / limit 10 |
 | `exercises` | (`user_id`, `updated_at`) WHERE `kind = 'satellite' AND deleted_at IS NULL` | Pull sync satelitów |
 | `exercises` | UNIQUE (`slug`) WHERE `kind = 'cc' AND deleted_at IS NULL` | Katalog CC |
+| `exercise_translations` | PK (`exercise_id`, `locale`) | Katalog CC per locale |
 | `exercise_steps` | (`exercise_id`, `step_number`) | Silnik progresji |
+| `exercise_step_translations` | PK (`exercise_step_id`, `locale`) | Kroki/content gate per locale |
 | `user_program_enrollments` | UNIQUE (`user_id`) WHERE `is_active` | Jeden aktywny program |
 | `user_exercise_progress` | (`user_id`, `exercise_id`) UNIQUE | Stan kroku |
 | `user_exercise_progress` | (`user_id`, `updated_at`) | Pull sync |
@@ -706,7 +811,7 @@ Szkic polityk (`body_measurements` w F1; pozostałe Faza 2+):
 -- Role migrator/seed: BYPASSRLS lub osobna rola bez RLS.
 ```
 
-Tabele systemowe (`programs`, `program_days`, `program_day_exercises`, `legal_documents`, `progression_schemas`, CC `exercises`) — odczyt dla wszystkich uwierzytelnionych; zapis tylko przez migrator/seed.
+Tabele systemowe (`programs`, `program_translations`, `program_days`, `program_day_translations`, `program_day_exercises`, `legal_documents`, `legal_document_translations`, `progression_schemas`, CC `exercises` + `exercise_translations`, CC `exercise_steps` + `exercise_step_translations`) — odczyt dla wszystkich uwierzytelnionych; zapis tylko przez migrator/seed/PCO pipeline.
 
 ### 4.3 Triggery DB
 
@@ -720,7 +825,7 @@ Tabele systemowe (`programs`, `program_days`, `program_day_exercises`, `legal_do
 - **Limit `auth_sessions` (FR-005d):** w TX loginu `SELECT users … FOR UPDATE` → COUNT aktywnych → revoke najstarszej aż `< 10` → INSERT. Test CI równoległych loginów. **Nie tworzyć triggera.**
 - **`updated_at`:** repozytorium ustawia jawnie `updated_at = now()` wyłącznie po accepted write; klient nie może przesłać wartości źródłowej. **Nie tworzyć `trg_set_updated_at`.**
 - **Log ↔ sesja:** ownership egzekwuje composite FK (`session_id`, `user_id`); serwis kopiuje `user_id` z sesji. **Nie tworzyć triggera.**
-- **Denormalizacja logu:** przy INSERT serwis kopiuje `local_date` i `performed_at` z `workout_sessions` oraz `exercise_kind`/`section` z `exercises`; daty sesji są immutable. Wszystko w tej samej TX co zapis/evaluate. **Nie tworzyć triggera denormalizacji.**
+- **Denormalizacja logu:** przy INSERT serwis kopiuje `local_date` i `performed_at` z `workout_sessions`, `exercise_kind`/`section` z `exercises` oraz rozwiązuje `content_locale` + snapshoty tekstowe; daty sesji są immutable. Wszystko w tej samej TX co zapis/evaluate. **Nie tworzyć triggera denormalizacji.**
 - **Soft-delete sesji:** `SessionService` w jednej TX ustawia `workout_sessions.deleted_at` oraz `session_exercise_logs.superseded_at`; silnik dodatkowo filtruje `session.deleted_at IS NULL`. **Nie tworzyć triggera kaskady soft-delete.**
 - **Usuwanie konta:** wyłącznie `AccountDeletionService`; brak `ON DELETE CASCADE` od `users`.
 
@@ -762,7 +867,7 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Testy CI: fail+fail @7d → regres + streak=0; fail → 30d → fail → regres; fail → sukces → fail → streak=1; trzy faile z rzędu → jeden regres, potem streak od nowa; **tip awans → późniejszy push starszego logu → applied/`late_log`, krok i `fail_streak` bez zmian; kolejny tip nie liczy spóźnionego**.
 6. **Denormalizacja uzasadniona:** `exercise_kind`, `section`, snapshoty nazwy/kroku, `local_date` + `performed_at` na logu (kopiowane **tylko przy INSERT**; daty sesji immutable — Rel4) — historia i silnik bez zbędnego JOIN/sortu po `created_at`. **`user_id` na logu:** denorm + **composite FK** do sesji (`session_id`,`user_id`) — niemożliwy rozjazd ownership (Warstwa A).
 7. **JSONB + kontrakty:** każdy dokument ma `schema_version`; modele Pydantic `*V1` / `*V2` …; silnik i API **odrzucają** payload bez wersji (422). Migracja seedu CC = bump `progression_schemas.schema_version` + nowe `rules`; stare logi zostają przy `rules_snapshot` z wersją z dnia oceny — **zakaz** reinterpretacji historii nowymi regułami.
-8. **Seed F1:** 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków PL, `legal_documents` (disclaimer + privacy), `progression_schemas` slug=`cc_default` version=`1`. Treści opisów: status `draft`\|`ready` (FR-020a); scaffold może seedować draft; prod wymaga 60× ready + bump `catalog_version` przy zmianie.
+8. **Seed F1 / i18n:** neutralne encje: 1 program `cc_big_six`, 3 `program_days`, 6 ćwiczeń CC × 10 kroków, `progression_schemas` slug=`cc_default` version=`1`; osobno translacje `pl-PL` programu/dni/ćwiczeń/kroków oraz `legal_document_translations`. Scaffold może seedować `draft`; F1 prod wymaga kompletnego PL: 1 program, 3 dni, 6 ćwiczeń i 60× `exercise_step_translations(locale='pl-PL', content_status='ready')`. Zmiana translacji bumpuje `program_translations.catalog_version` wyłącznie dla jej locale. Kolejnego locale nie dodawaj do allowlisty przed kompletnym gate.
 9. **Poza scope F1 (nie tworzyć tabel):** Garmin, agent AI, Web Push, billing, R2 assets, progress photos. **Poza scope F1 także:** rewind+replay progresji po zmianie historycznych `sets` **oraz** dogrywanie/ocena spóźnionych logów do `fail_streak` (FR-035 = skip) — dopiero gdy produkt wymaga pełnego deterministic replay.
 10. **Rozszerzenia:** `citext` dla email; opcjonalnie `pgcrypto` / generowanie UUID w aplikacji (nie wymaga `uuid-ossp` jeśli app generuje v7).
 11. **Usuwanie konta (Rel5 / Rel2 / FR-006a/c):** wyłącznie `AccountDeletionService` (zakaz CASCADE od `users`):
@@ -782,7 +887,7 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
       - Rerun-safe; fail → `purge.fail`, nie ustawiaj `done`.
       - Monitoring: `purge.ok` / `purge.fail` + heartbeat; cisza ≥36h = incydent; runbook: `purge_after < today-7 AND status ≠ done`. Opcjonalny egress ping po sukcesie (healthchecks.io) — dozwolony.
       - Test CI: pełny graf → purge → zero childów + `done`; drugi run no-op; (opcjonalnie) kill mid-TX → rerun kończy czysto.
-    - Export: FR-006b — **`POST /account/export` + CSRF**; **pełny** zakres user-owned; **streaming** per kolekcja (zakaz full JSON w RAM); bez `rules_snapshot`/sekretów; zakaz GET z samym cookie sesji.
+    - Export: FR-006b — **`POST /account/export` + CSRF**; **pełny** zakres user-owned, w tym `users.locale`, `user_legal_acceptances.accepted_locale/accepted_content_hash` i `session_exercise_logs.content_locale`; **streaming** per kolekcja (zakaz full JSON w RAM); bez `rules_snapshot`/sekretów; zakaz GET z samym cookie sesji.
     - Re-OAuth po anonimizacji = nowy `users` row.
 12. **Zmiana kontraktu:** nowa wersja = nowy model Pydantic + branch w parserze; stare wersje obsługiwane do odczytu; write ścieżki MVP zapisują wyłącznie aktualną wersję write (`CURRENT_SETS_SCHEMA=1` itd.).
 13. **Push outbox — pola LWW (kontrakt):** każdy item: `revision`, `client_updated_at`, `client_mutation_id`, `entity_id`, payload; response per item: `applied` \| `conflict_lost` \| `conflict_tie` \| `idempotent` \| `session_immutable_after_evaluate` \| `rejected` (+ `error_code`, w tym `revision_jump` / `mutation_payload_mismatch`) + winning snapshot gdy konflikt (`revision`, `updated_at`) + `conflict_id` gdy dotyczy.
@@ -796,21 +901,21 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
    - Soft-delete ocenionej sesji **nie** voiduje `progression_events` i **nie** cofa `current_step_number` / `fail_streak` (brak rewind w F1). Cofnięcie / zmiana kroku wyłącznie przez **first-class** `manual_override` (FR-038 / US-016b): FOR UPDATE `user_exercise_progress`; nowy `current_step_number`; `fail_streak = 0`; INSERT `progression_events` (`manual_override`); limit ~10/dzień; bez mutacji historycznych logów.
 15. **Content hash (F1):** kanoniczny hash JSON zamrożonych pól logów (np. SHA-256 po stabilnej serializacji `sets` + `skipped` + `step_number` + `exercise_id` + `sort_order`); serwer liczy przy evaluate i przy push compare.
 16. **Sync pull (FR-070/075 — Perf1 / wariant A):**
-   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (zagnieżdżone `logs[]`), `progress[]` (**zawsze pełny** snapshot CC), `satellites[]`, `measurements[]`, `progression_events[]`, `conflicts[]`, `catalog_version`, **`server_time`**, opcjonalnie `resync_required`.
+   - Kontrakt `SyncPull` (jedna odpowiedź): `sessions[]` (zagnieżdżone `logs[]`), `progress[]` (**zawsze pełny** snapshot CC), `satellites[]`, `measurements[]`, `progression_events[]`, `conflicts[]`, `requested_locale`, `resolved_locale`, `catalog_version`, **`server_time`**, opcjonalnie `resync_required`.
    - **Initial** (brak `since`): pełne okno — max **30** aktywnych sesji (`performed_at DESC`), pomiary **365 dni**, aktywne satelity; soft-deleted w oknie = tombstone `{ id, deleted_at, revision }` bez `sets` / `rules_snapshot`.
    - **Incremental** (`since=<TIMESTAMPTZ>`): encje z `updated_at > since` w tych samych oknach + tombstones. Klient **musi** używać `since` po pierwszym udanym pullu. **Zakaz** traktowania delty jako opcjonalnej optymalizacji.
    - `since` nieparsowalny lub `since < now() - 30d` → `resync_required: true` + body jak initial (200).
    - Po push: klient robi incremental (nie full) chyba że `resync_required`.
-   - **Projekcja logów:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `counts_for_progression`, `progression_schema_version`, snapshoty nazwy/kroku, metryki sync. **Zakaz** `rules_snapshot` w SyncPull.
+   - **Projekcja logów:** `sets`, `skipped`, `goal_met`, `goal_evaluated_at`, `step_number`, `counts_for_progression`, `progression_schema_version`, `content_locale`, snapshoty nazwy/kroku, metryki sync. **Zakaz** `rules_snapshot` w SyncPull.
    - **Zakaz** unbounded `GET` wszystkich logów po `updated_at` jako ścieżki offline.
-   - **Katalog CC:** osobno FR-075a (304); nie w każdym pullu sesji.
+   - **Katalog CC:** osobno `GET /catalog/cc?locale=…` (FR-075a). ETag = `(program, resolved_locale, catalog_version)`. Jeśli żądane locale nie jest wspierane/kompletne, resolver zwraca **cały** katalog `pl-PL`; bez mieszania tłumaczeń w jednym payloadzie.
    - Starsza historia sesji: cursor `before_performed_at` + `before_id` (online), nie powiększa IndexedDB poza 30.
 17. **Offline UX awansu (Pr2 / FR-071a, FR-036, FR-074):** push outbox (lub natychmiastowy follow-up pull) zwraca nowe `progression_events` powstałe w tej transakcji apply; klient surface’uje advance/regress idempotentnie po `event.id`. Brak lokalnego silnika / celebracji przed sync.
 17a. **Persistent storage (Rel5 / FR-070a):** klient — `navigator.storage.persist()` przy starcie / pierwszym enqueue; UX gdy `!persisted` ∧ pending outbox. IndexedDB **nie** zastępuje backupu serwera (FR-081a).
 18. **Konflikt UX (Pr3 / FR-073a):** serwer zawsze zapisuje `sync_conflict_logs` przy lost/tie/immutable; klient surface per kind; recovery = INSERT nowej encji z `losing_payload` (nowe id), nigdy UPDATE winning przegraną. Ack przeczytania tylko lokalnie.
 19. **Split / timezone (Pr4 / FR-022a/022b, FR-024a, FR-040a/040c):** `resolve_cc_day` = fixed weekdays (po promote pending). GET /today: promote jeśli `local_date >= *_effective_on`; rest + opcjonalny `cc_day_override` (FR-024a). `PATCH /account/schedule` (lub równoważny, CSRF): ustaw pending + effective_on=jutro; historia bez rewrite. Zapis: `local_date_mismatch` vs aktywna TZ **lub** `client_timezone` z outbox item (Rel10). Rolling **poza F1**.
-20. **Content CC (Pr5 / FR-020a, FR-084):** źródło seedu w repo (np. `seed/cc/*.json`); PCO akceptuje `ready`; content track od tyg. 1. Beta: częściowy ready + banner OK; CI gate **prod**: wszystkie `exercise_steps` CC niepuste bez `[DRAFT]`. Ilustracje per-step poza F1.
-21. **Outbox order (Rel3 / Rel9 / FR-072a):** klient i serwer sortują batch: **`legal_acceptance` → sesje → pomiary → satelity**; sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`, legal `(accepted_at, id)`. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). **Legal gate (FR-014a):** przed apply sesji wymagany `user_legal_acceptances` dla aktualnego `health_disclaimer`; brak + pending legal w batchu → defer; brak całkowity → `legal_required` quarantine. Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
+20. **Content CC (Pr5 / FR-020a, FR-084):** źródło neutralnych reguł i translacji w repo (np. `seed/cc/{locale}/*.json`); PCO akceptuje `ready` per locale; content track od tyg. 1. Beta PL: częściowy ready + banner OK; CI gate **F1 prod**: translation programu, 3 dni, 6 ćwiczeń i wszystkie 60 `exercise_step_translations` `pl-PL` niepuste, `ready`, bez `[DRAFT]`. Ilustracje per-step poza F1.
+21. **Outbox order (Rel3 / Rel9 / FR-072a):** klient i serwer sortują batch: **`legal_acceptance` → sesje → pomiary → satelity**; sesje `(performed_at, id)`, pomiary `(measured_at, id)`, satelity `(client_updated_at, id)`, legal `(accepted_at, id)`. **Dodatkowo (A1):** w segmencie sesji soft-delete/tombstone **przed** create kolidującym po `(user_id, exercise_id, local_date)` CC. Serwer: `duplicate_exercise_same_day` + pending soft-delete rodzica w tym samym batchu → defer create (nie quarantine). **Legal gate (FR-014a):** przed apply sesji wymagany `user_legal_acceptances` dla aktualnego `health_disclaimer`, z composite FK do dokładnego `(document_id, accepted_locale, accepted_content_hash)`; brak + pending legal w batchu → defer; brak całkowity → `legal_required` quarantine. Silnik: streak z historii po `local_date` (pkt 5), nie z FIFO push.
 22. **Outbox retry (Rel4 / FR-072b):** klient klasyfikuje odpowiedzi HTTP/item ACK; quarantine lokalne (IndexedDB); serwer zwraca stabilne `error_code` w body przy 422/409. Metryki: `outbox.retry`, `outbox.quarantine`, `outbox.sync_success|failure`.
 23. **Batch push (Perf3/Rel8 / FR-072c):** max 20 items / `POST /sync/push`; per-item COMMIT; `results[]` 1:1; `truncated` opcjonalnie; klient pętli okna. `progression_events` z udanych apply w tej samej odpowiedzi.
 24. **Idempotencja races (Rel6 / FR-072d):** `client_mutation_id` NOT NULL na sesjach/pomiarach/satelitach; claim-first w `client_mutations`; mismatch hash → reject; stały lock order.
@@ -829,8 +934,8 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 1. Extensions (`citext` jeśli używane)
 2. Role `trainer_app` / `trainer_migrator`
-3. `users` → `auth_sessions` → `oauth_states` → `legal_documents` → `user_legal_acceptances` → `user_onboarding`
-4. `programs` → `exercises` → `program_days` → `program_day_exercises` → `progression_schemas` → `exercise_steps`
+3. `users` → `auth_sessions` → `oauth_states` → `legal_documents` → `legal_document_translations` → `user_legal_acceptances` → `user_onboarding`
+4. `programs` → `program_translations` → `program_days` → `program_day_translations` → `exercises` → `exercise_translations` → `program_day_exercises` → `progression_schemas` → `exercise_steps` → `exercise_step_translations`
 5. `user_program_enrollments` → `user_exercise_progress` → `workout_sessions` → `session_exercise_logs` → `progression_events`
 6. `body_measurements` → `sync_*` → `client_mutations` → `rate_limit_buckets`
 7. Indeksy partial / triggery limitu satelitów + `trg_progress_exercise_owner`
@@ -840,12 +945,12 @@ Hard delete ćwiczenia: `ON DELETE RESTRICT` wobec logów; satelity tylko soft-d
 
 | FR | Tabele |
 |----|--------|
-| FR-001–006, FR-005a–d, FR-006a/b/c | `users` (+ `purge_after`/`purge_status`), `auth_sessions` (+ `last_seen_at`, TTL FR-005d, limit 10 z `users FOR UPDATE`), `oauth_states` (FR-001), **`rate_limit_buckets` (FR-005c)**; OAuth JWKS; IDOR; CORS/rate limit PG; delete/export; hard purge order + TX (FR-006c) |
-| FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `user_legal_acceptances` (+ outbox legal) |
-| FR-020–024, FR-020a, FR-022a, FR-022b, FR-024a, FR-040a, FR-040c | `programs`, `program_days`, `program_day_exercises`, `exercises`, `exercise_steps`, `user_program_enrollments` (+ pending anchor), `users.timezone` (+ pending TZ); rest override tylko w `/today` |
+| FR-001–007, FR-005a–d, FR-006a/b/c | `users` (+ `locale`, `purge_after`/`purge_status`), `auth_sessions` (+ `last_seen_at`, TTL FR-005d, limit 10 z `users FOR UPDATE`), `oauth_states` (FR-001), **`rate_limit_buckets` (FR-005c)**; i18n resolver; OAuth JWKS; IDOR; CORS/rate limit PG; delete/export; hard purge order + TX (FR-006c) |
+| FR-010–014, FR-014a | `user_onboarding`, `user_exercise_progress`, `legal_documents`, `legal_document_translations`, `user_legal_acceptances` (+ locale/hash w outbox legal) |
+| FR-020–024, FR-020a, FR-022a, FR-022b, FR-024a, FR-040a, FR-040c | `programs` + `program_translations`, `program_days` + `program_day_translations`, `program_day_exercises`, `exercises` + `exercise_translations`, `exercise_steps` + `exercise_step_translations`, `user_program_enrollments` (+ pending anchor), `users.timezone` (+ pending TZ); rest override tylko w `/today` |
 | FR-030–039, FR-034a, FR-036, FR-074 | `exercise_steps.rules`, `user_exercise_progress` (`fail_streak` = cache folda tipów), `progression_events`, `session_exercise_logs` (+ `local_date`, `performed_at` denorm, `counts_for_progression`); tip vs late (FR-035); push/pull zwraca eventy tip do surface UI |
-| FR-040–046, FR-040a/b, FR-046a | `workout_sessions` (UNIQUE `(id,user_id)`), `session_exercise_logs` (FK composite ownership); TodaySessionDto; write DTO strip |
+| FR-040–046, FR-040a/b, FR-046a | `workout_sessions` (UNIQUE `(id,user_id)`), `session_exercise_logs` (FK composite ownership + `content_locale`); TodaySessionDto; write DTO strip |
 | FR-050–058, FR-051a | `exercises` (satelity), `exercise_steps` (≥1 na satelitę — cel w `rules.goal`), limit 10 z `users FOR UPDATE` + `trg_satellite_limit`/`pg_advisory_xact_lock` |
 | FR-060–065 | `body_measurements`, `users.body_metric_prefs` |
-| FR-070–075, FR-070a, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; `storage.persist` UX; catalog 304 |
-| FR-080–084, FR-081, FR-081a, FR-082a | `legal_documents`, `tags` rehab; at-rest kolumn/volume poza F1; **backup/restore PG** (FR-081a); analytics allowlist; kamienie F1 / de-scope (FR-084 — proces, nie tabela) |
+| FR-070–075, FR-070a, FR-071a, FR-072a–d, FR-073a, FR-075a | sync; outbox; `storage.persist` UX; locale-aware catalog/ETag 304 |
+| FR-080–084, FR-081, FR-081a, FR-082a | `legal_documents` + `legal_document_translations`, `tags` rehab; at-rest kolumn/volume poza F1; **backup/restore PG** (FR-081a); analytics allowlist; kamienie F1 / de-scope (FR-084 — proces, nie tabela) |
