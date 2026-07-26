@@ -52,6 +52,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | Client / offline UI | Zustand + IndexedDB + outbox |
 | Forms | React Hook Form + Zod |
 | Localization | `react-i18next`; F1 ships `pl-PL`, with fallback and locale-namespaced catalog cache |
+| Frontend tests | Vitest (unit, coverage ≥80%) + Playwright (E2E against Compose same-origin) |
 
 ### Backend (Phase 1)
 
@@ -62,7 +63,7 @@ Planned stack (from the PRD). Application source, `package.json`, and `.nvmrc` a
 | Database | PostgreSQL + JSONB |
 | Progression | Server-only `ProgressionEngine`; versioned JSON contracts (`schema_version`) + `rules_snapshot` on logs |
 | Localized content | Relational `*_translations`; BCP 47 `users.locale`; locale-aware catalog ETag and historical `content_locale` snapshots |
-| Tooling | uv, Ruff, mypy, pytest |
+| Tooling | uv, Ruff, mypy, pytest + pytest-cov (`fail_under = 80` in root `pyproject.toml`) |
 | Auth (MVP) | Google OAuth (Auth Code + PKCE S256); ID token JWKS (iss/aud/exp/sub); email_verified required; identity = google_sub; same-origin; `__Host-` cookie; sliding TTL 30d / hard cap 90d (FR-001/005a/005d); CSRF on account mutations |
 
 ### Infrastructure
@@ -124,7 +125,9 @@ No `package.json` or root `Makefile` is present yet. Expected scripts after scaf
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
 | `npm run lint` | Lint TypeScript / ESLint |
-| `npm run test` | Frontend unit tests (when added) |
+| `npm run test` | Vitest unit tests |
+| `npm run test:coverage` | Vitest with coverage (fails if &lt; 80%) |
+| `npx playwright test` | Playwright E2E (Compose up; Chromium) |
 
 ### Backend (typical)
 
@@ -132,7 +135,8 @@ No `package.json` or root `Makefile` is present yet. Expected scripts after scaf
 |---------|---------|
 | `docker compose up -d` | Start API + PostgreSQL |
 | `docker compose run --rm api alembic upgrade head` | Apply migrations |
-| `docker compose run --rm api pytest` | Run backend tests |
+| `docker compose run --rm api pytest` | Run backend tests with coverage (fails if &lt; 80%) |
+| `docker compose run --rm api pytest -m idor` | IDOR suite only (required CI job) |
 | `uv run ruff check` / `uv run mypy` | Lint and type-check (host tooling; runtime tests in Docker) |
 
 This section will be updated when real scripts are added to the repository.

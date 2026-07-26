@@ -91,7 +91,8 @@ alwaysApply: false
 - Migracje Alembic i pytest — w kontenerze Docker (jak CI/prod). Nie uruchamiaj migracji/testów na gołym interpreterze hosta, o ile użytkownik nie wymusi inaczej.
 - **FR-081a:** przed migracją Alembic na prod — świeży backup; DoD public beta/prod obejmuje restore drill. Backup = cron/serwis Compose (bez HTTP triggera), jak purge.
 - Stack lokalny: `docker compose up -d` (db + api); migracje: `docker compose run --rm api alembic upgrade head`; testy: wg `Makefile` / compose.
-- Tooling: `uv`, `Ruff`, `mypy` (strict w miarę możliwości), `pytest`. Adnotacje typów wymagane w nowym kodzie.
+- Tooling: `uv`, `Ruff`, `mypy` (strict w miarę możliwości), `pytest` + `pytest-cov`. Adnotacje typów wymagane w nowym kodzie.
+- Pokrycie: **`fail_under = 80`** w root `pyproject.toml` (`[tool.coverage.report]`); CI musi failować poniżej progu. Agent testów: `.cursor/rules/testing.mdc`.
 - Każde przejście stanu progresji i zapis sesji: test pozytywny i negatywny.
 - **IDOR suite** (`pytest -m idor`): User B nie dostaje 200/`applied` na zasób User A — obowiązkowa dla sessions, logs, measurements, satelitów, progress GET+override, sync push (cudzy `entity_id`), sync conflict detail, session detail, account export/delete/**`PATCH /account/schedule`**, sync_devices, onboarding, legal (FR-005b). PR zmieniające repozytoria/routery/sync/account user-owned musi przejść ten marker.
 - Testy i18n: kompletne `pl-PL`; nieznane/niekompletne locale → cały katalog PL; brak mieszanego locale; ETag różny per locale/version; acceptance odrzuca obcy hash; zmiana `users.locale` nie zmienia historycznych snapshotów.

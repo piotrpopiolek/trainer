@@ -69,5 +69,5 @@ alwaysApply: false
 
 - TypeScript strict; unikaj `any`.
 - Komponenty funkcyjne; logikę wyciągaj do hooków.
-- Testuj krytyczne ścieżki: login redirect, outbox enqueue, legal locale/hash→sesja (defer), sesja bez legal → `legal_required`, rest-day → „Trenuj mimo to” → D1 → evaluate, limit satelitów, offline save → pending copy, `storage.persist` + banner gdy !persisted∧pending, sync → modal awansu (idempotent), conflict_lost/tie/immutable → surface + recovery draft, soft-delete ocenionej → modal no-rewind + CTA override, soft-delete+create (obie kolejności enqueue) → applied bez quarantine, override online → nowy krok, 422→quarantine, 503→backoff; i18n: komplet kluczy `pl-PL`, fallback, cache katalogu per locale, brak mieszanego locale.
+- Testuj krytyczne ścieżki: **Vitest** (hooki/outbox/store/i18n) + **Playwright** E2E (login, legal→sesja, today/logowanie, offline/pending, sync→modal awansu, konflikty, soft-delete no-rewind, Trenuj mimo to, export/delete). Agent: `.cursor/rules/testing.mdc`. Vitest coverage **80%**; Playwright = obowiązkowe specs w CI (Compose same-origin), nie procent coverage.
 - Mobile-first; nie zakładaj natywnych API (HealthKit, Garmin SDK).

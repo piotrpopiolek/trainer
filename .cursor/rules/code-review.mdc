@@ -11,7 +11,7 @@ alwaysApply: false
 
 - Jeden reviewer prowadzący odpowiada za cały diff, zależności między warstwami, deduplikację uwag i raport końcowy.
 - Dla małej zmiany w jednej warstwie wykonaj review samodzielnie.
-- Uruchamiaj równolegle tylko potrzebnych specjalistów: backend/domena/DB dla progresji, sync i migracji; frontend/PWA dla offline, outbox i kontraktów; security dla auth, IDOR, CSRF, danych konta i sekretów; ops dla CI, Docker, backup/restore i purge.
+- Uruchamiaj równolegle tylko potrzebnych specjalistów: backend/domena/DB dla progresji, sync i migracji; frontend/PWA dla offline, outbox i kontraktów; security dla auth, IDOR, CSRF, danych konta i sekretów; ops dla CI, Docker, backup/restore i purge; **testing** (`.cursor/rules/testing.mdc`) dla luk w mandatory suites (pytest IDOR/concurrency, Vitest 80%, Playwright E2E).
 - Nie dziel review mechanicznie według plików. Reviewer prowadzący musi sprawdzić kontrakty API/Zod/Pydantic, transakcje i przepływy end-to-end.
 
 ## Kolejność kontroli

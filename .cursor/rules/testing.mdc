@@ -1,0 +1,89 @@
+---
+description: Agent testów Trainer — backend (pytest/coverage) i frontend (Vitest + Playwright); obowiązkowe suity, progi 80%, IDOR i concurrency
+alwaysApply: false
+---
+
+# TESTING - Trainer
+
+Źródło prawdy: `docs/prd.md`, `docs/db-plan.md`, `pyproject.toml` (coverage), reguły backendu/frontendu. Cel: brak regresji domeny, sync i bezpieczeństwa; próg pokrycia **≥ 80%** (linie + branch gdzie mierzone).
+
+## Rola
+
+- Jeden agent testów prowadzi BE i FE: planuje, pisze, uruchamia i egzekwuje bramki CI.
+- Nie zastępuje code review; uzupełnia go brakującymi testami i dowodem pokrycia.
+- Testy backendu **wyłącznie w Dockerze** (jak CI). Frontend: Vitest lokalnie/CI; Playwright w CI na stacku Compose (same-origin przez Caddy).
+
+## Podział narzędzi frontendu
+
+| Warstwa | Narzędzie | Zakres |
+|---------|-----------|--------|
+| Unit / integration | **Vitest** + Testing Library | hooki, outbox, store, Zod, i18n keys, mapowanie `error_code` |
+| E2E / browser | **Playwright** (`@playwright/test`) | pełne ścieżki UI w prawdziwej przeglądarce (Chromium obowiązkowo; WebKit opcjonalnie smoke) |
+
+- Vitest **nie** zastępuje Playwright dla offline/PWA, cookie/`credentials`, modalów sync i flow logowania.
+- Playwright **nie** zastępuje Vitest dla logiki outbox/revision i progu coverage 80%.
+- E2E startują przeciwko Compose (`proxy` → PWA + `/api`); zakaz mockowania całego API w Playwright dla ścieżek happy-path auth/sync (używaj seed/fixture + test user).
+
+## Progi pokrycia (obowiązkowe)
+
+| Warstwa | Narzędzie | Próg | Fail |
+|---------|-----------|------|------|
+| Backend | `pytest` + `pytest-cov` | **80%** (`fail_under = 80` w `pyproject.toml`) | CI czerwone |
+| Frontend unit | Vitest + `@vitest/coverage-v8` | **80%** lines/functions/branches/statements | CI czerwone |
+| Frontend E2E | Playwright | mandatory specs poniżej (pass/fail) — nie mylić z % coverage | CI czerwone |
+
+- Nie obniżaj progu „bo scaffold pusty”. Omit tylko infrastruktura (migracje, seed, `__main__`, generowane). Zakaz omit `services/` / `features/` żeby „przejść 80%”.
+- 80% Vitest bez Playwright E2E / bez IDOR = niedostateczne.
+
+## Markery i komendy
+
+**Backend**
+
+- Markery: `idor`, `concurrency`.
+- `docker compose run --rm api pytest` (fail poniżej 80%).
+- Osobny job: `pytest -m idor`. Współbieżność: `pytest -m concurrency`.
+
+**Frontend**
+
+- Vitest: `npm run test` / `npm run test:coverage` w `frontend/` (thresholds = 80).
+- Playwright: `npx playwright test` (config: `frontend/playwright.config.ts`; baseURL = origin proxy, np. `https://localhost` / URL z Compose).
+- CI: job Vitest + osobny job Playwright (install browsers, czekaj na healthy `proxy`/`api`/`db`).
+- Artefakty CI przy failu: screenshot, trace, video (retain on failure).
+
+## Backend — obowiązkowe suity
+
+1. **Auth (FR-001/005d):** zły aud/iss/exp; replay state; `email_verified=false`; ten sam `sub` → ten sam user; 2 równoległe loginy przy 9 sesjach → ≤10.
+2. **IDOR (FR-005b):** User B → 404 / `rejected not_found` na zasoby A (sessions, logs, measurements, satelity, progress GET+override, sync push, conflicts, session detail, export/delete, `PATCH /account/schedule`).
+3. **Progresja (FR-034/034a/035):** fail/fail → regres; przerwa nie zeruje; tip vs late; late nie mutuje kroku/`fail_streak`; `rules_snapshot` + `content_locale`.
+4. **Sesje (FR-038/039):** `session_date_immutable`; `session_immutable_after_evaluate`; soft-delete + create; UNIQUE CC/dzień.
+5. **Sync (FR-072*/075):** CAS `rowcount`; `revision_jump`; legal defer/`legal_required`; batch ≤20; pull initial/delta/`resync_required`.
+6. **Konto:** purge pełny graf → `done` + zero childów; export stream bez sekretów; CSRF 403.
+7. **i18n (FR-007):** komplet `pl-PL`; fallback całego katalogu; brak mieszanego locale; ETag per locale.
+
+Każde przejście stanu progresji / zapis sesji: test **pozytywny i negatywny**.
+
+## Frontend — Vitest (unit)
+
+- Outbox: enqueue, sort legal→sesje→pomiary→satelity, soft-delete przed kolidującym create, `revision = last_known + 1`.
+- Mapowanie `error_code` → klucze i18n; brak hardcoded PL w komponentach; komplet kluczy `pl-PL`.
+- Store/progress cache: brak lokalnej oceny awansu; idempotencja surface po `event.id` (logika).
+
+## Frontend — Playwright (E2E, obowiązkowe)
+
+Chromium; same-origin + cookie sesji (bez Bearer w storage).
+
+1. **Auth:** login Google (mock OAuth/test harness) → redirect; 401 → login, outbox nie drop.
+2. **Onboarding + legal:** akceptacja disclaimer z locale/hash → pierwsza sesja dozwolona; bez akceptacji zapis sesji zablokowany.
+3. **Today + sesja:** `GET /today` render; logowanie CC poniżej 3 min ścieżka happy; surface awansu/regresu po odpowiedzi serwera (modal/banner).
+4. **Offline (F1.1):** offline save → badge pending; online flush → sync success; konflikt tie/immutable → modal; soft-delete ocenionej → modal no-rewind + CTA override.
+5. **Rest / ustawienia:** „Trenuj mimo to” → D1/D2/D3; zmiana splitu/TZ → copy „od jutra”.
+6. **Konto:** export (POST+CSRF, plik); delete z potwierdzeniem; brak wycieku tokenu do JS storage.
+
+Selektory: `getByRole` / `getByTestId` stabilne; zakaz CSS kruchych pod layout. i18n: asercje po roli/kluczu testid, nie po pełnym copy PL (chyba że celowo test locale).
+
+## Raport agenta
+
+- Co dodano (Vitest / Playwright / pytest) + FR.
+- Wynik: pytest (+ %), `pytest -m idor`, Vitest (+ %), Playwright (passed/failed specs + browser).
+- Poniżej 80% lub brak mandatory E2E/IDOR → blokuj merge / wskaż brakujące przypadki.
+- Nie zgaduj zielonego CI — uruchom lub zaznacz, że nie uruchomiono.
