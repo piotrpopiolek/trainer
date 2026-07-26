@@ -8,14 +8,16 @@ Create Date: 2026-07-26
 from __future__ import annotations
 
 import os
+import secrets
 
 from alembic import op
-from sqlalchemy import text
 
 revision = "20260726_0001"
 down_revision = None
 branch_labels = None
 depends_on = None
+
+_ALLOWED_ROLES = frozenset({"trainer_app", "trainer_migrator"})
 
 
 def _role_password(env_name: str) -> str:
@@ -33,6 +35,8 @@ def _sql(statement: str) -> None:
 
 
 def _ensure_role(role: str) -> None:
+    if role not in _ALLOWED_ROLES:
+        raise ValueError(f"refusing to create unexpected role: {role}")
     _sql(
         f"""
         DO $$
@@ -47,11 +51,14 @@ def _ensure_role(role: str) -> None:
 
 
 def _set_role_login_password(role: str, password: str) -> None:
-    # Bound parameter — do not interpolate secrets into the SQL source string.
-    op.get_bind().execute(
-        text(f"ALTER ROLE {role} WITH LOGIN PASSWORD :password"),
-        {"password": password},
-    )
+    # PG does not allow bind params for ROLE passwords ($1 → syntax error).
+    # Dollar-quote at runtime so the revision source has no secret literals.
+    if role not in _ALLOWED_ROLES:
+        raise ValueError(f"refusing to alter unexpected role: {role}")
+    tag = "pw" + secrets.token_hex(16)
+    while tag in password:
+        tag = "pw" + secrets.token_hex(16)
+    _sql(f"ALTER ROLE {role} WITH LOGIN PASSWORD ${tag}${password}${tag}$")
 
 
 def upgrade() -> None:
