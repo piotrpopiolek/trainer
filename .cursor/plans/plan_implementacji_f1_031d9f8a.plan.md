@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: db-catalog-sync
     content: "Migracje Alembic czesc 2: katalog CC z tabelami *_translations, sesje i logi z composite FK oraz partial UNIQUE FR-039, progresja, sync, rate_limit_buckets, oba triggery"
-    status: pending
+    status: completed
   - id: seed-catalog
     content: "Seed: neutralne encje CC i progression_schemas oddzielone od tlumaczen pl-PL, legal_document_translations, catalog_version per locale"
     status: pending
