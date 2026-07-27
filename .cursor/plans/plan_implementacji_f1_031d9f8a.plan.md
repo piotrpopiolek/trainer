@@ -25,7 +25,7 @@ todos:
     status: completed
   - id: domain-core
     content: Kontrakty Pydantic z schema_version, resolve_cc_day z promote pending, onboarding i legal gate FR-014a
-    status: pending
+    status: completed
   - id: progression-engine
     content: "ProgressionEngine: klasyfikacja tip vs spozniony, fold fail_streak, advance/regress, rules_snapshot i content_locale, immutability sesji FR-038/039"
     status: pending

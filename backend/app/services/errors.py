@@ -44,3 +44,15 @@ class NotFoundError(AuthError):
 class PayloadTooLargeError(AuthError):
     def __init__(self) -> None:
         super().__init__("payload_too_large", http_status=422)
+
+
+class DomainError(Exception):
+    def __init__(self, error_code: str, *, http_status: int = 422) -> None:
+        self.error_code = error_code
+        self.http_status = http_status
+        super().__init__(error_code)
+
+
+class LegalRequiredError(DomainError):
+    def __init__(self) -> None:
+        super().__init__("legal_required", http_status=403)

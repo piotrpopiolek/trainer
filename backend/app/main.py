@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app import __version__
 from app.api.exception_handlers import register_exception_handlers
 from app.api.middleware import BodySizeLimitMiddleware
-from app.api.routers import account, auth, health, measurements
+from app.api.routers import account, auth, health, legal, measurements, onboarding
 from app.core.config import settings
 
 
@@ -30,6 +30,8 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(account.router, prefix="/api")
 app.include_router(measurements.router, prefix="/api")
+app.include_router(onboarding.router, prefix="/api")
+app.include_router(legal.router, prefix="/api")
 
 
 @app.get("/api")

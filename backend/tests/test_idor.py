@@ -120,3 +120,89 @@ async def test_export_foreign_session_unauthorized(
     # No session → 401 (not a leak of another user's export).
     res = await api_client.post("/api/account/export")
     assert res.status_code in {401, 403}
+
+
+@pytest.mark.idor
+@pytest.mark.asyncio
+async def test_onboarding_complete_only_affects_session_user(
+    api_client: AsyncClient, db: AsyncSession
+) -> None:
+    from sqlalchemy import select
+
+    from app.models.catalog import Program
+    from app.models.onboarding import UserOnboarding
+
+    if await db.scalar(select(Program).where(Program.slug == "cc_big_six")) is None:
+        pytest.skip("seed catalog required")
+
+    user_a, _raw_a = await _user_session(db, "a-ob@ex.com")
+    _user_b, raw_b = await _user_session(db, "b-ob@ex.com")
+    res = await api_client.post(
+        "/api/onboarding/complete",
+        cookies={settings.session_cookie_name: raw_b},
+        json={
+            "schema_version": 1,
+            "questionnaire": {
+                "schema_version": 1,
+                "experience_level": "beginner",
+                "training_days_per_week": 3,
+            },
+            "started_on": "2026-07-27",
+        },
+    )
+    assert res.status_code == 200
+    await db.refresh(user_a)
+    assert user_a.onboarding_completed_at is None
+    row_a = await db.scalar(
+        select(UserOnboarding).where(UserOnboarding.user_id == user_a.id)
+    )
+    assert row_a is None
+
+
+@pytest.mark.idor
+@pytest.mark.asyncio
+async def test_legal_acceptance_only_binds_session_user(
+    api_client: AsyncClient, db: AsyncSession
+) -> None:
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.models.legal import LegalDocument, LegalDocumentTranslation, UserLegalAcceptance
+
+    doc = await db.scalar(
+        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
+    )
+    if doc is None:
+        pytest.skip("legal seed required")
+    tr = await db.scalar(
+        select(LegalDocumentTranslation).where(
+            LegalDocumentTranslation.document_id == doc.id,
+            LegalDocumentTranslation.locale == "pl-PL",
+        )
+    )
+    assert tr is not None
+
+    user_a, _raw_a = await _user_session(db, "a-legal@ex.com")
+    _user_b, raw_b = await _user_session(db, "b-legal@ex.com")
+    res = await api_client.post(
+        "/api/legal/acceptances",
+        cookies={settings.session_cookie_name: raw_b},
+        json={
+            "schema_version": 1,
+            "payload": {
+                "schema_version": 1,
+                "client_mutation_id": str(uuid4()),
+                "document_slug": "health_disclaimer",
+                "document_version": "1",
+                "accepted_locale": "pl-PL",
+                "accepted_content_hash": tr.content_hash.hex(),
+                "accepted_at": datetime.now(UTC).isoformat(),
+            },
+        },
+    )
+    assert res.status_code == 200
+    row_a = await db.scalar(
+        select(UserLegalAcceptance).where(UserLegalAcceptance.user_id == user_a.id)
+    )
+    assert row_a is None

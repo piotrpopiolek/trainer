@@ -1,11 +1,11 @@
-"""HTTP exception mapping for domain AuthError."""
+"""HTTP exception mapping for AuthError / DomainError."""
 
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.services.errors import AuthError
+from app.services.errors import AuthError, DomainError
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -18,4 +18,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.http_status,
             content={"error_code": exc.error_code},
             headers=headers,
+        )
+
+    @app.exception_handler(DomainError)
+    async def domain_error_handler(_request: Request, exc: DomainError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.http_status,
+            content={"error_code": exc.error_code},
         )
