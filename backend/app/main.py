@@ -5,7 +5,8 @@ from fastapi import FastAPI
 
 from app import __version__
 from app.api.exception_handlers import register_exception_handlers
-from app.api.routers import auth, health
+from app.api.middleware import BodySizeLimitMiddleware
+from app.api.routers import account, auth, health, measurements
 from app.core.config import settings
 
 
@@ -23,9 +24,12 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+app.add_middleware(BodySizeLimitMiddleware)
 register_exception_handlers(app)
 app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(account.router, prefix="/api")
+app.include_router(measurements.router, prefix="/api")
 
 
 @app.get("/api")

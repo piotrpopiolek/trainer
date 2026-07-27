@@ -16,13 +16,16 @@ from app.api.deps import (
 )
 from app.core.config import settings
 from app.core.cookies import (
+    clear_csrf_cookie,
     clear_oauth_state_cookie,
     clear_session_cookie,
+    set_csrf_cookie,
     set_oauth_state_cookie,
     set_session_cookie,
 )
 from app.db.session import get_session
 from app.services.auth_session import AuthSessionService
+from app.services.csrf import ensure_csrf_cookie, new_csrf_token
 from app.services.errors import AuthError
 from app.services.oauth_google import GoogleOAuthService
 
@@ -35,6 +38,7 @@ class MeResponse(BaseModel):
     email: str | None
     display_name: str | None
     locale: str
+    csrf_token: str
 
 
 @router.get("/google/start")
@@ -90,6 +94,7 @@ async def google_callback(
 
     redirect = RedirectResponse(url=f"{settings.public_origin}/", status_code=302)
     set_session_cookie(redirect, raw)
+    set_csrf_cookie(redirect, new_csrf_token())
     clear_oauth_state_cookie(redirect)
     return redirect
 
@@ -104,6 +109,7 @@ async def logout(
     raw = request.cookies.get(settings.session_cookie_name)
     await auth_sessions.revoke_current(db, raw)
     clear_session_cookie(response)
+    clear_csrf_cookie(response)
     return {"ok": True}
 
 
@@ -116,14 +122,21 @@ async def logout_all(
 ) -> dict[str, bool]:
     await auth_sessions.revoke_all_for_user(db, ctx.user.id)
     clear_session_cookie(response)
+    clear_csrf_cookie(response)
     return {"ok": True}
 
 
 @router.get("/me")
-async def me(ctx: AuthContext = Depends(get_current_user)) -> MeResponse:
+async def me(
+    request: Request,
+    response: Response,
+    ctx: AuthContext = Depends(get_current_user),
+) -> MeResponse:
+    token = ensure_csrf_cookie(request, response)
     return MeResponse(
         id=str(ctx.user.id),
         email=ctx.user.email,
         display_name=ctx.user.display_name,
         locale=ctx.user.locale,
+        csrf_token=token,
     )

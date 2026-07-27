@@ -114,9 +114,9 @@ class AuthSessionService:
 
         if row.revoked_at is not None:
             row = await self._resolve_rotated_successor(db, row, now=now)
-        elif row.expires_at <= now:
-            raise AuthError("unauthorized", http_status=401)
-        elif row.created_at <= now - timedelta(days=settings.session_hard_cap_days):
+        elif row.expires_at <= now or row.created_at <= now - timedelta(
+            days=settings.session_hard_cap_days
+        ):
             raise AuthError("unauthorized", http_status=401)
 
         user = await db.scalar(

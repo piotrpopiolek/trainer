@@ -12,9 +12,14 @@ from app.core.cookies import set_session_cookie
 from app.db.session import get_session
 from app.models.user import User
 from app.services.auth_session import AuthSessionService
+from app.services.csrf import validate_csrf
 from app.services.errors import AuthError
 from app.services.oauth_google import GoogleOAuthService
-from app.services.rate_limit import get_rate_limiter, oauth_bucket_key
+from app.services.rate_limit import (
+    get_rate_limiter,
+    oauth_bucket_key,
+    user_api_bucket_key,
+)
 
 
 @dataclass(slots=True)
@@ -68,3 +73,20 @@ async def get_current_user(
         raw = rotated
     assert raw is not None
     return AuthContext(user=user, raw_token=raw)
+
+
+async def get_current_user_rate_limited(
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> AuthContext:
+    limiter = get_rate_limiter()
+    await limiter.hit(
+        db,
+        bucket_key=user_api_bucket_key(ctx.user.id),
+        limit=settings.api_rate_limit_per_minute,
+    )
+    return ctx
+
+
+def require_csrf(request: Request) -> None:
+    validate_csrf(request)

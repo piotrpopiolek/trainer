@@ -21,6 +21,10 @@ def oauth_bucket_key(ip: str) -> str:
     return f"ip:{hash_ip_for_rate_limit(ip)}:oauth"
 
 
+def user_api_bucket_key(user_id: object) -> str:
+    return f"u:{user_id}:api"
+
+
 def _window_start(now: datetime | None = None) -> datetime:
     moment = now or datetime.now(UTC)
     return moment.replace(second=0, microsecond=0)

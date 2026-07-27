@@ -56,3 +56,27 @@ def clear_oauth_state_cookie(response: Response) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+def set_csrf_cookie(response: Response, token: str) -> None:
+    """Double-submit CSRF cookie — readable by JS (not HttpOnly)."""
+    response.set_cookie(
+        key=settings.csrf_cookie_name,
+        value=token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        expires=SESSION_MAX_AGE_SECONDS,
+        path="/",
+        secure=True,
+        httponly=False,
+        samesite="strict",
+    )
+
+
+def clear_csrf_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.csrf_cookie_name,
+        path="/",
+        secure=True,
+        httponly=False,
+        samesite="strict",
+    )

@@ -36,9 +36,13 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "https://localhost/api/auth/google/callback"
     session_cookie_name: str = "__Host-trainer_session"
     oauth_state_cookie_name: str = "__Host-trainer_oauth"
+    csrf_cookie_name: str = "__Host-trainer_csrf"
+    csrf_header_name: str = "X-CSRF-Token"
     csrf_secret: str = ""
     rate_limit_store: str = "memory"
     oauth_rate_limit_per_minute: int = 10
+    api_rate_limit_per_minute: int = 100
+    max_body_bytes: int = 1_000_000
     trainer_app_password: str = ""
     trainer_migrator_password: str = ""
     # Auth TTL (FR-005d) — overridable in tests

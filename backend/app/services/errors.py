@@ -29,3 +29,18 @@ class RateLimitedError(AuthError):
             http_status=429,
             retry_after=retry_after,
         )
+
+
+class CsrfError(AuthError):
+    def __init__(self) -> None:
+        super().__init__("csrf_invalid", http_status=403)
+
+
+class NotFoundError(AuthError):
+    def __init__(self) -> None:
+        super().__init__("not_found", http_status=404)
+
+
+class PayloadTooLargeError(AuthError):
+    def __init__(self) -> None:
+        super().__init__("payload_too_large", http_status=422)
