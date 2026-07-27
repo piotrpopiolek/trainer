@@ -81,6 +81,8 @@ jobs:
             sleep 2
           done
           exit 1
+      - name: Alembic upgrade
+        run: docker compose run --rm api alembic -c backend/alembic.ini upgrade head
       - name: Pytest IDOR
         # Marker suite only — coverage gate stays on the full pytest job
         run: docker compose run --rm api pytest -m idor --no-cov
