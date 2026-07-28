@@ -60,7 +60,7 @@ async def hard_purge_user(db: AsyncSession, *, user_id: UUID) -> None:
 
 async def claim_purge_user(db: AsyncSession, *, user_id: UUID) -> bool:
     """pending_grace → pending_job. False if already pending_job/done/missing."""
-    result = await db.execute(
+    claimed_id = await db.scalar(
         update(User)
         .where(
             User.id == user_id,
@@ -68,8 +68,9 @@ async def claim_purge_user(db: AsyncSession, *, user_id: UUID) -> bool:
             User.purge_status == "pending_grace",
         )
         .values(purge_status="pending_job")
+        .returning(User.id)
     )
-    return bool(result.rowcount)
+    return claimed_id is not None
 
 
 async def list_due_purge_users(db: AsyncSession, *, today: date | None = None) -> list[User]:
@@ -151,18 +152,46 @@ async def run_purge_batch(
 
 async def assert_user_training_gone(db: AsyncSession, *, user_id: UUID) -> None:
     """Raise if any training / auth child rows remain (test helper)."""
-    checks: list[tuple[str, type]] = [
-        ("session_exercise_logs", SessionExerciseLog),
-        ("progression_events", ProgressionEvent),
-        ("workout_sessions", WorkoutSession),
-        ("user_exercise_progress", UserExerciseProgress),
-        ("user_program_enrollments", UserProgramEnrollment),
-        ("auth_sessions", AuthSession),
+    checks = [
+        (
+            "session_exercise_logs",
+            select(func.count())
+            .select_from(SessionExerciseLog)
+            .where(SessionExerciseLog.user_id == user_id),
+        ),
+        (
+            "progression_events",
+            select(func.count())
+            .select_from(ProgressionEvent)
+            .where(ProgressionEvent.user_id == user_id),
+        ),
+        (
+            "workout_sessions",
+            select(func.count())
+            .select_from(WorkoutSession)
+            .where(WorkoutSession.user_id == user_id),
+        ),
+        (
+            "user_exercise_progress",
+            select(func.count())
+            .select_from(UserExerciseProgress)
+            .where(UserExerciseProgress.user_id == user_id),
+        ),
+        (
+            "user_program_enrollments",
+            select(func.count())
+            .select_from(UserProgramEnrollment)
+            .where(UserProgramEnrollment.user_id == user_id),
+        ),
+        (
+            "auth_sessions",
+            select(func.count())
+            .select_from(AuthSession)
+            .where(AuthSession.user_id == user_id),
+        ),
     ]
-    for label, model in checks:
-        n = await db.scalar(
-            select(func.count()).select_from(model).where(model.user_id == user_id)
-        )
+    for label, stmt in checks:
+        n = await db.scalar(stmt)
         if int(n or 0) > 0:
             raise AssertionError(f"{label} still has {n} rows for {user_id}")
 

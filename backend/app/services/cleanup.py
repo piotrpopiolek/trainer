@@ -27,14 +27,16 @@ async def cleanup_auth_sessions(
     """Hard-delete sessions with revoked_at or expires_at older than retention (FR-005d)."""
     cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
     result = await db.execute(
-        delete(AuthSession).where(
+        delete(AuthSession)
+        .where(
             or_(
                 AuthSession.revoked_at < cutoff,
                 AuthSession.expires_at < cutoff,
             ),
         )
+        .returning(AuthSession.id)
     )
-    return int(result.rowcount or 0)
+    return len(result.all())
 
 
 async def cleanup_oauth_states(
@@ -46,14 +48,16 @@ async def cleanup_oauth_states(
     """Drop expired / consumed OAuth PKCE states."""
     cutoff = (now or datetime.now(UTC)) - timedelta(hours=retention_hours)
     result = await db.execute(
-        delete(OAuthState).where(
+        delete(OAuthState)
+        .where(
             or_(
                 OAuthState.expires_at < cutoff,
                 OAuthState.consumed_at.is_not(None),
             )
         )
+        .returning(OAuthState.state)
     )
-    return int(result.rowcount or 0)
+    return len(result.all())
 
 
 async def cleanup_rate_limit_buckets(
@@ -65,9 +69,11 @@ async def cleanup_rate_limit_buckets(
     """Drop fixed-window buckets older than ~2h (FR-005c)."""
     cutoff = (now or datetime.now(UTC)) - timedelta(hours=retention_hours)
     result = await db.execute(
-        delete(RateLimitBucket).where(RateLimitBucket.window_start < cutoff)
+        delete(RateLimitBucket)
+        .where(RateLimitBucket.window_start < cutoff)
+        .returning(RateLimitBucket.bucket_key, RateLimitBucket.window_start)
     )
-    return int(result.rowcount or 0)
+    return len(result.all())
 
 
 async def run_cleanup_batch(db: AsyncSession) -> dict[str, int]:

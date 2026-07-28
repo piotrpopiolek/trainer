@@ -160,6 +160,7 @@ describe("training api", () => {
             JSON.stringify({
               items: [
                 {
+                  schema_version: 1,
                   exercise_id: "018f0000-0000-7000-8000-000000000011",
                   current_step_number: 3,
                   fail_streak: 0,
