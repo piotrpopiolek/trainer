@@ -1,36 +1,36 @@
-import { useQuery } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-import { apiFetch } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
+import { LegalPage } from "@/features/auth/LegalPage";
+import { LoginPage, OnboardingPage } from "@/features/auth/pages";
+import { RequireAuth } from "@/features/auth/RequireAuth";
+import { MeasurementsPage } from "@/features/measurements/MeasurementsPage";
+import { ProgressPage } from "@/features/progress/ProgressPage";
+import { SatellitesPage } from "@/features/satellites/SatellitesPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
+import { TodayPage } from "@/features/today/TodayPage";
 
-type HealthResponse = { status: string };
-
-async function fetchHealth(): Promise<HealthResponse> {
-  const res = await apiFetch("/api/health");
-  if (!res.ok) {
-    throw new Error(`health_${res.status}`);
-  }
-  return res.json() as Promise<HealthResponse>;
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/legal" element={<LegalPage />} />
+        <Route element={<AppShell />}>
+          <Route index element={<TodayPage />} />
+          <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/satellites" element={<SatellitesPage />} />
+          <Route path="/measurements" element={<MeasurementsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
 
+/** Production entry uses BrowserRouter in main.tsx; tests inject MemoryRouter. */
 export function App() {
-  const { t } = useTranslation();
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: fetchHealth,
-    retry: false,
-  });
-
-  return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-4 px-6 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">{t("app.name")}</h1>
-      <p className="text-slate-600">{t("app.tagline")}</p>
-      <section aria-live="polite" className="text-sm text-slate-700">
-        <p className="font-medium">{t("shell.apiStatus")}</p>
-        {health.isLoading && <p>{t("shell.loading")}</p>}
-        {health.isSuccess && health.data.status === "ok" && <p>{t("shell.apiOk")}</p>}
-        {health.isError && <p>{t("shell.apiDown")}</p>}
-      </section>
-    </main>
-  );
+  return <AppRoutes />;
 }

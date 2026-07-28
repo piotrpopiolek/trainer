@@ -1,12 +1,119 @@
 {
   "app": {
     "name": "Trainer",
-    "tagline": "Progresja kalisteniki — faza scaffold"
+    "tagline": "Progresja kalisteniki — Convict Conditioning"
   },
   "shell": {
     "apiStatus": "Status API",
     "apiOk": "API działa",
     "apiDown": "API niedostępne",
     "loading": "Ładowanie…"
+  },
+  "nav": {
+    "today": "Dziś",
+    "progress": "Progres",
+    "satellites": "Satelity",
+    "measurements": "Pomiary",
+    "settings": "Ustawienia"
+  },
+  "common": {
+    "cancel": "Anuluj"
+  },
+  "login": {
+    "title": "Zaloguj się",
+    "subtitle": "Kontynuuj z kontem Google. Sesja jest chroniona cookie HttpOnly.",
+    "google": "Zaloguj przez Google"
+  },
+  "onboarding": {
+    "title": "Witaj w Trainer",
+    "experience": "Poziom doświadczenia",
+    "expBeginner": "Początkujący",
+    "expIntermediate": "Średniozaawansowany",
+    "expAdvanced": "Zaawansowany",
+    "days": "Dni treningowe w tygodniu",
+    "split": "Split Big Six",
+    "splitMon": "Pn / Śr / Pt",
+    "splitTue": "Wt / Czw / Sob",
+    "submit": "Zapisz i kontynuuj"
+  },
+  "legal": {
+    "title": "Zastrzeżenie zdrowotne",
+    "accept": "Akceptuję i kontynuuję"
+  },
+  "today": {
+    "title": "Dzisiejsza sesja",
+    "restDay": "dzień odpoczynku",
+    "splitDay": "dzień {{day}}",
+    "trainAnyway": "Trenuj mimo to:",
+    "dayN": "Dzień {{n}}",
+    "clearOverride": "Wyczyść",
+    "cc": "Convict Conditioning",
+    "satellites": "Satelity",
+    "sessions": "Zapisane bloki",
+    "noCc": "Brak ćwiczeń CC na dziś.",
+    "noSatellites": "Brak satelitów zaplanowanych na dziś.",
+    "noSessions": "Brak zapisanych sesji.",
+    "step": "krok {{n}}",
+    "log": "Zapisz",
+    "logTitle": "Log: {{name}}",
+    "setN": "Seria {{n}}",
+    "saveLog": "Zapisz wynik",
+    "saved": "Sesja zapisana.",
+    "deleteSession": "Usuń",
+    "noRewindTitle": "Usunięcie nie cofa progresji",
+    "noRewindBody": "Soft-delete sesji nie cofa awansu ani fail_streak. Korekta kroku: Progres → Dostosuj krok.",
+    "confirmDelete": "Usuń sesję"
+  },
+  "progress": {
+    "title": "Mój progres CC",
+    "hint": "Krok pochodzi z serwera. Dostosuj tylko gdy świadomie zmieniasz poziom.",
+    "stepFail": "krok {{step}} · fail streak {{fail}}",
+    "toStep": "Docelowy krok",
+    "override": "Dostosuj krok",
+    "advanceTitle": "Awans!",
+    "regressTitle": "Regres",
+    "advanceBody": "{{name}}: krok {{from}} → {{to}}",
+    "regressBody": "{{name}}: krok {{from}} → {{to}} (dwie kolejne nieudane próby)",
+    "ack": "OK",
+    "unknownExercise": "Ćwiczenie"
+  },
+  "satellites": {
+    "title": "Satelity",
+    "limit": "{{count}} / {{max}} aktywnych",
+    "create": "Nowe ćwiczenie",
+    "name": "Nazwa",
+    "goalSets": "Serie w celu",
+    "goalReps": "Min. powtórzeń",
+    "submit": "Dodaj satelitę",
+    "steps": "{{n}} kroków"
+  },
+  "measurements": {
+    "title": "Pomiary sylwetki",
+    "add": "Nowy pomiar",
+    "weight": "Waga (kg)",
+    "waist": "Pas (cm)",
+    "biceps": "Biceps (cm)",
+    "submit": "Zapisz pomiar"
+  },
+  "settings": {
+    "title": "Ustawienia",
+    "user": "Konto",
+    "logout": "Wyloguj",
+    "logoutAll": "Wyloguj ze wszystkich urządzeń"
+  },
+  "errors": {
+    "generic": "Coś poszło nie tak. Spróbuj ponownie.",
+    "unauthorized": "Sesja wygasła — zaloguj się ponownie.",
+    "notFound": "Nie znaleziono zasobu.",
+    "legalRequired": "Najpierw zaakceptuj zastrzeżenie zdrowotne.",
+    "enrollmentRequired": "Ukończ onboarding, aby zobaczyć plan dnia.",
+    "onboardingDone": "Onboarding został już ukończony.",
+    "satelliteLimit": "Osiągnięto limit 10 satelitów.",
+    "duplicateExercise": "To ćwiczenie CC jest już zalogowane dziś.",
+    "sessionImmutable": "Sesja po ocenie jest niemodyfikowalna — usuń i utwórz nową.",
+    "sessionDateImmutable": "Daty sesji nie można zmienić.",
+    "batchTooLarge": "Zbyt duży batch synchronizacji.",
+    "emailNotVerified": "Zweryfikuj e-mail w Google i spróbuj ponownie.",
+    "oauthState": "Logowanie przerwane — spróbuj jeszcze raz."
   }
 }

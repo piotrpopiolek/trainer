@@ -37,7 +37,7 @@ todos:
     status: completed
   - id: frontend-online
     content: "Frontend F1.0: shell PWA, i18n, login, onboarding z disclaimerem, ekran dnia z jednego GET /today, logowanie sesji, satelity, pomiary, surface progresji"
-    status: pending
+    status: completed
   - id: ops-backup-purge
     content: "Operacje: nocny szyfrowany backup poza host, purge job w jednej TX z heartbeat, cron cleanup, runbook restore"
     status: pending

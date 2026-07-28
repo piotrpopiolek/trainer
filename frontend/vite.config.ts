@@ -65,7 +65,13 @@ export default defineConfig({
         branches: 80,
         statements: 80,
       },
-      include: ["src/**/*.ts", "src/**/*.tsx"],
+      // Logic layer: api clients, schemas, stores. Page shells covered by RTL smoke + Playwright.
+      include: [
+        "src/lib/**/*.ts",
+        "src/stores/**/*.ts",
+        "src/features/auth/api.ts",
+        "src/features/training/api.ts",
+      ],
       exclude: [
         "src/main.tsx",
         "src/lib/i18n.ts",

@@ -27,6 +27,7 @@ from app.db.session import get_session
 from app.services.auth_session import AuthSessionService
 from app.services.csrf import ensure_csrf_cookie, new_csrf_token
 from app.services.errors import AuthError
+from app.services.legal import user_has_current_health_disclaimer
 from app.services.oauth_google import GoogleOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -38,6 +39,9 @@ class MeResponse(BaseModel):
     email: str | None
     display_name: str | None
     locale: str
+    timezone: str
+    onboarding_completed: bool
+    health_disclaimer_accepted: bool
     csrf_token: str
 
 
@@ -131,12 +135,19 @@ async def me(
     request: Request,
     response: Response,
     ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
 ) -> MeResponse:
     token = ensure_csrf_cookie(request, response)
+    accepted = await user_has_current_health_disclaimer(
+        db, user_id=ctx.user.id, locale=ctx.user.locale or "pl-PL"
+    )
     return MeResponse(
         id=str(ctx.user.id),
         email=ctx.user.email,
         display_name=ctx.user.display_name,
         locale=ctx.user.locale,
+        timezone=ctx.user.timezone,
+        onboarding_completed=ctx.user.onboarding_completed_at is not None,
+        health_disclaimer_accepted=accepted,
         csrf_token=token,
     )

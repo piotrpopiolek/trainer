@@ -1,12 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;600&display=swap");
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Outfit", sans-serif;
+  --font-sans: "Source Sans 3", ui-sans-serif, sans-serif;
+}
 
 :root {
   color-scheme: light;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color: #0f172a;
   background-color: #f8fafc;
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 *,
