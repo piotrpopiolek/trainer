@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { ApiError } from "@/lib/api";
@@ -6,6 +7,7 @@ import { fetchMe } from "@/features/auth/api";
 import { useAuthStore } from "@/stores/authStore";
 
 export function RequireAuth() {
+  const { t } = useTranslation();
   const location = useLocation();
   const setMe = useAuthStore((s) => s.setMe);
   const me = useAuthStore((s) => s.me);
@@ -23,7 +25,7 @@ export function RequireAuth() {
   if (q.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-slate-600">
-        …
+        {t("shell.loading")}
       </div>
     );
   }

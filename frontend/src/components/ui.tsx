@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 export function Button({
   className = "",
@@ -75,6 +76,7 @@ export function Modal({
   onClose: () => void;
   actions?: ReactNode;
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
   return (
     <div
@@ -92,7 +94,7 @@ export function Modal({
             type="button"
             className="text-slate-500 hover:text-slate-800"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             ×
           </button>

@@ -53,9 +53,15 @@ export function MeasurementsPage() {
               <p className="font-medium">{m.local_date}</p>
               <p className="text-slate-600">
                 {[
-                  metrics.weight_kg != null ? `${metrics.weight_kg} kg` : null,
-                  metrics.waist_cm != null ? `${metrics.waist_cm} cm` : null,
-                  metrics.biceps_cm != null ? `${metrics.biceps_cm} cm` : null,
+                  metrics.weight_kg != null
+                    ? t("measurements.weightValue", { value: metrics.weight_kg })
+                    : null,
+                  metrics.waist_cm != null
+                    ? t("measurements.cmValue", { value: metrics.waist_cm })
+                    : null,
+                  metrics.biceps_cm != null
+                    ? t("measurements.cmValue", { value: metrics.biceps_cm })
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")}

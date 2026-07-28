@@ -72,4 +72,21 @@ describe("schemas", () => {
     });
     expect(today.is_rest_day).toBe(false);
   });
+
+  it("rejects today without schema_version", () => {
+    expect(() =>
+      todaySchema.parse({
+        local_date: "2026-07-28",
+        timezone: "Europe/Warsaw",
+        split_day: 1,
+        is_rest_day: false,
+        requested_locale: "pl-PL",
+        resolved_locale: "pl-PL",
+        cc_exercises: [],
+        satellites: [],
+        sessions: [],
+        progress: [],
+      }),
+    ).toThrow();
+  });
 });

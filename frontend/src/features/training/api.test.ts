@@ -46,6 +46,7 @@ describe("training api", () => {
 
   it("createSession and softDeleteSession", async () => {
     const session = {
+      schema_version: 1,
       id: "018f0000-0000-7000-8000-000000000010",
       performed_at: "2026-07-28T10:00:00Z",
       local_date: "2026-07-28",
@@ -81,6 +82,7 @@ describe("training api", () => {
 
   it("satellites and measurements and override", async () => {
     const sat = {
+      schema_version: 1,
       id: "018f0000-0000-7000-8000-000000000020",
       name: "Band",
       exercise_type: "B",
@@ -90,6 +92,7 @@ describe("training api", () => {
       steps: [{}],
     };
     const meas = {
+      schema_version: 1,
       id: "018f0000-0000-7000-8000-000000000021",
       measured_at: "2026-07-28T10:00:00Z",
       local_date: "2026-07-28",
@@ -106,12 +109,14 @@ describe("training api", () => {
         new Response(
           JSON.stringify({
             progress: {
+              schema_version: 1,
               exercise_id: "018f0000-0000-7000-8000-000000000011",
               current_step_number: 2,
               fail_streak: 0,
               is_active: true,
             },
             event: {
+              schema_version: 1,
               id: "018f0000-0000-7000-8000-000000000030",
               exercise_id: "018f0000-0000-7000-8000-000000000011",
               event_type: "manual_override",
@@ -131,6 +136,7 @@ describe("training api", () => {
       schedule_kind: "daily",
       goalSets: 3,
       goalReps: 10,
+      stepName: "Cel",
     });
     expect(await listMeasurements()).toHaveLength(1);
     await createMeasurement({

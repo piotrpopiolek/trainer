@@ -39,6 +39,7 @@ describe("seenEventsStore", () => {
   it("filters advance/regress and marks seen", () => {
     const events: ProgressionEvent[] = [
       {
+        schema_version: 1,
         id: "018f0000-0000-7000-8000-0000000000aa",
         exercise_id: "018f0000-0000-7000-8000-0000000000bb",
         event_type: "advance",
@@ -47,6 +48,7 @@ describe("seenEventsStore", () => {
         created_at: "2026-07-28T10:00:00Z",
       },
       {
+        schema_version: 1,
         id: "018f0000-0000-7000-8000-0000000000cc",
         exercise_id: "018f0000-0000-7000-8000-0000000000bb",
         event_type: "note",

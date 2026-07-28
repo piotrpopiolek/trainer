@@ -78,6 +78,7 @@ export async function createSatellite(input: {
   schedule_category?: "anytime" | "post_workout" | "rest_day";
   goalReps: number;
   goalSets: number;
+  stepName: string;
 }): Promise<Satellite> {
   const raw = await apiJson<unknown>("/api/satellites", {
     method: "POST",
@@ -92,7 +93,7 @@ export async function createSatellite(input: {
       steps: [
         {
           step_number: 1,
-          name: "Goal",
+          name: input.stepName,
           rules: {
             schema_version: 1,
             goal: {

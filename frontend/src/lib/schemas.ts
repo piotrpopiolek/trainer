@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+/** Every versioned API/JSONB document requires schema_version (FR-046). */
+export const schemaVersion = z.number().int().gte(1);
+
 export const meSchema = z.object({
-  schema_version: z.number(),
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   email: z.string().nullable(),
   display_name: z.string().nullable(),
@@ -15,7 +18,7 @@ export const meSchema = z.object({
 export type Me = z.infer<typeof meSchema>;
 
 export const disclaimerSchema = z.object({
-  schema_version: z.number(),
+  schema_version: schemaVersion,
   document_id: z.string().uuid(),
   slug: z.string(),
   version: z.string(),
@@ -28,6 +31,7 @@ export const disclaimerSchema = z.object({
 export type Disclaimer = z.infer<typeof disclaimerSchema>;
 
 export const todayCcExerciseSchema = z.object({
+  schema_version: schemaVersion,
   exercise_id: z.string().uuid(),
   slug: z.string().nullable().optional(),
   name: z.string(),
@@ -37,16 +41,17 @@ export const todayCcExerciseSchema = z.object({
 });
 
 export const todaySatelliteSchema = z.object({
+  schema_version: schemaVersion,
   exercise_id: z.string().uuid(),
   name: z.string(),
   exercise_type: z.string(),
-  schedule_kind: z.string(),
+  schedule_kind: z.string().nullable().optional(),
   schedule_category: z.string().nullable().optional(),
   current_step_number: z.number().nullable().optional(),
 });
 
 export const progressionEventSchema = z.object({
-  schema_version: z.number().optional(),
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   exercise_id: z.string().uuid(),
   session_id: z.string().uuid().nullable().optional(),
@@ -60,7 +65,7 @@ export const progressionEventSchema = z.object({
 export type ProgressionEvent = z.infer<typeof progressionEventSchema>;
 
 export const progressItemSchema = z.object({
-  schema_version: z.number().optional(),
+  schema_version: schemaVersion,
   exercise_id: z.string().uuid(),
   current_step_number: z.number(),
   fail_streak: z.number(),
@@ -71,6 +76,7 @@ export const progressItemSchema = z.object({
 export type ProgressItem = z.infer<typeof progressItemSchema>;
 
 export const sessionLogSchema = z.object({
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   exercise_id: z.string().uuid(),
   exercise_kind: z.string(),
@@ -86,6 +92,7 @@ export const sessionLogSchema = z.object({
 });
 
 export const sessionSchema = z.object({
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   performed_at: z.string(),
   local_date: z.string(),
@@ -100,7 +107,7 @@ export const sessionSchema = z.object({
 export type Session = z.infer<typeof sessionSchema>;
 
 export const todaySchema = z.object({
-  schema_version: z.number().optional(),
+  schema_version: schemaVersion,
   local_date: z.string(),
   timezone: z.string(),
   split_day: z.number().nullable(),
@@ -117,7 +124,7 @@ export const todaySchema = z.object({
 export type Today = z.infer<typeof todaySchema>;
 
 export const satelliteSchema = z.object({
-  schema_version: z.number().optional(),
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   name: z.string(),
   exercise_type: z.string(),
@@ -132,7 +139,7 @@ export const satelliteSchema = z.object({
 export type Satellite = z.infer<typeof satelliteSchema>;
 
 export const measurementSchema = z.object({
-  schema_version: z.number().optional(),
+  schema_version: schemaVersion,
   id: z.string().uuid(),
   measured_at: z.string(),
   local_date: z.string(),

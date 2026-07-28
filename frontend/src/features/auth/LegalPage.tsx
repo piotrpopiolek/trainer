@@ -12,10 +12,12 @@ export function LegalPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const setMe = useAuthStore((s) => s.setMe);
+  const me = useAuthStore((s) => s.me);
   const qc = useQueryClient();
+  const locale = me?.locale ?? "pl-PL";
   const q = useQuery({
-    queryKey: ["legal", "health-disclaimer"],
-    queryFn: () => fetchDisclaimer("pl-PL"),
+    queryKey: ["legal", "health-disclaimer", locale],
+    queryFn: () => fetchDisclaimer(locale),
   });
 
   const mutation = useMutation({

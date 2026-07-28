@@ -44,6 +44,7 @@ describe("ProgressionSurface", () => {
         <ProgressionSurface
           events={[
             {
+              schema_version: 1,
               id: "018f0000-0000-7000-8000-0000000000aa",
               exercise_id: "018f0000-0000-7000-8000-0000000000bb",
               event_type: "advance",

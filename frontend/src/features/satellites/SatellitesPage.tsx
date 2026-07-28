@@ -7,6 +7,22 @@ import { createSatellite, listSatellites } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
 
+function scheduleKindLabel(
+  kind: string,
+  t: (key: string) => string,
+): string {
+  switch (kind) {
+    case "daily":
+      return t("satellites.scheduleDaily");
+    case "weekdays":
+      return t("satellites.scheduleWeekdays");
+    case "category":
+      return t("satellites.scheduleCategory");
+    default:
+      return t("satellites.scheduleUnknown");
+  }
+}
+
 export function SatellitesPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -27,6 +43,7 @@ export function SatellitesPage() {
         schedule_kind: "daily",
         goalSets,
         goalReps,
+        stepName: t("satellites.defaultStepName"),
       }),
     onSuccess: async () => {
       setName("");
@@ -58,7 +75,8 @@ export function SatellitesPage() {
           >
             <p className="font-medium">{s.name}</p>
             <p className="text-xs text-slate-500">
-              {s.schedule_kind} · {t("satellites.steps", { n: s.steps.length })}
+              {scheduleKindLabel(s.schedule_kind, t)} ·{" "}
+              {t("satellites.steps", { n: s.steps.length })}
             </p>
           </li>
         ))}

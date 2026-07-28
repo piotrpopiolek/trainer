@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * E2E against Compose same-origin (https://localhost via Caddy).
- * Specs land with frontend-online / F1.1 offline work — config is scaffold-only.
+ * Smoke covers unauthenticated login gate; full suite (auth mock, today, account)
+ * lands with frontend-online / F1.1 offline work.
  */
 export default defineConfig({
   testDir: "./e2e",

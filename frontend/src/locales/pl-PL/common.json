@@ -17,7 +17,8 @@
     "settings": "Ustawienia"
   },
   "common": {
-    "cancel": "Anuluj"
+    "cancel": "Anuluj",
+    "close": "Zamknij"
   },
   "login": {
     "title": "Zaloguj się",
@@ -85,7 +86,12 @@
     "goalSets": "Serie w celu",
     "goalReps": "Min. powtórzeń",
     "submit": "Dodaj satelitę",
-    "steps": "{{n}} kroków"
+    "steps": "{{n}} kroków",
+    "defaultStepName": "Cel",
+    "scheduleDaily": "codziennie",
+    "scheduleWeekdays": "wybrane dni",
+    "scheduleCategory": "kategoria",
+    "scheduleUnknown": "harmonogram"
   },
   "measurements": {
     "title": "Pomiary sylwetki",
@@ -93,7 +99,9 @@
     "weight": "Waga (kg)",
     "waist": "Pas (cm)",
     "biceps": "Biceps (cm)",
-    "submit": "Zapisz pomiar"
+    "submit": "Zapisz pomiar",
+    "weightValue": "{{value}} kg",
+    "cmValue": "{{value}} cm"
   },
   "settings": {
     "title": "Ustawienia",
