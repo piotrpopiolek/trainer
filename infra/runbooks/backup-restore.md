@@ -15,11 +15,11 @@ docker compose --profile ops build backup
 docker compose --profile ops run --rm backup
 ```
 
-Artifacts land in `infra/backup/out/` (bind-mounted outside the app container filesystem; copy off-host in prod).
+Artifacts land in `infra/backup/out/` (bind-mounted outside the app container filesystem; copy off-host in prod). The job streams `pg_dump | openssl` (or age) so **plaintext dumps never** write to that directory — only `.enc` / `.age` (plus atomic `.partial` cleaned on failure).
 
 Structured logs:
 
-- `backup.ok file=… raw_bytes=… enc_bytes=… elapsed_s=…`
+- `backup.ok file=… enc_bytes=… elapsed_s=…`
 - `backup.fail reason=…`
 - Heartbeat file: `infra/backup/out/LAST_OK` (UTC ISO). Silence ≥36h = incident.
 

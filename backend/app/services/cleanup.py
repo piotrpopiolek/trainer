@@ -24,13 +24,12 @@ async def cleanup_auth_sessions(
     now: datetime | None = None,
     retention_days: int = AUTH_SESSION_RETENTION_DAYS,
 ) -> int:
-    """Drop revoked or expired sessions older than retention (FR-005d cron)."""
+    """Hard-delete sessions with revoked_at or expires_at older than retention (FR-005d)."""
     cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
     result = await db.execute(
         delete(AuthSession).where(
-            AuthSession.created_at < cutoff,
             or_(
-                AuthSession.revoked_at.is_not(None),
+                AuthSession.revoked_at < cutoff,
                 AuthSession.expires_at < cutoff,
             ),
         )

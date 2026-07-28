@@ -242,6 +242,7 @@ async def test_purge_batch_skips_future_purge_after(db: AsyncSession) -> None:
 async def test_cleanup_removes_stale_rows(db: AsyncSession) -> None:
     now = datetime.now(UTC)
     old = now - timedelta(days=10)
+    recent = now - timedelta(days=1)
     user = User(id=new_uuid7(), google_sub=f"sub-{new_uuid7()}")
     db.add(user)
     await db.flush()
@@ -249,18 +250,25 @@ async def test_cleanup_removes_stale_rows(db: AsyncSession) -> None:
     old_session = AuthSession(
         id=new_uuid7(),
         user_id=user.id,
-            token_hash=new_uuid7().bytes + new_uuid7().bytes[:8],
+        token_hash=new_uuid7().bytes + new_uuid7().bytes[:8],
         expires_at=old,
         revoked_at=old,
-        created_at=old,
     )
-    # Bypass server_default for created_at via insert values — ORM may still set now.
+    # Old account row, but revoke only yesterday — must stay (cutoff on revoked_at/expires_at).
+    recent_revoke = AuthSession(
+        id=new_uuid7(),
+        user_id=user.id,
+        token_hash=new_uuid7().bytes + new_uuid7().bytes[:8],
+        expires_at=now + timedelta(days=20),
+        revoked_at=recent,
+    )
     db.add(old_session)
+    db.add(recent_revoke)
     await db.flush()
     await db.execute(
         AuthSession.__table__.update()
-        .where(AuthSession.id == old_session.id)
-        .values(created_at=old)
+        .where(AuthSession.id == recent_revoke.id)
+        .values(created_at=now - timedelta(days=100))
     )
 
     db.add(
@@ -286,6 +294,7 @@ async def test_cleanup_removes_stale_rows(db: AsyncSession) -> None:
     assert result["rate_limit_buckets"] >= 1
 
     assert await db.get(AuthSession, old_session.id) is None
+    assert await db.get(AuthSession, recent_revoke.id) is not None
     n_rl = await db.scalar(
         select(func.count())
         .select_from(RateLimitBucket)
