@@ -13,3 +13,9 @@ infra/caddy/data
 infra/caddy/config
 infra/backup/out
 *.pyc
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example

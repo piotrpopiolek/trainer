@@ -10,3 +10,8 @@ htmlcov
 .cursor
 frontend/node_modules
 frontend/dist
+
+# Env & secrets (never in image build context)
+.env
+.env.*
+!.env.example

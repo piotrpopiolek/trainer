@@ -7,3 +7,8 @@ test-results
 .git
 *.md
 e2e
+
+# Env & secrets (never in image build context; Vite must not bake secrets)
+.env
+.env.*
+!.env.example
