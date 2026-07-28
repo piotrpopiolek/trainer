@@ -31,7 +31,7 @@ todos:
     status: completed
   - id: api-readwrite
     content: "API: GET /today, sesje, satelity, pomiary, progress z override, katalog CC z ETag per locale, export/delete/schedule konta"
-    status: pending
+    status: completed
   - id: sync-endpoints
     content: POST /sync/push z batch <=20, per-item TX, claim client_mutations i atomowym CAS oraz GET /sync/pull z obowiazkowa delta since i tombstones
     status: pending

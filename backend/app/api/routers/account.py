@@ -13,10 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     AuthContext,
+    get_auth_session_service,
     get_current_user_rate_limited,
     require_csrf,
 )
 from app.db.session import get_session
+from app.services.account import soft_delete_account, stream_account_export
+from app.services.auth_session import AuthSessionService
 from app.services.cc_day import get_active_enrollment
 from app.services.errors import DomainError
 
@@ -37,9 +40,10 @@ class SchedulePatchResponse(BaseModel):
     schedule_effective_on: date | None = None
 
 
-class AccountStubResponse(BaseModel):
+class AccountDeleteResponse(BaseModel):
     schema_version: int = 1
     status: str
+    purge_after: str | None = None
 
 
 def _local_today(timezone_name: str) -> date:
@@ -53,11 +57,11 @@ def _local_today(timezone_name: str) -> date:
 async def export_account(
     _csrf: None = Depends(require_csrf),
     ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
-    del ctx  # auth + CSRF gate; full NDJSON stream in api-readwrite
-
     async def _chunks() -> AsyncIterator[bytes]:
-        yield b'{"schema_version":1,"collection":"meta","status":"stub"}\n'
+        async for chunk in stream_account_export(db, user_id=ctx.user.id):
+            yield chunk
 
     return StreamingResponse(
         _chunks(),
@@ -66,14 +70,18 @@ async def export_account(
     )
 
 
-@router.post("/delete")
+@router.post("/delete", response_model=AccountDeleteResponse)
 async def delete_account(
     _csrf: None = Depends(require_csrf),
     ctx: AuthContext = Depends(get_current_user_rate_limited),
-) -> AccountStubResponse:
-    # Full AccountDeletionService lands in api-readwrite; CSRF + session gate here.
-    del ctx
-    return AccountStubResponse(status="stub")
+    db: AsyncSession = Depends(get_session),
+    auth_sessions: AuthSessionService = Depends(get_auth_session_service),
+) -> AccountDeleteResponse:
+    result = await soft_delete_account(db, user=ctx.user, auth_sessions=auth_sessions)
+    return AccountDeleteResponse(
+        status=result["status"],
+        purge_after=result.get("purge_after"),
+    )
 
 
 @router.patch("/schedule")
