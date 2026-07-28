@@ -1,4 +1,2 @@
-.nvmrc text eol=lf
+# Keep shell scripts LF so Compose Alpine `/bin/sh` accepts `set -eu`
 *.sh text eol=lf
-infra/postgres/init/** text eol=lf
-scripts/** text eol=lf

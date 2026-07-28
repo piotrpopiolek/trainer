@@ -40,7 +40,7 @@ todos:
     status: completed
   - id: ops-backup-purge
     content: "Operacje: nocny szyfrowany backup poza host, purge job w jednej TX z heartbeat, cron cleanup, runbook restore"
-    status: pending
+    status: completed
   - id: f11-offline
     content: "F1.1: IndexedDB i outbox z revision, kolejnosc FR-072a, retry i quarantine, UX konfliktow, storage.persist, Trenuj mimo to, zmiana splitu i TZ"
     status: pending

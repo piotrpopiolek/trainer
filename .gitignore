@@ -39,6 +39,9 @@ infra/caddy/data/
 infra/caddy/config/
 infra/caddy/root.crt
 
+# Encrypted backup artifacts (FR-081a)
+infra/backup/out/
+
 # Test / coverage artifacts
 coverage/
 playwright-report/
