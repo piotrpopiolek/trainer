@@ -142,6 +142,26 @@ export async function createMeasurement(input: {
   return measurementSchema.parse(raw);
 }
 
+export async function listProgress(): Promise<ProgressItem[]> {
+  const raw = await apiJson<{ items: unknown[] }>("/api/progress");
+  return z.array(progressItemSchema).parse(raw.items);
+}
+
+export async function fetchCatalogCc(): Promise<{
+  exercises: Array<{ id: string; name: string; slug: string | null }>;
+}> {
+  const raw = await apiJson<{
+    exercises: Array<{ id: string; name: string; slug: string | null }>;
+  }>("/api/catalog/cc");
+  return {
+    exercises: raw.exercises.map((e) => ({
+      id: e.id,
+      name: e.name,
+      slug: e.slug,
+    })),
+  };
+}
+
 export async function overrideProgress(
   exerciseId: string,
   toStep: number,

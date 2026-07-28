@@ -4,8 +4,10 @@ import {
   createMeasurement,
   createSatellite,
   createSession,
+  fetchCatalogCc,
   fetchToday,
   listMeasurements,
+  listProgress,
   listSatellites,
   overrideProgress,
   softDeleteSession,
@@ -146,5 +148,45 @@ describe("training api", () => {
     });
     const o = await overrideProgress("018f0000-0000-7000-8000-000000000011", 2);
     expect(o.progress.current_step_number).toBe(2);
+  });
+
+  it("listProgress and fetchCatalogCc", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  exercise_id: "018f0000-0000-7000-8000-000000000011",
+                  current_step_number: 3,
+                  fail_streak: 0,
+                  is_active: true,
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              exercises: [
+                {
+                  id: "018f0000-0000-7000-8000-000000000011",
+                  name: "Pompki",
+                  slug: "push_ups",
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+    expect(await listProgress()).toHaveLength(1);
+    const cat = await fetchCatalogCc();
+    expect(cat.exercises[0]?.name).toBe("Pompki");
   });
 });

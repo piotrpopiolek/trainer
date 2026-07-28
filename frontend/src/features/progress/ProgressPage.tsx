@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { Button, Input, Page } from "@/components/ui";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
-import { fetchToday, overrideProgress } from "@/features/training/api";
+import {
+  fetchCatalogCc,
+  listProgress,
+  overrideProgress,
+} from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import type { ProgressionEvent } from "@/lib/schemas";
@@ -15,9 +19,13 @@ export function ProgressPage() {
   const [events, setEvents] = useState<ProgressionEvent[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
-  const todayQ = useQuery({
-    queryKey: ["today", null],
-    queryFn: () => fetchToday(),
+  const progressQ = useQuery({
+    queryKey: ["progress"],
+    queryFn: listProgress,
+  });
+  const catalogQ = useQuery({
+    queryKey: ["catalog", "cc"],
+    queryFn: fetchCatalogCc,
   });
 
   const mut = useMutation({
@@ -25,16 +33,25 @@ export function ProgressPage() {
       overrideProgress(id, step),
     onSuccess: async (res) => {
       setEvents((e) => [...e, res.event]);
+      await qc.invalidateQueries({ queryKey: ["progress"] });
       await qc.invalidateQueries({ queryKey: ["today"] });
     },
   });
 
-  if (todayQ.isLoading) {
+  const names = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const ex of catalogQ.data?.exercises ?? []) {
+      map[ex.id] = ex.name;
+    }
+    return map;
+  }, [catalogQ.data]);
+
+  if (progressQ.isLoading || catalogQ.isLoading) {
     return <Page title={t("progress.title")}>{t("shell.loading")}</Page>;
   }
-  if (todayQ.isError || !todayQ.data) {
+  if (progressQ.isError || !progressQ.data) {
     const code =
-      todayQ.error instanceof ApiError ? todayQ.error.errorCode : "generic";
+      progressQ.error instanceof ApiError ? progressQ.error.errorCode : "generic";
     return (
       <Page title={t("progress.title")}>
         <p className="text-rose-700">{t(errorCodeToI18nKey(code))}</p>
@@ -42,22 +59,18 @@ export function ProgressPage() {
     );
   }
 
-  const names: Record<string, string> = {};
-  for (const ex of todayQ.data.cc_exercises) names[ex.exercise_id] = ex.name;
-  for (const p of todayQ.data.progress) {
-    if (!names[p.exercise_id]) names[p.exercise_id] = p.exercise_id.slice(0, 8);
-  }
-
   return (
     <Page title={t("progress.title")}>
       <p className="text-sm text-slate-600">{t("progress.hint")}</p>
       <ul className="flex flex-col gap-3">
-        {todayQ.data.progress.map((p) => (
+        {progressQ.data.map((p) => (
           <li
             key={p.exercise_id}
             className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3"
           >
-            <p className="font-medium">{names[p.exercise_id]}</p>
+            <p className="font-medium">
+              {names[p.exercise_id] ?? t("progress.unknownExercise")}
+            </p>
             <p className="text-xs text-slate-500">
               {t("progress.stepFail", {
                 step: p.current_step_number,
