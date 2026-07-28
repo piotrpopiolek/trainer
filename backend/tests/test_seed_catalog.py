@@ -71,11 +71,19 @@ async def test_seed_runner_idempotent() -> None:
             cc = await conn.scalar(
                 text("SELECT COUNT(*) FROM exercises WHERE kind = 'cc'")
             )
-            steps = await conn.scalar(text("SELECT COUNT(*) FROM exercise_steps"))
+            steps = await conn.scalar(
+                text(
+                    "SELECT COUNT(*) FROM exercise_steps es "
+                    "JOIN exercises e ON e.id = es.exercise_id "
+                    "WHERE e.kind = 'cc'"
+                )
+            )
             step_tr = await conn.scalar(
                 text(
-                    "SELECT COUNT(*) FROM exercise_step_translations "
-                    "WHERE locale = 'pl-PL'"
+                    "SELECT COUNT(*) FROM exercise_step_translations est "
+                    "JOIN exercise_steps es ON es.id = est.exercise_step_id "
+                    "JOIN exercises e ON e.id = es.exercise_id "
+                    "WHERE e.kind = 'cc' AND est.locale = 'pl-PL'"
                 )
             )
             days = await conn.scalar(text("SELECT COUNT(*) FROM program_days"))

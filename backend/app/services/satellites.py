@@ -82,6 +82,8 @@ async def create_satellite(
     *,
     user: User,
     body: SatelliteCreateV1,
+    exercise_id: UUID | None = None,
+    commit: bool = True,
 ) -> SatelliteReadV1:
     if not body.steps:
         raise DomainError("steps_required", http_status=422)
@@ -93,9 +95,7 @@ async def create_satellite(
             raise DomainError("goal_required", http_status=422)
 
     # Serialize create vs concurrent (FR-050): users FOR UPDATE + count.
-    await db.execute(
-        select(User).where(User.id == user.id).with_for_update()
-    )
+    await db.execute(select(User).where(User.id == user.id).with_for_update())
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": str(user.id)})
     active = await db.scalar(
         select(func.count())
@@ -111,8 +111,9 @@ async def create_satellite(
 
     schema_id = await _goal_schema_id(db)
     now = body.client_updated_at or datetime.now(UTC)
+    ex_id = exercise_id if exercise_id is not None else new_uuid7()
     ex = Exercise(
-        id=new_uuid7(),
+        id=ex_id,
         user_id=user.id,
         program_id=None,
         slug=None,
@@ -155,7 +156,10 @@ async def create_satellite(
             is_active=True,
         )
     )
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     items = await list_satellites(db, user_id=user.id)
     for item in items:
         if item.id == ex.id:

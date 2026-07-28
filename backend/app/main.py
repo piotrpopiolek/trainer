@@ -17,6 +17,7 @@ from app.api.routers import (
     progress,
     satellites,
     sessions,
+    sync,
     today,
 )
 from app.core.config import settings
@@ -49,6 +50,7 @@ app.include_router(sessions.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(satellites.router, prefix="/api")
+app.include_router(sync.router, prefix="/api")
 
 
 @app.get("/api")

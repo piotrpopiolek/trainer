@@ -1,0 +1,767 @@
+"""POST /sync/push orchestration (FR-072a/c/d, FR-073, FR-035, FR-014a)."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.ids import new_uuid7
+from app.models.body_measurement import BodyMeasurement
+from app.models.catalog import Exercise
+from app.models.progression import ProgressionEvent, UserExerciseProgress
+from app.models.sync import ClientMutation, SyncConflictLog, SyncDevice
+from app.models.user import User
+from app.models.workout import WorkoutSession
+from app.schemas.api import (
+    MeasurementCreateV1,
+    SatelliteCreateV1,
+    SessionCreateV1,
+)
+from app.schemas.sync import (
+    SyncPushItemResultV1,
+    SyncPushItemV1,
+    SyncPushRequestV1,
+    SyncPushResponseV1,
+)
+from app.services import satellites as satellite_service
+from app.services import sessions as session_service
+from app.services.errors import DomainError, LegalRequiredError, NotFoundError
+from app.services.legal import record_legal_acceptance
+from app.services.sessions import progress_to_read
+
+_TYPE_ORDER = {
+    "legal_acceptance": 0,
+    "workout_session": 1,
+    "body_measurement": 2,
+    "satellite": 3,
+}
+_OP_ORDER = {"delete": 0, "upsert": 1}
+MAX_BATCH = 20
+
+
+def content_hash(payload: dict[str, Any] | None, *, op: str, revision: int) -> str:
+    blob = json.dumps(
+        {"op": op, "revision": revision, "payload": payload or {}},
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def sort_push_items(items: list[SyncPushItemV1]) -> list[SyncPushItemV1]:
+    """FR-072a: legal → sessions → measurements → satellites; delete before upsert."""
+
+    def _ts(item: SyncPushItemV1) -> datetime:
+        if item.client_updated_at is not None:
+            return item.client_updated_at
+        payload = item.payload or {}
+        for key in ("performed_at", "measured_at", "accepted_at", "client_updated_at"):
+            raw = payload.get(key)
+            if isinstance(raw, str):
+                try:
+                    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+            if isinstance(raw, datetime):
+                return raw
+        return datetime.min.replace(tzinfo=UTC)
+
+    return sorted(
+        items,
+        key=lambda it: (
+            _TYPE_ORDER.get(it.entity_type, 99),
+            _OP_ORDER.get(it.op, 99),
+            _ts(it),
+            str(it.entity_id),
+        ),
+    )
+
+
+async def _claim(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    item: SyncPushItemV1,
+    digest: str,
+) -> SyncPushItemResultV1 | None:
+    """INSERT claim; return idempotent/mismatch result or None if claimed fresh."""
+    row = ClientMutation(
+        id=new_uuid7(),
+        user_id=user_id,
+        client_mutation_id=item.client_mutation_id,
+        entity_type=item.entity_type,
+        entity_id=item.entity_id,
+        content_hash=digest,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(row)
+            await db.flush()
+    except IntegrityError:
+        existing = await db.scalar(
+            select(ClientMutation).where(
+                ClientMutation.user_id == user_id,
+                ClientMutation.client_mutation_id == item.client_mutation_id,
+            )
+        )
+        if existing is None:
+            raise
+        if existing.content_hash == digest:
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="idempotent",
+            )
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="mutation_payload_mismatch",
+        )
+    return None
+
+
+async def _touch_device(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    device_id: str | None,
+) -> None:
+    if not device_id:
+        return
+    now = datetime.now(UTC)
+    row = await db.scalar(
+        select(SyncDevice).where(
+            SyncDevice.user_id == user_id,
+            SyncDevice.device_id == device_id,
+        )
+    )
+    if row is None:
+        db.add(
+            SyncDevice(
+                id=new_uuid7(),
+                user_id=user_id,
+                device_id=device_id,
+                last_push_at=now,
+            )
+        )
+    else:
+        row.last_push_at = now
+    await db.flush()
+
+
+async def _log_conflict(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    item: SyncPushItemV1,
+    kind: str,
+    winning_revision: int,
+    winning_updated_at: datetime,
+    device_id: str | None,
+) -> UUID:
+    cid = new_uuid7()
+    db.add(
+        SyncConflictLog(
+            id=cid,
+            user_id=user_id,
+            entity_type=item.entity_type,
+            entity_id=item.entity_id,
+            winning_revision=winning_revision,
+            losing_revision=item.revision,
+            winning_updated_at=winning_updated_at,
+            conflict_kind=kind,
+            losing_payload={
+                "schema_version": 1,
+                "payload": item.payload or {},
+                "op": item.op,
+                "revision": item.revision,
+            },
+            device_id=device_id,
+        )
+    )
+    await db.flush()
+    return cid
+
+
+async def _apply_session_upsert(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    existing = await db.scalar(
+        select(WorkoutSession).where(
+            WorkoutSession.id == item.entity_id,
+            WorkoutSession.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        if item.revision < existing.revision:
+            cid = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind="lost_push",
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="conflict_lost",
+                conflict_id=cid,
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+            )
+        if item.revision == existing.revision:
+            cid = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind="tie_revision",
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="conflict_tie",
+                conflict_id=cid,
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+            )
+        if item.revision > existing.revision + 1:
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="revision_jump",
+            )
+        # revision == existing + 1 → check immutability (FR-038)
+        payload = item.payload or {}
+        if "performed_at" in payload or "local_date" in payload:
+            from app.services.session_rules import assert_dates_unchanged
+
+            try:
+                performed = existing.performed_at
+                local = existing.local_date
+                if "performed_at" in payload:
+                    performed = datetime.fromisoformat(
+                        str(payload["performed_at"]).replace("Z", "+00:00")
+                    )
+                if "local_date" in payload:
+                    from datetime import date as date_cls
+
+                    local = date_cls.fromisoformat(str(payload["local_date"]))
+                assert_dates_unchanged(
+                    existing, performed_at=performed, local_date=local
+                )
+            except DomainError as exc:
+                cid = await _log_conflict(
+                    db,
+                    user_id=user.id,
+                    item=item,
+                    kind="session_date_immutable",
+                    winning_revision=existing.revision,
+                    winning_updated_at=existing.updated_at,
+                    device_id=None,
+                )
+                return SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code=exc.error_code,
+                    conflict_id=cid,
+                    winning_revision=existing.revision,
+                    winning_updated_at=existing.updated_at,
+                )
+        from app.services.session_rules import assert_mutable_for_content_update
+
+        try:
+            await assert_mutable_for_content_update(db, existing)
+        except DomainError:
+            cid = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind="session_immutable_after_evaluate",
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="session_immutable_after_evaluate",
+                error_code="session_immutable_after_evaluate",
+                conflict_id=cid,
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+            )
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="session_update_unsupported",
+        )
+
+    if item.revision != 1:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="revision_jump",
+        )
+    if not item.payload:
+        raise DomainError("payload_required", http_status=422)
+    body = SessionCreateV1.model_validate(
+        {**item.payload, "client_mutation_id": str(item.client_mutation_id)}
+    )
+    # Force client_mutation_id UUID from item
+    body = body.model_copy(update={"client_mutation_id": item.client_mutation_id})
+    try:
+        read = await session_service.create_session(
+            db, user=user, body=body, session_id=item.entity_id, commit=False
+        )
+    except LegalRequiredError:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="legal_required",
+        )
+    except IntegrityError:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="not_found",
+        )
+    skipped = None
+    if read.logs:
+        # Surface late_log if any log did not count
+        for log in read.logs:
+            if not log.counts_for_progression and not log.skipped and log.goal_evaluated_at:
+                skipped = "late_log"
+                break
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        progression_skipped=skipped,
+        winning_revision=read.revision,
+        winning_updated_at=datetime.now(UTC),
+    )
+
+
+async def _apply_session_delete(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    existing = await db.scalar(
+        select(WorkoutSession).where(
+            WorkoutSession.id == item.entity_id,
+            WorkoutSession.user_id == user.id,
+        )
+    )
+    if existing is None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="not_found",
+        )
+    if existing.deleted_at is not None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="idempotent",
+            winning_revision=existing.revision,
+            winning_updated_at=existing.deleted_at,
+        )
+    if item.revision != existing.revision + 1:
+        if item.revision <= existing.revision:
+            status = (
+                "conflict_lost" if item.revision < existing.revision else "conflict_tie"
+            )
+            kind = "lost_push" if item.revision < existing.revision else "tie_revision"
+            cid = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind=kind,
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status=status,  # type: ignore[arg-type]
+                conflict_id=cid,
+                winning_revision=existing.revision,
+                winning_updated_at=existing.updated_at,
+            )
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="revision_jump",
+        )
+    try:
+        read = await session_service.soft_delete_user_session(
+            db,
+            user_id=user.id,
+            session_id=item.entity_id,
+            commit=False,
+            revision=item.revision,
+        )
+    except NotFoundError:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="not_found",
+        )
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        winning_revision=read.revision,
+        winning_updated_at=read.deleted_at or datetime.now(UTC),
+    )
+
+
+async def _apply_measurement_upsert(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    from sqlalchemy import text
+
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    existing = await db.scalar(
+        select(BodyMeasurement).where(
+            BodyMeasurement.id == item.entity_id,
+            BodyMeasurement.user_id == user.id,
+        )
+    )
+    if existing is not None:
+        if item.revision != existing.revision + 1:
+            if item.revision <= existing.revision:
+                status = "conflict_lost" if item.revision < existing.revision else "conflict_tie"
+                kind = "lost_push" if item.revision < existing.revision else "tie_revision"
+                cid = await _log_conflict(
+                    db,
+                    user_id=user.id,
+                    item=item,
+                    kind=kind,
+                    winning_revision=existing.revision,
+                    winning_updated_at=existing.updated_at,
+                    device_id=None,
+                )
+                return SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status=status,  # type: ignore[arg-type]
+                    conflict_id=cid,
+                    winning_revision=existing.revision,
+                    winning_updated_at=existing.updated_at,
+                )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="revision_jump",
+            )
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="measurement_update_unsupported",
+        )
+
+    if item.revision != 1 or not item.payload:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="schema_invalid" if not item.payload else "revision_jump",
+        )
+    body = MeasurementCreateV1.model_validate(
+        {**item.payload, "client_mutation_id": str(item.client_mutation_id)}
+    )
+    measured_at = body.measured_at
+    if measured_at.tzinfo is None:
+        measured_at = measured_at.replace(tzinfo=UTC)
+    row = BodyMeasurement(
+        id=item.entity_id,
+        user_id=user.id,
+        measured_at=measured_at,
+        local_date=body.local_date,
+        metrics=body.metrics,
+        notes=body.notes,
+        client_mutation_id=item.client_mutation_id,
+        revision=1,
+        client_updated_at=body.client_updated_at or measured_at,
+    )
+    db.add(row)
+    await db.flush()
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        winning_revision=1,
+        winning_updated_at=datetime.now(UTC),
+    )
+
+
+async def _apply_measurement_delete(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    from sqlalchemy import text
+
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    row = await db.scalar(
+        select(BodyMeasurement).where(
+            BodyMeasurement.id == item.entity_id,
+            BodyMeasurement.user_id == user.id,
+        )
+    )
+    if row is None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="not_found",
+        )
+    if row.deleted_at is not None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="idempotent",
+            winning_revision=row.revision,
+            winning_updated_at=row.deleted_at,
+        )
+    if item.revision != row.revision + 1:
+        if item.revision <= row.revision:
+            status = "conflict_lost" if item.revision < row.revision else "conflict_tie"
+            kind = "lost_push" if item.revision < row.revision else "tie_revision"
+            cid = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind=kind,
+                winning_revision=row.revision,
+                winning_updated_at=row.updated_at,
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status=status,  # type: ignore[arg-type]
+                conflict_id=cid,
+                winning_revision=row.revision,
+                winning_updated_at=row.updated_at,
+            )
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="revision_jump",
+        )
+    now = datetime.now(UTC)
+    row.deleted_at = now
+    row.updated_at = now
+    row.revision = item.revision
+    await db.flush()
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        winning_revision=row.revision,
+        winning_updated_at=row.deleted_at,
+    )
+
+
+async def _apply_satellite_upsert(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    existing = await db.scalar(
+        select(Exercise).where(
+            Exercise.id == item.entity_id,
+            Exercise.user_id == user.id,
+            Exercise.kind == "satellite",
+        )
+    )
+    if existing is not None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="satellite_update_unsupported",
+        )
+    if item.revision != 1 or not item.payload:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="schema_invalid" if not item.payload else "revision_jump",
+        )
+    body = SatelliteCreateV1.model_validate(
+        {**item.payload, "client_mutation_id": str(item.client_mutation_id)}
+    )
+    body = body.model_copy(update={"client_mutation_id": item.client_mutation_id})
+    created = await satellite_service.create_satellite(
+        db, user=user, body=body, exercise_id=item.entity_id, commit=False
+    )
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        winning_revision=created.revision,
+        winning_updated_at=datetime.now(UTC),
+    )
+
+
+async def _apply_legal(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    if not item.payload:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="payload_required",
+        )
+    payload = dict(item.payload)
+    payload.setdefault("client_mutation_id", str(item.client_mutation_id))
+    await record_legal_acceptance(db, user_id=user.id, payload=payload)
+    await db.flush()
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
+        winning_revision=1,
+        winning_updated_at=datetime.now(UTC),
+    )
+
+
+async def apply_push_item(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    if item.entity_type == "legal_acceptance":
+        return await _apply_legal(db, user=user, item=item)
+    if item.entity_type == "workout_session":
+        if item.op == "delete":
+            return await _apply_session_delete(db, user=user, item=item)
+        return await _apply_session_upsert(db, user=user, item=item)
+    if item.entity_type == "body_measurement":
+        if item.op == "delete":
+            return await _apply_measurement_delete(db, user=user, item=item)
+        return await _apply_measurement_upsert(db, user=user, item=item)
+    if item.entity_type == "satellite":
+        if item.op == "delete":
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="satellite_delete_unsupported",
+            )
+        return await _apply_satellite_upsert(db, user=user, item=item)
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="rejected",
+        error_code="unsupported_entity_type",
+    )
+
+
+async def push_batch(
+    db: AsyncSession,
+    *,
+    user: User,
+    body: SyncPushRequestV1,
+) -> SyncPushResponseV1:
+    if len(body.items) > MAX_BATCH:
+        raise DomainError("batch_too_large", http_status=422)
+
+    await _touch_device(db, user_id=user.id, device_id=body.device_id)
+    await db.commit()
+
+    user_id = user.id
+    results: list[SyncPushItemResultV1] = []
+    for item in sort_push_items(body.items):
+        digest = content_hash(item.payload, op=item.op, revision=item.revision)
+        try:
+            claim = await _claim(
+                db, user_id=user_id, item=item, digest=digest
+            )
+            if claim is not None:
+                await db.commit()
+                results.append(claim)
+                continue
+            result = await apply_push_item(db, user=user, item=item)
+            # Rejected items must not keep the claim (FR-072b: legal_required /
+            # revision_jump quarantine may retry after user fix with same id).
+            if result.status == "rejected":
+                await db.rollback()
+                results.append(result)
+                continue
+            await db.commit()
+            results.append(result)
+        except DomainError as exc:
+            await db.rollback()
+            results.append(
+                SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code=exc.error_code,
+                )
+            )
+        except NotFoundError:
+            await db.rollback()
+            results.append(
+                SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code="not_found",
+                )
+            )
+        except Exception:
+            await db.rollback()
+            results.append(
+                SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code="apply_failed",
+                )
+            )
+
+    # Aggregate tip progression surface (FR-074)
+    progress_rows = (
+        await db.scalars(
+            select(UserExerciseProgress).where(UserExerciseProgress.user_id == user_id)
+        )
+    ).all()
+    events = (
+        await db.scalars(
+            select(ProgressionEvent)
+            .where(ProgressionEvent.user_id == user_id)
+            .order_by(ProgressionEvent.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    return SyncPushResponseV1(
+        results=results,
+        progress=[progress_to_read(p).model_dump(mode="json") for p in progress_rows],
+        progression_events=[
+            {
+                "id": str(e.id),
+                "exercise_id": str(e.exercise_id),
+                "session_id": str(e.session_id) if e.session_id else None,
+                "event_type": e.event_type,
+                "from_step": e.from_step,
+                "to_step": e.to_step,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in events
+        ],
+    )

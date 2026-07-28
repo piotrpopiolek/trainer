@@ -100,7 +100,8 @@ async def test_export_with_csrf_ok(api_client: AsyncClient, db: AsyncSession) ->
         headers={settings.csrf_header_name: csrf},
     )
     assert res.status_code == 200
-    assert "stub" in res.text
+    assert '"status": "done"' in res.text or '"status":"done"' in res.text
+    assert "stub" not in res.text
 
 
 @pytest.mark.asyncio

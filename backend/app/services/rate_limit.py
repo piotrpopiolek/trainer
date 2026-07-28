@@ -25,6 +25,10 @@ def user_api_bucket_key(user_id: object) -> str:
     return f"u:{user_id}:api"
 
 
+def user_sync_push_bucket_key(user_id: object) -> str:
+    return f"u:{user_id}:sync_push"
+
+
 def _window_start(now: datetime | None = None) -> datetime:
     moment = now or datetime.now(UTC)
     return moment.replace(second=0, microsecond=0)

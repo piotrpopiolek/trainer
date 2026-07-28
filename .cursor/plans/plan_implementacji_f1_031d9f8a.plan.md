@@ -34,7 +34,7 @@ todos:
     status: completed
   - id: sync-endpoints
     content: POST /sync/push z batch <=20, per-item TX, claim client_mutations i atomowym CAS oraz GET /sync/pull z obowiazkowa delta since i tombstones
-    status: pending
+    status: completed
   - id: frontend-online
     content: "Frontend F1.0: shell PWA, i18n, login, onboarding z disclaimerem, ekran dnia z jednego GET /today, logowanie sesji, satelity, pomiary, surface progresji"
     status: pending

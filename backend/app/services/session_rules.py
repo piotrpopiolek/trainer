@@ -54,12 +54,20 @@ async def assert_mutable_for_content_update(db: AsyncSession, session: WorkoutSe
         raise SessionImmutableAfterEvaluateError()
 
 
-async def soft_delete_session(db: AsyncSession, session: WorkoutSession) -> None:
+async def soft_delete_session(
+    db: AsyncSession,
+    session: WorkoutSession,
+    *,
+    revision: int | None = None,
+) -> None:
     """Soft-delete session and supersede child logs in one TX (FR-038/039)."""
     now = datetime.now(UTC)
     if session.deleted_at is not None:
         return
     session.deleted_at = now
+    session.updated_at = now
+    if revision is not None:
+        session.revision = revision
     logs = (
         await db.scalars(
             select(SessionExerciseLog).where(
@@ -70,6 +78,7 @@ async def soft_delete_session(db: AsyncSession, session: WorkoutSession) -> None
     ).all()
     for log in logs:
         log.superseded_at = now
+        log.updated_at = now
     await db.flush()
 
 

@@ -220,6 +220,8 @@ async def create_session(
     *,
     user: User,
     body: SessionCreateV1,
+    session_id: UUID | None = None,
+    commit: bool = True,
 ) -> SessionReadV1:
     await require_health_disclaimer_for_session(
         db, user_id=user.id, locale=user.locale or "pl-PL"
@@ -236,7 +238,7 @@ async def create_session(
     _requested, resolved_locale = resolve_locale(requested=None, user_locale=user.locale)
 
     session = WorkoutSession(
-        id=new_uuid7(),
+        id=session_id if session_id is not None else new_uuid7(),
         user_id=user.id,
         performed_at=performed_at,
         local_date=body.local_date,
@@ -316,8 +318,11 @@ async def create_session(
         del result
         touched.add(item.exercise_id)
 
-    await db.commit()
-    await db.refresh(session)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return await session_to_read(
         db, session, include_events=True, include_progress_for=touched
     )
@@ -340,11 +345,16 @@ async def soft_delete_user_session(
     *,
     user_id: UUID,
     session_id: UUID,
+    commit: bool = True,
+    revision: int | None = None,
 ) -> SessionReadV1:
     session = await get_for_user(
         db, WorkoutSession, user_id=user_id, entity_id=session_id
     )
-    await soft_delete_session(db, session)
-    await db.commit()
-    await db.refresh(session)
+    await soft_delete_session(db, session, revision=revision)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return await session_to_read(db, session)

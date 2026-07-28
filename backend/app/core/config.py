@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     rate_limit_store: str = "memory"
     oauth_rate_limit_per_minute: int = 10
     api_rate_limit_per_minute: int = 100
+    sync_push_rate_limit_per_minute: int = 20
     max_body_bytes: int = 1_000_000
     trainer_app_password: str = ""
     trainer_migrator_password: str = ""

@@ -32,6 +32,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        // Never SPA-fallback API/docs — SW was serving index.html for /api/docs.
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/],
         runtimeCaching: [],
       },
     }),

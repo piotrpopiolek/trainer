@@ -39,7 +39,7 @@ pythonpath = ["backend"]
 addopts = [
   "-ra",
   "--strict-markers",
-  "--cov=app",
+  "--cov=backend/app",
   "--cov-report=term-missing",
   "--cov-config=pyproject.toml",
 ]
@@ -50,7 +50,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["app"]
+source = ["backend/app"]
 omit = [
   "*/tests/*",
   "*/migrations/*",
