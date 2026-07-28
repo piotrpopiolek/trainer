@@ -28,7 +28,7 @@ todos:
     status: completed
   - id: progression-engine
     content: "ProgressionEngine: klasyfikacja tip vs spozniony, fold fail_streak, advance/regress, rules_snapshot i content_locale, immutability sesji FR-038/039"
-    status: pending
+    status: completed
   - id: api-readwrite
     content: "API: GET /today, sesje, satelity, pomiary, progress z override, katalog CC z ETag per locale, export/delete/schedule konta"
     status: pending

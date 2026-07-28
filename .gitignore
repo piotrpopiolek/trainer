@@ -22,10 +22,9 @@ frontend/dev-dist/
 npm-debug.log*
 .pnpm-store/
 
-# Env & secrets
+# Env & secrets (keep .env.example tracked)
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
 # IDE / OS
