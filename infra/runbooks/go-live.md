@@ -11,6 +11,8 @@ Source of truth: `docs/prd.md` §1.4a / FR-081a / FR-020a / FR-005a–d.
 | Restore drill | `bash infra/restore/restore_drill.sh` (CI job `restore-drill`) |
 | IDOR suite | `docker compose run --rm api pytest -m idor` |
 | Backend + frontend CI | `.github/workflows/ci.yml` green on `main` |
+| Local preflight smoke | `python scripts/go_live_smoke.py` (or `make go-live-smoke`) |
+| Ops cron template | `infra/cron/trainer.cron.example` |
 
 ## B. Host / Compose prod
 
@@ -31,7 +33,7 @@ API refuses to start in `production`/`staging` if rate-limit is `memory`, CSRF/G
 
 ## C. Ops cron (host)
 
-See [backup-restore.md](backup-restore.md). Minimum:
+Copy and edit [infra/cron/trainer.cron.example](../cron/trainer.cron.example). Details: [backup-restore.md](backup-restore.md). Minimum:
 
 - nightly encrypted backup (`profile ops` → `backup`)
 - purge + auth/rate-limit cleanup
@@ -41,6 +43,7 @@ Backup destination must be **off the app host** in real prod (bind-mount `infra/
 
 ## D. Manual dogfood (founder)
 
+0. `python scripts/go_live_smoke.py` must print `go_live_smoke.ok` (sets expectations for env + stack).
 1. Trust TLS / real cert; open `PUBLIC_ORIGIN`
 2. Google login → onboarding + health disclaimer
 3. Log CC session online; confirm progression surface

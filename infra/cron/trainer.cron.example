@@ -1,0 +1,21 @@
+# Example host crontab for Trainer F1 ops (FR-081a / FR-006c / FR-005c).
+# Install on the host (not inside the API container). Adjust REPO path.
+#
+#   crontab -e
+#   # paste below after editing REPO=
+#
+# Logs: append to files or ship to your log agent. Silence = incident
+# (backup / purge heartbeats — see infra/runbooks/backup-restore.md).
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+REPO=/opt/trainer
+
+# Nightly encrypted PG backup (Compose profile ops)
+15 2 * * * cd "$REPO" && docker compose --profile ops run --rm backup >>/var/log/trainer-backup.log 2>&1
+
+# Account hard-purge (grace elapsed)
+20 2 * * * cd "$REPO" && docker compose --profile ops run --rm purge >>/var/log/trainer-purge.log 2>&1
+
+# Auth sessions / oauth_states / rate_limit_buckets cleanup
+25 2 * * * cd "$REPO" && docker compose --profile ops run --rm cleanup >>/var/log/trainer-cleanup.log 2>&1

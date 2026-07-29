@@ -1,4 +1,4 @@
-.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca content-gate restore-drill
+.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca content-gate go-live-smoke restore-drill
 
 up:
 	docker compose up -d --build
@@ -39,6 +39,9 @@ trust-ca:
 
 content-gate:
 	TRAINER_CONTENT_GATE_STRICT=1 python scripts/check_content_gate.py
+
+go-live-smoke:
+	python scripts/go_live_smoke.py
 
 restore-drill:
 	bash infra/restore/restore_drill.sh

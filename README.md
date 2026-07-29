@@ -128,6 +128,7 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | `make migrate` | `alembic upgrade head` |
 | `make seed` | CC + legal seed (idempotent) |
 | `make content-gate` | Strict pl-PL ready gate (F1.prod) |
+| `make go-live-smoke` | Preflight: health, OAuth, catalog counts, env |
 | `make restore-drill` | Encrypted backup → wipe → restore smoke |
 
 ### Frontend (`frontend/`)
