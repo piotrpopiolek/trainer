@@ -54,7 +54,8 @@ Backup destination must be **off the app host** in real prod (bind-mount `infra/
 
 ## E. Content (PCO)
 
-CI gate ≠ product acceptance. Founder reviews 60 step descriptions for accuracy and no book quotes (FR-020a).
+CI gate ≠ product acceptance. Founder reviews 60 step descriptions for accuracy and no book quotes (FR-020a).  
+Legal v2 (`health_disclaimer` + `privacy_policy`, w tym retencja backupów ≤30 dni) — founder should skim before public prod; dogfood users re-accept disclaimer after seed upgrade.
 
 ## F. Rel16 — before any prod Alembic
 

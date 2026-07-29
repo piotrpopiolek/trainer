@@ -4,15 +4,15 @@
   "translations": [
     {
       "document_slug": "health_disclaimer",
-      "document_version": "1",
-      "title": "[DRAFT] Ostrzeżenie zdrowotne",
-      "body": "[DRAFT] Aplikacja Trainer nie zastępuje porady medycznej. Trening siłowy z masą własnego ciała może wiązać się z ryzykiem kontuzji. Skonsultuj się z lekarzem przed rozpoczęciem programu, zwłaszcza przy istniejących schorzeniach. Kontynuując, potwierdzasz, że ćwiczysz na własną odpowiedzialność."
+      "document_version": "2",
+      "title": "Ostrzeżenie zdrowotne",
+      "body": "Aplikacja Trainer nie jest wyrobem medycznym i nie zastępuje konsultacji z lekarzem ani fizjoterapeutą. Trening z masą własnego ciała może powodować przeciążenia, kontuzje i zaostrzenie istniejących dolegliwości. Przed rozpoczęciem lub zmianą programu skonsultuj się z lekarzem, zwłaszcza przy chorobach przewlekłych, urazach, ciąży lub po przerwie od ruchu. Ćwiczysz na własną odpowiedzialność; przerwij trening przy silnym bólu, zawrotach głowy lub duszności i w razie potrzeby skorzystaj z pomocy medycznej."
     },
     {
       "document_slug": "privacy_policy",
-      "document_version": "1",
-      "title": "[DRAFT] Polityka prywatności",
-      "body": "[DRAFT] Przetwarzamy dane konta (Google OAuth), logi treningowe, pomiary sylwetki i ustawienia wyłącznie w celu świadczenia usługi Trainer. Dane nie są sprzedawane. Po usunięciu konta dane treningowe mogą pozostawać w kopiach zapasowych do 30 dni. Pełna treść polityki zostanie uzupełniona przed F1.prod."
+      "document_version": "2",
+      "title": "Polityka prywatności",
+      "body": "Administrator danych: operator aplikacji Trainer. Przetwarzamy dane konta z Google OAuth (identyfikator, e-mail, nazwa wyświetlana), ustawienia (locale, strefa czasowa, plan treningowy), logi sesji i postęp ćwiczeń, własne ćwiczenia satelitarne oraz pomiary sylwetki (np. masa, obwody) wyłącznie w celu świadczenia i bezpieczeństwa usługi. Podstawą jest wykonanie umowy o świadczenie usługi oraz uzasadniony interes (bezpieczeństwo, zapobieganie nadużyciom).\n\nDane nie są sprzedawane. Dostęp mają wyłącznie systemy i osoby zaangażowane w utrzymanie Trainer. Logowanie odbywa się przez Google; nie przechowujemy hasła do Google.\n\nUsunięcie konta: natychmiast usuwamy lub anonimizujemy dane konta oraz pomiary sylwetki; sesje treningowe i powiązane dane mogą pozostać w okresie karencji do 30 dni, po czym są trwale usuwane zadaniem serwisowym. Kopie zapasowe bazy PostgreSQL są szyfrowane, przechowywane poza hostem aplikacji i rotowane przez maksymalnie 30 dni — dane usuniętego konta mogą więc pozostawać w backupach do upływu tej retencji.\n\nMożesz wyeksportować swoje dane z ustawień konta. Masz prawo dostępu, sprostowania, ograniczenia przetwarzania i wniesienia skargi do organu nadzorczego. Kontakt w sprawach prywatności: adres podany w ustawieniach / na stronie produktu. Niniejsza wersja obowiązuje od daty publikacji w aplikacji; zmiana treści wymaga nowej wersji dokumentu."
     }
   ]
 }

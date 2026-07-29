@@ -26,10 +26,15 @@ def test_seed_json_structure() -> None:
     assert pl["catalog_version"] >= 2
     assert "[DRAFT]" not in json.dumps(pl, ensure_ascii=False)
     legal = load_json("legal", "documents.json")
+    legal_pl = load_json("legal", "pl-PL.json")
     assert {d["slug"] for d in legal["documents"]} >= {
         "health_disclaimer",
         "privacy_policy",
     }
+    assert "[DRAFT]" not in json.dumps(legal_pl, ensure_ascii=False)
+    assert "backup" in json.dumps(legal_pl, ensure_ascii=False).lower() or (
+        "kopie zapasowe" in json.dumps(legal_pl, ensure_ascii=False).lower()
+    )
 
 
 def test_seed_ids_stable() -> None:

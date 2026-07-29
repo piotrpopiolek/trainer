@@ -4,6 +4,10 @@
 set -eu
 set -o pipefail
 
+# Git Bash on Windows rewrites /bin/sh → C:/Program Files/...; keep Docker paths literal.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -12,13 +16,9 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# Load .env into this shell without printing values (Compose also uses env_file).
-set -a
-# shellcheck disable=SC1091
-. ./.env
-set +a
-
-if [ -z "${BACKUP_ENCRYPTION_PASSPHRASE:-}" ]; then
+# Do not `source` .env — values may contain shell metacharacters (OAuth secrets).
+# Compose services load .env via env_file; we only assert passphrase presence.
+if ! grep -Eq '^BACKUP_ENCRYPTION_PASSPHRASE=.+' .env; then
   echo "restore_drill.fail reason=backup_passphrase_missing" >&2
   exit 1
 fi
@@ -64,7 +64,7 @@ done
 
 docker compose --profile ops run --rm \
   -e ENC_BASENAME="$ENC_BASENAME" \
-  --entrypoint /bin/sh \
+  --entrypoint sh \
   backup \
   -c '
     set -eu
