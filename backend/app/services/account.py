@@ -166,14 +166,35 @@ async def stream_account_export(
     yield _line("meta", {"status": "done"})
 
 
+async def _hard_delete_immediate_pii(db: AsyncSession, *, user_id: UUID) -> None:
+    """FR-006a immediate hard-delete (measurements + sync/legal meta). Requires RLS user_id."""
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user_id)},
+    )
+    await db.execute(delete(BodyMeasurement).where(BodyMeasurement.user_id == user_id))
+    await db.execute(delete(SyncConflictLog).where(SyncConflictLog.user_id == user_id))
+    await db.execute(delete(SyncDevice).where(SyncDevice.user_id == user_id))
+    await db.execute(delete(ClientMutation).where(ClientMutation.user_id == user_id))
+    await db.execute(delete(UserOnboarding).where(UserOnboarding.user_id == user_id))
+    await db.execute(delete(UserLegalAcceptance).where(UserLegalAcceptance.user_id == user_id))
+
+
 async def soft_delete_account(
     db: AsyncSession,
     *,
     user: User,
     auth_sessions: AuthSessionService,
 ) -> dict[str, str]:
-    """FR-006a: hard-delete PII meta + measurements; training grace 30d."""
+    """FR-006a: hard-delete PII meta + measurements; training grace 30d.
+
+    Single TX for anonymize + revoke + immediate hard-delete. If a prior attempt left
+    residuals (legacy two-commit path), ``already_deleted`` resumes cleanup.
+    """
     if user.deleted_at is not None:
+        await auth_sessions.revoke_all_for_user(db, user_id=user.id, commit=False)
+        await _hard_delete_immediate_pii(db, user_id=user.id)
+        await db.commit()
         return {"status": "already_deleted", "purge_after": str(user.purge_after or "")}
 
     now = datetime.now(UTC)
@@ -185,17 +206,7 @@ async def soft_delete_account(
     user.google_sub = None
     user.display_name = None
 
-    await auth_sessions.revoke_all_for_user(db, user_id=user.id)
-    # New TX after revoke commit — RLS requires app.user_id for measurements.
-    await db.execute(
-        text("SELECT set_config('app.user_id', :uid, true)"),
-        {"uid": str(user.id)},
-    )
-    await db.execute(delete(BodyMeasurement).where(BodyMeasurement.user_id == user.id))
-    await db.execute(delete(SyncConflictLog).where(SyncConflictLog.user_id == user.id))
-    await db.execute(delete(SyncDevice).where(SyncDevice.user_id == user.id))
-    await db.execute(delete(ClientMutation).where(ClientMutation.user_id == user.id))
-    await db.execute(delete(UserOnboarding).where(UserOnboarding.user_id == user.id))
-    await db.execute(delete(UserLegalAcceptance).where(UserLegalAcceptance.user_id == user.id))
+    await auth_sessions.revoke_all_for_user(db, user_id=user.id, commit=False)
+    await _hard_delete_immediate_pii(db, user_id=user.id)
     await db.commit()
     return {"status": "pending_grace", "purge_after": str(user.purge_after)}

@@ -213,7 +213,9 @@ class AuthSessionService:
             row.revoked_at = now
             await db.commit()
 
-    async def revoke_all_for_user(self, db: AsyncSession, user_id: object) -> None:
+    async def revoke_all_for_user(
+        self, db: AsyncSession, user_id: object, *, commit: bool = True
+    ) -> None:
         now = datetime.now(UTC)
         rows = (
             await db.scalars(
@@ -225,4 +227,7 @@ class AuthSessionService:
         ).all()
         for row in rows:
             row.revoked_at = now
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()

@@ -34,6 +34,7 @@ from app.services import satellites as satellite_service
 from app.services import sessions as session_service
 from app.services.errors import DomainError, LegalRequiredError, NotFoundError
 from app.services.legal import record_legal_acceptance
+from app.services.measurements import soft_delete_measurement
 from app.services.sessions import progress_to_read
 
 _TYPE_ORDER = {
@@ -566,11 +567,7 @@ async def _apply_measurement_delete(
             status="rejected",
             error_code="revision_jump",
         )
-    now = datetime.now(UTC)
-    row.deleted_at = now
-    row.updated_at = now
-    row.revision = item.revision
-    await db.flush()
+    await soft_delete_measurement(db, row, revision=item.revision)
     return SyncPushItemResultV1(
         client_mutation_id=item.client_mutation_id,
         status="applied",

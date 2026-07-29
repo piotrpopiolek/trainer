@@ -215,6 +215,128 @@ async def test_soft_delete_account_hard_deletes_measurements(db: AsyncSession) -
 
 
 @pytest.mark.asyncio
+async def test_soft_delete_account_resumes_residual_cleanup(db: AsyncSession) -> None:
+    """R2: already_deleted must finish hard-delete if a prior attempt left residuals."""
+    from app.models.sync import ClientMutation
+
+    user, _raw = await _ready_user(db, "del-resume@ex.com")
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    mid = new_uuid7()
+    mut_id = new_uuid7()
+    db.add(
+        BodyMeasurement(
+            id=mid,
+            user_id=user.id,
+            measured_at=datetime.now(UTC),
+            local_date=date(2026, 7, 27),
+            metrics={"schema_version": 1, "weight_kg": 72},
+            client_mutation_id=new_uuid7(),
+            revision=1,
+            client_updated_at=datetime.now(UTC),
+        )
+    )
+    db.add(
+        ClientMutation(
+            id=new_uuid7(),
+            user_id=user.id,
+            client_mutation_id=mut_id,
+            entity_type="body_measurement",
+            entity_id=mid,
+            content_hash="abc",
+        )
+    )
+    # Simulate legacy partial delete: anonymize + commit without hard-delete.
+    now = datetime.now(UTC)
+    user.deleted_at = now
+    user.purge_after = date(2026, 8, 26)
+    user.purge_status = "pending_grace"
+    user.email = None
+    user.google_sub = None
+    user.display_name = None
+    await db.commit()
+
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    still = await db.scalar(select(BodyMeasurement).where(BodyMeasurement.id == mid))
+    assert still is not None
+    assert (
+        await db.scalar(
+            select(ClientMutation).where(ClientMutation.client_mutation_id == mut_id)
+        )
+        is not None
+    )
+
+    result = await soft_delete_account(
+        db, user=user, auth_sessions=AuthSessionService()
+    )
+    assert result["status"] == "already_deleted"
+
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    assert await db.scalar(select(BodyMeasurement).where(BodyMeasurement.id == mid)) is None
+    assert (
+        await db.scalar(
+            select(ClientMutation).where(ClientMutation.client_mutation_id == mut_id)
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_account_single_tx_no_mid_commit_leak(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R2: revoke_all must not commit mid-delete (anonymize without PII wipe)."""
+    user, _raw = await _ready_user(db, "del-atomic@ex.com")
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    mid = new_uuid7()
+    db.add(
+        BodyMeasurement(
+            id=mid,
+            user_id=user.id,
+            measured_at=datetime.now(UTC),
+            local_date=date(2026, 7, 27),
+            metrics={"schema_version": 1, "weight_kg": 73},
+            client_mutation_id=new_uuid7(),
+            revision=1,
+            client_updated_at=datetime.now(UTC),
+        )
+    )
+    await db.commit()
+
+    svc = AuthSessionService()
+    commits = 0
+    original_commit = db.commit
+
+    async def counting_commit() -> None:
+        nonlocal commits
+        commits += 1
+        await original_commit()
+
+    monkeypatch.setattr(db, "commit", counting_commit)
+
+    result = await soft_delete_account(db, user=user, auth_sessions=svc)
+    assert result["status"] == "pending_grace"
+    assert commits == 1
+
+    await db.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
+    assert await db.scalar(select(BodyMeasurement).where(BodyMeasurement.id == mid)) is None
+
+
+@pytest.mark.asyncio
 async def test_session_soft_delete_and_progress_list(
     api_client: AsyncClient, db: AsyncSession
 ) -> None:

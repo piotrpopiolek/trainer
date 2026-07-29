@@ -322,6 +322,66 @@ async def test_sync_push_measurement_and_pull_delta(
 
 
 @pytest.mark.asyncio
+async def test_http_measurement_delete_appears_as_pull_tombstone(
+    api_client: AsyncClient, db: AsyncSession
+) -> None:
+    """Online DELETE must bump updated_at/revision so incremental pull tombstones (R1)."""
+    _user, raw = await _ready_user(db, "sync-http-del@ex.com")
+    now = datetime.now(UTC)
+    created = await api_client.post(
+        "/api/measurements",
+        cookies={settings.session_cookie_name: raw},
+        json={
+            "schema_version": 1,
+            "measured_at": now.isoformat(),
+            "local_date": now.date().isoformat(),
+            "metrics": {"schema_version": 1, "weight_kg": 81.0},
+            "client_mutation_id": str(uuid4()),
+        },
+    )
+    assert created.status_code == 200, created.text
+    mid = created.json()["id"]
+    assert created.json()["revision"] == 1
+
+    pull1 = await api_client.get(
+        "/api/sync/pull",
+        cookies={settings.session_cookie_name: raw},
+    )
+    assert pull1.status_code == 200
+    since = pull1.json()["server_time"]
+    assert any(m["id"] == mid for m in pull1.json()["measurements"])
+
+    deleted = await api_client.delete(
+        f"/api/measurements/{mid}",
+        cookies={settings.session_cookie_name: raw},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["revision"] == 2
+
+    listed = await api_client.get(
+        "/api/measurements",
+        cookies={settings.session_cookie_name: raw},
+    )
+    assert listed.status_code == 200
+    assert all(i["id"] != mid for i in listed.json()["items"])
+
+    pull2 = await api_client.get(
+        "/api/sync/pull",
+        params={"since": since},
+        cookies={settings.session_cookie_name: raw},
+    )
+    assert pull2.status_code == 200
+    tombs = pull2.json()["tombstones"]
+    assert any(
+        t["entity_type"] == "body_measurement"
+        and t["id"] == mid
+        and t["revision"] == 2
+        for t in tombs
+    )
+    assert all(m["id"] != mid for m in pull2.json()["measurements"])
+
+
+@pytest.mark.asyncio
 async def test_sync_push_mutation_payload_mismatch(
     api_client: AsyncClient, db: AsyncSession
 ) -> None:

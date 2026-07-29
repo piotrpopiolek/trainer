@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -17,6 +17,7 @@ from app.models.body_measurement import BodyMeasurement
 from app.repositories.access import get_for_user
 from app.schemas.api import BodyMetricsV1, MeasurementCreateV1, MeasurementReadV1
 from app.schemas.common import parse_versioned
+from app.services.measurements import soft_delete_measurement as mark_measurement_deleted
 
 router = APIRouter(prefix="/measurements", tags=["measurements"])
 
@@ -120,7 +121,8 @@ async def soft_delete_measurement(
         entity_id=measurement_id,
     )
     if row.deleted_at is None:
-        row.deleted_at = datetime.now(UTC)
+        await mark_measurement_deleted(db, row)
         await db.commit()
+        await _set_rls(db, ctx.user.id)
         await db.refresh(row)
     return _to_read(row)
