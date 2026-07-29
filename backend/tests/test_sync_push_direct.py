@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.core.ids import new_uuid7
 from app.models.body_measurement import BodyMeasurement
 from app.models.catalog import Exercise, Program
-from app.models.legal import LegalDocument, LegalDocumentTranslation
 from app.models.user import User
 from app.models.workout import WorkoutSession
 from app.schemas.sync import SyncPushItemV1, SyncPushRequestV1
@@ -23,6 +22,7 @@ from app.services.legal import record_legal_acceptance
 from app.services.onboarding import complete_onboarding
 from app.services.sync_pull import pull
 from app.services.sync_push import push_batch
+from tests.legal_fixtures import latest_health_disclaimer
 
 
 @pytest.fixture
@@ -37,18 +37,7 @@ async def db() -> AsyncSession:
 async def _ready(db: AsyncSession, email: str) -> User:
     if await db.scalar(select(Program).where(Program.slug == "cc_big_six")) is None:
         pytest.skip("seed catalog required")
-    doc = await db.scalar(
-        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
-    )
-    if doc is None:
-        pytest.skip("legal seed required")
-    tr = await db.scalar(
-        select(LegalDocumentTranslation).where(
-            LegalDocumentTranslation.document_id == doc.id,
-            LegalDocumentTranslation.locale == "pl-PL",
-        )
-    )
-    assert tr is not None
+    doc, tr = await latest_health_disclaimer(db)
     user = User(
         id=new_uuid7(),
         google_sub=f"sub-{new_uuid7()}",
@@ -77,7 +66,7 @@ async def _ready(db: AsyncSession, email: str) -> User:
             "schema_version": 1,
             "client_mutation_id": str(uuid4()),
             "document_slug": "health_disclaimer",
-            "document_version": "1",
+            "document_version": doc.version,
             "accepted_locale": "pl-PL",
             "accepted_content_hash": tr.content_hash.hex(),
             "accepted_at": datetime.now(UTC).isoformat(),
@@ -295,17 +284,7 @@ async def test_push_session_conflict_lost(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_push_legal_acceptance(db: AsyncSession) -> None:
     user = await _ready(db, "sync-legal@ex.com")
-    doc = await db.scalar(
-        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
-    )
-    assert doc is not None
-    tr = await db.scalar(
-        select(LegalDocumentTranslation).where(
-            LegalDocumentTranslation.document_id == doc.id,
-            LegalDocumentTranslation.locale == "pl-PL",
-        )
-    )
-    assert tr is not None
+    doc, tr = await latest_health_disclaimer(db)
     mut = new_uuid7()
     out = await push_batch(
         db,
@@ -323,7 +302,7 @@ async def test_push_legal_acceptance(db: AsyncSession) -> None:
                         "schema_version": 1,
                         "client_mutation_id": str(mut),
                         "document_slug": "health_disclaimer",
-                        "document_version": "1",
+                        "document_version": doc.version,
                         "accepted_locale": "pl-PL",
                         "accepted_content_hash": tr.content_hash.hex(),
                         "accepted_at": datetime.now(UTC).isoformat(),

@@ -15,13 +15,13 @@ from app.core.ids import new_uuid7
 from app.db.session import dispose_engine
 from app.main import app
 from app.models.catalog import Exercise, Program
-from app.models.legal import LegalDocument, LegalDocumentTranslation
 from app.models.user import User
 from app.models.workout import WorkoutSession
 from app.services.auth_session import AuthSessionService
 from app.services.legal import record_legal_acceptance
 from app.services.onboarding import complete_onboarding
 from app.services.rate_limit import reset_memory_rate_limits
+from tests.legal_fixtures import latest_health_disclaimer
 
 
 @pytest.fixture(autouse=True)
@@ -53,18 +53,7 @@ async def api_client() -> AsyncClient:
 async def _ready_user(db: AsyncSession, email: str) -> tuple[User, str]:
     if await db.scalar(select(Program).where(Program.slug == "cc_big_six")) is None:
         pytest.skip("seed catalog required")
-    doc = await db.scalar(
-        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
-    )
-    if doc is None:
-        pytest.skip("legal seed required")
-    tr = await db.scalar(
-        select(LegalDocumentTranslation).where(
-            LegalDocumentTranslation.document_id == doc.id,
-            LegalDocumentTranslation.locale == "pl-PL",
-        )
-    )
-    assert tr is not None
+    doc, tr = await latest_health_disclaimer(db)
     user = User(
         id=new_uuid7(),
         google_sub=f"sub-{new_uuid7()}",
@@ -93,7 +82,7 @@ async def _ready_user(db: AsyncSession, email: str) -> tuple[User, str]:
             "schema_version": 1,
             "client_mutation_id": str(uuid4()),
             "document_slug": "health_disclaimer",
-            "document_version": "1",
+            "document_version": doc.version,
             "accepted_locale": "pl-PL",
             "accepted_content_hash": tr.content_hash.hex(),
             "accepted_at": datetime.now(UTC).isoformat(),

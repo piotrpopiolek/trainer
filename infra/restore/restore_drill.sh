@@ -66,20 +66,7 @@ docker compose --profile ops run --rm \
   -e ENC_BASENAME="$ENC_BASENAME" \
   --entrypoint sh \
   backup \
-  -c '
-    set -eu
-    set -o pipefail
-    if [ -z "${BACKUP_ENCRYPTION_PASSPHRASE:-}" ]; then
-      echo "restore_drill.fail reason=backup_passphrase_missing" >&2
-      exit 1
-    fi
-    openssl enc -d -aes-256-cbc -pbkdf2 -salt \
-      -pass env:BACKUP_ENCRYPTION_PASSPHRASE \
-      -in "/backup/${ENC_BASENAME}" -out /tmp/trainer.dump
-    export PGPASSWORD="${POSTGRES_PASSWORD}"
-    pg_restore -h db -p "${POSTGRES_PORT:-5432}" -U "${POSTGRES_USER:-trainer}" \
-      -d "${POSTGRES_DB:-trainer}" --clean --if-exists /tmp/trainer.dump
-  '
+  /scripts/restore_enc.sh
 
 # Dump omits ACLs (--no-acl); re-grant app role before any trainer_app smoke.
 docker compose exec -T db psql -U trainer -d trainer \

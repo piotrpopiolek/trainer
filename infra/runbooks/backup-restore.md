@@ -85,6 +85,8 @@ age -d -i /path/to/backup.key \
      -v ON_ERROR_STOP=1 -f - < infra/restore/regrant_app.sql
    ```
 
+   Automated path: `infra/backup/restore_enc.sh` (decrypt + `pg_restore`) then regrant — see `infra/restore/restore_drill.sh`.
+
 5. Migrations: `docker compose run --rm api alembic current` must equal `head`. If restore is from pre-migration backup, run `alembic upgrade head` only when intentional.
 6. Smoke: `GET /api/health`, Google login, spot-check session/progress counts vs pre-backup notes. Optionally `docker compose run --rm api python -m app.seed` (idempotent) to confirm app-role writes.
 7. Before any prod Alembic migration: take a fresh encrypted backup first.

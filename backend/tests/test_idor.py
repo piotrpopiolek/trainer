@@ -168,20 +168,10 @@ async def test_legal_acceptance_only_binds_session_user(
 
     from sqlalchemy import select
 
-    from app.models.legal import LegalDocument, LegalDocumentTranslation, UserLegalAcceptance
+    from app.models.legal import UserLegalAcceptance
+    from tests.legal_fixtures import latest_health_disclaimer
 
-    doc = await db.scalar(
-        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
-    )
-    if doc is None:
-        pytest.skip("legal seed required")
-    tr = await db.scalar(
-        select(LegalDocumentTranslation).where(
-            LegalDocumentTranslation.document_id == doc.id,
-            LegalDocumentTranslation.locale == "pl-PL",
-        )
-    )
-    assert tr is not None
+    doc, tr = await latest_health_disclaimer(db)
 
     user_a, _raw_a = await _user_session(db, "a-legal@ex.com")
     _user_b, raw_b = await _user_session(db, "b-legal@ex.com")
@@ -194,7 +184,7 @@ async def test_legal_acceptance_only_binds_session_user(
                 "schema_version": 1,
                 "client_mutation_id": str(uuid4()),
                 "document_slug": "health_disclaimer",
-                "document_version": "1",
+                "document_version": doc.version,
                 "accepted_locale": "pl-PL",
                 "accepted_content_hash": tr.content_hash.hex(),
                 "accepted_at": datetime.now(UTC).isoformat(),

@@ -14,7 +14,6 @@ from app.core.config import settings
 from app.core.ids import new_uuid7
 from app.db.session import dispose_engine
 from app.main import app
-from app.models.legal import LegalDocument, LegalDocumentTranslation
 from app.models.progression import UserProgramEnrollment
 from app.models.user import User
 from app.schemas.common import parse_versioned
@@ -29,6 +28,7 @@ from app.services.legal import (
 )
 from app.services.onboarding import complete_onboarding
 from app.services.rate_limit import reset_memory_rate_limits
+from tests.legal_fixtures import latest_health_disclaimer
 
 
 @pytest.fixture(autouse=True)
@@ -159,18 +159,7 @@ async def test_legal_gate_blocks_without_acceptance(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_legal_acceptance_and_gate_pass(db: AsyncSession) -> None:
-    doc = await db.scalar(
-        select(LegalDocument).where(LegalDocument.slug == "health_disclaimer")
-    )
-    if doc is None:
-        pytest.skip("legal seed required")
-    tr = await db.scalar(
-        select(LegalDocumentTranslation).where(
-            LegalDocumentTranslation.document_id == doc.id,
-            LegalDocumentTranslation.locale == "pl-PL",
-        )
-    )
-    assert tr is not None
+    doc, tr = await latest_health_disclaimer(db)
     user = User(
         id=new_uuid7(),
         google_sub=f"sub-{new_uuid7()}",
@@ -187,7 +176,7 @@ async def test_legal_acceptance_and_gate_pass(db: AsyncSession) -> None:
             "schema_version": 1,
             "client_mutation_id": str(uuid4()),
             "document_slug": "health_disclaimer",
-            "document_version": "1",
+            "document_version": doc.version,
             "accepted_locale": "pl-PL",
             "accepted_content_hash": tr.content_hash.hex(),
             "accepted_at": datetime.now(UTC).isoformat(),

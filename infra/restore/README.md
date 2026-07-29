@@ -6,11 +6,15 @@ Automated checklist: encrypted backup → wipe Compose volume → restore → `a
 
 ```bash
 bash scripts/gen_dev_env.sh   # if no .env
-# optional: set BACKUP_ENCRYPTION_PASSPHRASE in .env
+# ensure BACKUP_ENCRYPTION_PASSPHRASE is set in .env
 bash infra/restore/restore_drill.sh
 ```
 
+On Windows use **Git Bash** (not WSL path mixing). The script sets `MSYS_NO_PATHCONV` so Docker entrypoints are not rewritten to `C:/Program Files/...`.
+
 Expect `restore_drill.ok` and counts `6|60|60` (CC exercises | steps | pl-PL ready translations).
+
+Restore step uses `infra/backup/restore_enc.sh` inside the `backup` image (`--entrypoint sh … /scripts/restore_enc.sh`), then `regrant_app.sql` (dump is `--no-acl`).
 
 ## CI
 
