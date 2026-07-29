@@ -20,11 +20,14 @@ from app.api.routers import (
     sync,
     today,
 )
-from app.core.config import settings
+from app.core.config import settings, validate_runtime_settings
+
+_EXPOSE_DOCS = settings.app_env not in {"production", "staging"}
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    validate_runtime_settings()
     yield
 
 
@@ -32,9 +35,9 @@ app = FastAPI(
     title="Trainer API",
     version=__version__,
     lifespan=lifespan,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if _EXPOSE_DOCS else None,
+    redoc_url="/api/redoc" if _EXPOSE_DOCS else None,
+    openapi_url="/api/openapi.json" if _EXPOSE_DOCS else None,
 )
 
 app.add_middleware(BodySizeLimitMiddleware)

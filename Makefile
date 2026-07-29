@@ -1,4 +1,4 @@
-.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca
+.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca content-gate restore-drill
 
 up:
 	docker compose up -d --build
@@ -36,3 +36,9 @@ frontend-dev:
 
 trust-ca:
 	powershell -ExecutionPolicy Bypass -File infra/caddy/trust-root.ps1
+
+content-gate:
+	TRAINER_CONTENT_GATE_STRICT=1 python scripts/check_content_gate.py
+
+restore-drill:
+	bash infra/restore/restore_drill.sh

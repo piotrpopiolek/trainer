@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.config import Settings, _asyncpg_dsn
+from app.core.config import Settings, _asyncpg_dsn, validate_runtime_settings
 
 
 def test_asyncpg_dsn_quotes_special_chars() -> None:
@@ -67,3 +67,41 @@ def test_resolved_alembic_database_url_requires_password() -> None:
     s = Settings(alembic_database_url="", postgres_password="")
     with pytest.raises(RuntimeError, match="ALEMBIC_DATABASE_URL or POSTGRES_PASSWORD"):
         _ = s.resolved_alembic_database_url
+
+
+def test_validate_runtime_settings_skips_development() -> None:
+    validate_runtime_settings(
+        Settings(
+            app_env="development",
+            rate_limit_store="memory",
+            public_origin="https://localhost",
+        )
+    )
+
+
+def test_validate_runtime_settings_rejects_prod_misconfig() -> None:
+    s = Settings(
+        app_env="production",
+        rate_limit_store="memory",
+        csrf_secret="",
+        google_client_id="",
+        google_client_secret="",
+        public_origin="https://localhost",
+        google_redirect_uri="https://localhost/api/auth/google/callback",
+    )
+    with pytest.raises(RuntimeError, match="Invalid production settings"):
+        validate_runtime_settings(s)
+
+
+def test_validate_runtime_settings_accepts_prod() -> None:
+    validate_runtime_settings(
+        Settings(
+            app_env="production",
+            rate_limit_store="postgres",
+            csrf_secret="x" * 32,
+            google_client_id="cid",
+            google_client_secret="csec",
+            public_origin="https://app.example.com",
+            google_redirect_uri="https://app.example.com/api/auth/google/callback",
+        )
+    )

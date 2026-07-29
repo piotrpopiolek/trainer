@@ -1,7 +1,7 @@
 # Trainer
 
-[![Status](https://img.shields.io/badge/status-scaffold-yellow)](#project-status)
-[![Phase](https://img.shields.io/badge/phase-1%20MVP%20F1.0-blue)](#project-scope)
+[![Status](https://img.shields.io/badge/status-F1.prod%20gates-brightgreen)](#project-status)
+[![Phase](https://img.shields.io/badge/phase-1%20MVP%20F1.prod-blue)](#project-scope)
 [![Docs](https://img.shields.io/badge/docs-PRD-informational)](docs/prd.md)
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)](#license)
 
@@ -60,13 +60,13 @@ This app is **not** a medical device and does not replace professional advice. R
 | ORM | SQLAlchemy 2.0 (async) + Alembic |
 | Database | PostgreSQL 16 + JSONB |
 | Tooling | uv, Ruff, mypy (strict), pytest + pytest-cov (`fail_under = 80`) |
-| Auth (MVP) | Google OAuth (Auth Code + PKCE) — not wired yet |
+| Auth (MVP) | Google OAuth (Auth Code + PKCE), `__Host-` session cookie |
 
 ### Infrastructure
 
 | Phase | Components |
 |-------|------------|
-| Phase 1 | Docker Compose + Caddy (same-origin `/` + `/api`), GitHub Actions (next), PG backup/restore |
+| Phase 1 | Docker Compose + Caddy (same-origin `/` + `/api`), GitHub Actions, encrypted PG backup/restore + purge |
 | Phase 2+ | Redis + ARQ, Cloudflare R2, OpenTelemetry |
 
 ## Getting started locally
@@ -127,6 +127,8 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | `make test-idor` | `pytest -m idor` |
 | `make migrate` | `alembic upgrade head` |
 | `make seed` | CC + legal seed (idempotent) |
+| `make content-gate` | Strict pl-PL ready gate (F1.prod) |
+| `make restore-drill` | Encrypted backup → wipe → restore smoke |
 
 ### Frontend (`frontend/`)
 
@@ -176,13 +178,14 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | Product requirements | Done — [docs/prd.md](docs/prd.md) |
 | Schema plan | Done — [docs/db-plan.md](docs/db-plan.md) |
 | Cursor project rules | Done — `.cursor/rules/` |
-| Monorepo scaffold | Done — `backend/`, `frontend/`, `infra/`, Compose + Caddy |
-| CI (GitHub Actions) | Done — `.github/workflows/ci.yml` + weekly `security.yml` |
-| DB core (auth/legal/onboarding/RLS) | Done — Alembic `20260726_0001` |
-| Catalog / sessions / sync schema | Not started |
+| Monorepo + CI + Compose | Done |
+| Auth / domain / progression / sync API | Done (F1.0–F1.1) |
+| Offline PWA outbox | Done (F1.1) |
+| Content gate 60× pl-PL ready + restore drill | Done (F1.prod) |
+| Go-live ops | Checklist — [infra/runbooks/go-live.md](infra/runbooks/go-live.md) |
 | License file | Not chosen |
 
-Current focus: **Phase 1 F1.0 — next is db-catalog-sync migrations.**
+Current focus: **dogfood / host go-live** (not Phase 2).
 
 ## License
 

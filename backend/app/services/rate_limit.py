@@ -79,7 +79,9 @@ class PostgresRateLimiter:
 def get_rate_limiter() -> RateLimiter:
     store = settings.rate_limit_store.lower()
     if settings.app_env in {"production", "staging"} and store == "memory":
-        return PostgresRateLimiter()
+        raise RuntimeError(
+            "RATE_LIMIT_STORE=memory is forbidden in production/staging"
+        )
     if store in {"postgres", "pg", "postgresql"}:
         return PostgresRateLimiter()
     return MemoryRateLimiter()

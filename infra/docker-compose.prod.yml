@@ -1,5 +1,7 @@
 # Production-oriented overrides (compose -f docker-compose.yml -f infra/docker-compose.prod.yml)
 # Fill secrets via env / vault; do not bake credentials into the image.
+# Also set in .env: PUBLIC_ORIGIN, GOOGLE_*, CSRF_SECRET, BACKUP_ENCRYPTION_PASSPHRASE.
+# Checklist: infra/runbooks/go-live.md
 
 services:
   db:

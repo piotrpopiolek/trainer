@@ -90,3 +90,31 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_runtime_settings(cfg: Settings | None = None) -> None:
+    """Fail fast on misconfigured staging/production (FR-005a/c, FR-001)."""
+    s = cfg or settings
+    if s.app_env not in {"production", "staging"}:
+        return
+
+    errors: list[str] = []
+    store = s.rate_limit_store.lower()
+    if store == "memory":
+        errors.append("RATE_LIMIT_STORE=memory is forbidden (use postgres)")
+    if not s.csrf_secret.strip():
+        errors.append("CSRF_SECRET is required")
+    if not s.google_client_id.strip() or not s.google_client_secret.strip():
+        errors.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required")
+    for label, value in (
+        ("PUBLIC_ORIGIN", s.public_origin),
+        ("GOOGLE_REDIRECT_URI", s.google_redirect_uri),
+    ):
+        lower = value.lower()
+        if "localhost" in lower or "127.0.0.1" in lower:
+            errors.append(f"{label} must not use localhost/127.0.0.1")
+
+    if errors:
+        raise RuntimeError(
+            f"Invalid {s.app_env} settings: " + "; ".join(errors)
+        )
