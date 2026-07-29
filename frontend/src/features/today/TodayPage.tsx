@@ -4,16 +4,18 @@ import { useTranslation } from "react-i18next";
 
 import { Button, Input, Modal, Page } from "@/components/ui";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
+import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import {
-  createSession,
-  fetchToday,
-  softDeleteSession,
-} from "@/features/training/api";
+  createSessionOfflineAware,
+  softDeleteSessionOfflineAware,
+} from "@/features/sync/writes";
+import { fetchToday } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { formatDateInTimezone } from "@/lib/dates";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import type { ProgressionEvent, Today } from "@/lib/schemas";
 import { useAuthStore } from "@/stores/authStore";
+import { useSyncStore } from "@/stores/syncStore";
 
 function goalHint(advance: unknown): string {
   if (!advance || typeof advance !== "object") return "";
@@ -30,9 +32,13 @@ export function TodayPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.me);
+  const syncEvents = useSyncStore((s) => s.recentEvents);
   const userTz = me?.timezone ?? "Europe/Warsaw";
   const [override, setOverride] = useState<number | undefined>();
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    revision: number;
+  } | null>(null);
   const [logExercise, setLogExercise] = useState<{
     id: string;
     kind: "cc" | "satellite";
@@ -49,20 +55,44 @@ export function TodayPage() {
   });
 
   const createMut = useMutation({
-    mutationFn: createSession,
-    onSuccess: async (session) => {
-      setEvents((prev) => [...prev, ...session.progression_events]);
+    mutationFn: async (input: Parameters<typeof createSessionOfflineAware>[1]) => {
+      if (!me?.id) throw new ApiError(401, "unauthorized");
+      return createSessionOfflineAware(me.id, input);
+    },
+    onSuccess: async (result) => {
+      if (result.pendingSync) {
+        setFlash(t("sync.savedPending"));
+        qc.setQueryData<Today>(["today", override ?? null], (old) => {
+          if (!old) return old;
+          if (old.sessions.some((s) => s.id === result.session.id)) return old;
+          return { ...old, sessions: [result.session, ...old.sessions] };
+        });
+      } else {
+        setEvents((prev) => [...prev, ...result.session.progression_events]);
+        setFlash(t("today.saved"));
+        await qc.invalidateQueries({ queryKey: ["today"] });
+      }
       setLogExercise(null);
-      setFlash(t("today.saved"));
-      await qc.invalidateQueries({ queryKey: ["today"] });
     },
   });
 
   const deleteMut = useMutation({
-    mutationFn: softDeleteSession,
-    onSuccess: async () => {
+    mutationFn: async (target: { id: string; revision: number }) => {
+      if (!me?.id) throw new ApiError(401, "unauthorized");
+      return softDeleteSessionOfflineAware(me.id, target.id, target.revision);
+    },
+    onSuccess: async (_result, target) => {
       setPendingDelete(null);
-      await qc.invalidateQueries({ queryKey: ["today"] });
+      qc.setQueryData<Today>(["today", override ?? null], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          sessions: old.sessions.filter((s) => s.id !== target.id),
+        };
+      });
+      if (navigator.onLine) {
+        await qc.invalidateQueries({ queryKey: ["today"] });
+      }
     },
   });
 
@@ -74,6 +104,8 @@ export function TodayPage() {
     for (const sat of data.satellites) map[sat.exercise_id] = sat.name;
     return map;
   }, [data]);
+
+  const allEvents = [...events, ...syncEvents];
 
   if (todayQ.isLoading) {
     return <Page title={t("today.title")}>{t("shell.loading")}</Page>;
@@ -90,177 +122,190 @@ export function TodayPage() {
   }
 
   return (
-    <Page title={t("today.title")}>
-      <p className="text-sm text-slate-600">
-        {data.local_date} · {data.timezone}
-        {data.is_rest_day ? ` · ${t("today.restDay")}` : ` · ${t("today.splitDay", { day: data.split_day })}`}
-      </p>
+    <>
+      <SyncStatusBanner />
+      <Page title={t("today.title")}>
+        <p className="text-sm text-slate-600">
+          {data.local_date} · {data.timezone}
+          {data.is_rest_day
+            ? ` · ${t("today.restDay")}`
+            : ` · ${t("today.splitDay", { day: data.split_day })}`}
+        </p>
 
-      {data.is_rest_day ? (
-        <div className="flex flex-wrap gap-2">
-          <span className="text-sm font-medium text-slate-700">{t("today.trainAnyway")}</span>
-          {[1, 2, 3].map((d) => (
-            <Button
-              key={d}
-              variant={override === d ? "primary" : "secondary"}
-              onClick={() => setOverride(d)}
-            >
-              {t("today.dayN", { n: d })}
-            </Button>
-          ))}
-          {override != null ? (
-            <Button variant="ghost" onClick={() => setOverride(undefined)}>
-              {t("today.clearOverride")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+        {data.is_rest_day ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm font-medium text-slate-700">
+                {t("today.trainAnyway")}
+              </span>
+              {[1, 2, 3].map((d) => (
+                <Button
+                  key={d}
+                  variant={override === d ? "primary" : "secondary"}
+                  onClick={() => setOverride(d)}
+                >
+                  {t("today.dayN", { n: d })}
+                </Button>
+              ))}
+              {override != null ? (
+                <Button variant="ghost" onClick={() => setOverride(undefined)}>
+                  {t("today.clearOverride")}
+                </Button>
+              ) : null}
+            </div>
+            {override != null ? (
+              <p className="text-xs text-amber-800">{t("today.trainAnywayWarning")}</p>
+            ) : null}
+          </div>
+        ) : null}
 
-      {flash ? <p className="text-sm text-teal-800">{flash}</p> : null}
+        {flash ? <p className="text-sm text-teal-800">{flash}</p> : null}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-semibold">{t("today.cc")}</h2>
-        {data.cc_exercises.length === 0 ? (
-          <p className="text-sm text-slate-500">{t("today.noCc")}</p>
-        ) : (
-          data.cc_exercises.map((ex) => (
-            <ExerciseRow
-              key={ex.exercise_id}
-              name={ex.name}
-              step={ex.current_step_number}
-              hint={goalHint(ex.advance)}
-              onLog={() => {
-                setReps(["10", "10", "10"]);
-                setLogExercise({
-                  id: ex.exercise_id,
-                  kind: "cc",
-                  name: ex.name,
-                  sets: 3,
-                });
-              }}
-            />
-          ))
-        )}
-      </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-lg font-semibold">{t("today.cc")}</h2>
+          {data.cc_exercises.length === 0 ? (
+            <p className="text-sm text-slate-500">{t("today.noCc")}</p>
+          ) : (
+            data.cc_exercises.map((ex) => (
+              <ExerciseRow
+                key={ex.exercise_id}
+                name={ex.name}
+                step={ex.current_step_number}
+                hint={goalHint(ex.advance)}
+                cacheLabel={t("sync.stepFromCache")}
+                onLog={() => {
+                  setReps(["10", "10", "10"]);
+                  setLogExercise({
+                    id: ex.exercise_id,
+                    kind: "cc",
+                    name: ex.name,
+                    sets: 3,
+                  });
+                }}
+              />
+            ))
+          )}
+        </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-semibold">{t("today.satellites")}</h2>
-        {data.satellites.length === 0 ? (
-          <p className="text-sm text-slate-500">{t("today.noSatellites")}</p>
-        ) : (
-          data.satellites.map((sat) => (
-            <ExerciseRow
-              key={sat.exercise_id}
-              name={sat.name}
-              step={sat.current_step_number ?? 1}
-              onLog={() => {
-                setReps(["10", "10", "10"]);
-                setLogExercise({
-                  id: sat.exercise_id,
-                  kind: "satellite",
-                  name: sat.name,
-                  sets: 3,
-                });
-              }}
-            />
-          ))
-        )}
-      </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-lg font-semibold">{t("today.satellites")}</h2>
+          {data.satellites.length === 0 ? (
+            <p className="text-sm text-slate-500">{t("today.noSatellites")}</p>
+          ) : (
+            data.satellites.map((sat) => (
+              <ExerciseRow
+                key={sat.exercise_id}
+                name={sat.name}
+                step={sat.current_step_number ?? 1}
+                onLog={() => {
+                  setReps(["10", "10", "10"]);
+                  setLogExercise({
+                    id: sat.exercise_id,
+                    kind: "satellite",
+                    name: sat.name,
+                    sets: 3,
+                  });
+                }}
+              />
+            ))
+          )}
+        </section>
 
-      <SessionsList
-        data={data}
-        onDelete={(id) => setPendingDelete(id)}
-        tDelete={t("today.deleteSession")}
-        tSessions={t("today.sessions")}
-        tEmpty={t("today.noSessions")}
-      />
+        <SessionsList
+          data={data}
+          onDelete={(id, revision) => setPendingDelete({ id, revision })}
+          tDelete={t("today.deleteSession")}
+          tSessions={t("today.sessions")}
+          tEmpty={t("today.noSessions")}
+        />
 
-      <Modal
-        open={logExercise != null}
-        title={logExercise ? t("today.logTitle", { name: logExercise.name }) : ""}
-        onClose={() => setLogExercise(null)}
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setLogExercise(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              disabled={createMut.isPending || !logExercise}
-              onClick={() => {
-                if (!logExercise) return;
-                const now = new Date();
-                createMut.mutate({
-                  performedAt: now.toISOString(),
-                  localDate: formatDateInTimezone(userTz, now),
-                  clientTimezone: userTz,
-                  logs: [
-                    {
-                      exercise_id: logExercise.id,
-                      exercise_kind: logExercise.kind,
-                      section: "main",
-                      sets: {
-                        schema_version: 1,
-                        sets: reps.map((r) => ({ reps: Number(r) || 0 })),
+        <Modal
+          open={logExercise != null}
+          title={logExercise ? t("today.logTitle", { name: logExercise.name }) : ""}
+          onClose={() => setLogExercise(null)}
+          actions={
+            <>
+              <Button variant="secondary" onClick={() => setLogExercise(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                disabled={createMut.isPending || !logExercise}
+                onClick={() => {
+                  if (!logExercise) return;
+                  const now = new Date();
+                  createMut.mutate({
+                    performedAt: now.toISOString(),
+                    localDate: formatDateInTimezone(userTz, now),
+                    clientTimezone: userTz,
+                    logs: [
+                      {
+                        exercise_id: logExercise.id,
+                        exercise_kind: logExercise.kind,
+                        section: "main",
+                        sets: {
+                          schema_version: 1,
+                          sets: reps.map((r) => ({ reps: Number(r) || 0 })),
+                        },
                       },
-                    },
-                  ],
-                });
-              }}
-            >
-              {t("today.saveLog")}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-2">
-          {reps.map((r, i) => (
-            <Input
-              key={i}
-              label={t("today.setN", { n: i + 1 })}
-              type="number"
-              min={0}
-              value={r}
-              onChange={(e) => {
-                const next = [...reps];
-                next[i] = e.target.value;
-                setReps(next);
-              }}
-            />
-          ))}
-          {createMut.isError ? (
-            <p className="text-sm text-rose-700" role="alert">
-              {createMut.error instanceof ApiError
-                ? t(errorCodeToI18nKey(createMut.error.errorCode))
-                : t("errors.generic")}
-            </p>
-          ) : null}
-        </div>
-      </Modal>
+                    ],
+                  });
+                }}
+              >
+                {t("today.saveLog")}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            {reps.map((r, i) => (
+              <Input
+                key={i}
+                label={t("today.setN", { n: i + 1 })}
+                type="number"
+                min={0}
+                value={r}
+                onChange={(e) => {
+                  const next = [...reps];
+                  next[i] = e.target.value;
+                  setReps(next);
+                }}
+              />
+            ))}
+            {createMut.isError ? (
+              <p className="text-sm text-rose-700" role="alert">
+                {createMut.error instanceof ApiError
+                  ? t(errorCodeToI18nKey(createMut.error.errorCode))
+                  : t("errors.generic")}
+              </p>
+            ) : null}
+          </div>
+        </Modal>
 
-      <Modal
-        open={pendingDelete != null}
-        title={t("today.noRewindTitle")}
-        onClose={() => setPendingDelete(null)}
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={deleteMut.isPending || !pendingDelete}
-              onClick={() => pendingDelete && deleteMut.mutate(pendingDelete)}
-            >
-              {t("today.confirmDelete")}
-            </Button>
-          </>
-        }
-      >
-        <p>{t("today.noRewindBody")}</p>
-      </Modal>
+        <Modal
+          open={pendingDelete != null}
+          title={t("today.noRewindTitle")}
+          onClose={() => setPendingDelete(null)}
+          actions={
+            <>
+              <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={deleteMut.isPending || !pendingDelete}
+                onClick={() => pendingDelete && deleteMut.mutate(pendingDelete)}
+              >
+                {t("today.confirmDelete")}
+              </Button>
+            </>
+          }
+        >
+          <p>{t("today.noRewindBody")}</p>
+        </Modal>
 
-      <ProgressionSurface events={events} names={names} />
-    </Page>
+        <ProgressionSurface events={allEvents} names={names} />
+      </Page>
+    </>
   );
 }
 
@@ -268,11 +313,13 @@ function ExerciseRow({
   name,
   step,
   hint,
+  cacheLabel,
   onLog,
 }: {
   name: string;
   step: number;
   hint?: string;
+  cacheLabel?: string;
   onLog: () => void;
 }) {
   const { t } = useTranslation();
@@ -283,6 +330,7 @@ function ExerciseRow({
         <p className="text-xs text-slate-500">
           {t("today.step", { n: step })}
           {hint ? ` · ${hint}` : ""}
+          {cacheLabel ? ` · ${cacheLabel}` : ""}
         </p>
       </div>
       <Button onClick={onLog}>{t("today.log")}</Button>
@@ -298,7 +346,7 @@ function SessionsList({
   tEmpty,
 }: {
   data: Today;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, revision: number) => void;
   tDelete: string;
   tSessions: string;
   tEmpty: string;
@@ -326,7 +374,7 @@ function SessionsList({
                   ))}
                 </ul>
               </div>
-              <Button variant="ghost" onClick={() => onDelete(s.id)}>
+              <Button variant="ghost" onClick={() => onDelete(s.id, s.revision)}>
                 {tDelete}
               </Button>
             </div>

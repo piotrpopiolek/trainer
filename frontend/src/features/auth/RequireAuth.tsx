@@ -4,7 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { ApiError } from "@/lib/api";
 import { fetchMe } from "@/features/auth/api";
-import { useAuthStore } from "@/stores/authStore";
+import { readCachedMe, useAuthStore } from "@/stores/authStore";
 
 export function RequireAuth() {
   const { t } = useTranslation();
@@ -15,9 +15,25 @@ export function RequireAuth() {
   const q = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
-      const data = await fetchMe();
-      setMe(data);
-      return data;
+      try {
+        const data = await fetchMe();
+        setMe(data);
+        return data;
+      } catch (err) {
+        // Offline / transport: keep last profile so outbox + legal gate survive reload
+        if (
+          !navigator.onLine ||
+          err instanceof TypeError ||
+          (err instanceof ApiError && (err.status === 0 || err.status >= 500))
+        ) {
+          const cached = readCachedMe();
+          if (cached) {
+            setMe(cached);
+            return cached;
+          }
+        }
+        throw err;
+      }
     },
     retry: false,
   });

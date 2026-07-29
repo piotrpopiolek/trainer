@@ -46,6 +46,7 @@
     "restDay": "dzień odpoczynku",
     "splitDay": "dzień {{day}}",
     "trainAnyway": "Trenuj mimo to:",
+    "trainAnywayWarning": "Override nie zmienia splitu tygodnia — plan może się rozjechać.",
     "dayN": "Dzień {{n}}",
     "clearOverride": "Wyczyść",
     "cc": "Convict Conditioning",
@@ -107,7 +108,34 @@
     "title": "Ustawienia",
     "user": "Konto",
     "logout": "Wyloguj",
-    "logoutAll": "Wyloguj ze wszystkich urządzeń"
+    "logoutAll": "Wyloguj ze wszystkich urządzeń",
+    "syncTitle": "Synchronizacja",
+    "syncPending": "Oczekujące: {{pending}} · Kwarantanna: {{quarantine}}",
+    "persistOk": "Trwały storage: przyznany",
+    "persistNo": "Trwały storage: odmowa przeglądarki — ryzyko utraty outboxa",
+    "persistUnknown": "Trwały storage: nieznany",
+    "oldestPending": "Najstarszy pending: {{at}}",
+    "conflicts": "Konflikty sync",
+    "scheduleTitle": "Split i strefa czasowa",
+    "scheduleHint": "Zmiany wchodzą od jutra (w aktywnej TZ). Przed zapisem spróbujemy zsynchronizować outbox.",
+    "split": "Dni treningowe",
+    "splitUnchanged": "Bez zmiany splitu",
+    "timezone": "Strefa czasowa",
+    "timezoneCustom": "IANA (np. Europe/Warsaw)",
+    "saveSchedule": "Zapisz harmonogram",
+    "schedulePending": "Zaplanowano od {{date}}",
+    "scheduleSaved": "Harmonogram zapisany"
+  },
+  "sync": {
+    "offline": "Jesteś offline — zapisy trafiają do outboxa.",
+    "pending": "Oczekuje na synchronizację ({{count}})",
+    "savedPending": "Zapisano lokalnie — ocena awansu po syncu.",
+    "syncNow": "Synchronizuj teraz",
+    "quarantine": "Wymaga uwagi: {{count}} pozycji w kwarantannie",
+    "transportEscalation": "Wielokrotna awaria synchronizacji — sprawdź sieć lub spróbuj ponownie.",
+    "conflictToast": "Konflikt sync ({{kind}}) — lokalny wynik przegrany, przywrócono stan serwera.",
+    "persistWarning": "Przeglądarka nie gwarantuje trwałego storage — zainstaluj PWA / Dodaj do ekranu początkowego, aby zmniejszyć ryzyko utraty niezsynchronizowanych danych.",
+    "stepFromCache": "Stan z ostatniego syncu"
   },
   "errors": {
     "generic": "Coś poszło nie tak. Spróbuj ponownie.",
@@ -122,6 +150,7 @@
     "sessionDateImmutable": "Daty sesji nie można zmienić.",
     "batchTooLarge": "Zbyt duży batch synchronizacji.",
     "emailNotVerified": "Zweryfikuj e-mail w Google i spróbuj ponownie.",
-    "oauthState": "Logowanie przerwane — spróbuj jeszcze raz."
+    "oauthState": "Logowanie przerwane — spróbuj jeszcze raz.",
+    "nothingToUpdate": "Wybierz zmianę splitu lub strefy czasowej."
   }
 }

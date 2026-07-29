@@ -13,6 +13,7 @@ const KNOWN: Record<string, string> = {
   oauth_state_invalid: "errors.oauthState",
   unauthorized: "errors.unauthorized",
   not_found: "errors.notFound",
+  nothing_to_update: "errors.nothingToUpdate",
 };
 
 export function errorCodeToI18nKey(errorCode: string): string {

@@ -43,7 +43,7 @@ todos:
     status: completed
   - id: f11-offline
     content: "F1.1: IndexedDB i outbox z revision, kolejnosc FR-072a, retry i quarantine, UX konfliktow, storage.persist, Trenuj mimo to, zmiana splitu i TZ"
-    status: pending
+    status: completed
   - id: f1prod-gates
     content: "F1.prod: restore drill, kompletny katalog pl-PL 60x ready, twardy content gate w CI, swiezy backup przed migracja prod"
     status: pending

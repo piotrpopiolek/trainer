@@ -3,14 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { Button, Input, Page } from "@/components/ui";
-import { createMeasurement, listMeasurements } from "@/features/training/api";
+import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
+import { createMeasurementOfflineAware } from "@/features/sync/writes";
+import { listMeasurements } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
-import { formatLocalDate } from "@/lib/dates";
+import { formatDateInTimezone } from "@/lib/dates";
 import { errorCodeToI18nKey } from "@/lib/errors";
+import { useAuthStore } from "@/stores/authStore";
 
 export function MeasurementsPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const me = useAuthStore((s) => s.me);
   const [weight, setWeight] = useState("");
   const [waist, setWaist] = useState("");
   const [biceps, setBiceps] = useState("");
@@ -22,10 +26,12 @@ export function MeasurementsPage() {
 
   const createMut = useMutation({
     mutationFn: () => {
+      if (!me?.id) throw new ApiError(401, "unauthorized");
       const now = new Date();
-      return createMeasurement({
+      const tz = me.timezone ?? "Europe/Warsaw";
+      return createMeasurementOfflineAware(me.id, {
         measuredAt: now.toISOString(),
-        localDate: formatLocalDate(now),
+        localDate: formatDateInTimezone(tz, now),
         weightKg: weight ? Number(weight) : undefined,
         waistCm: waist ? Number(waist) : undefined,
         bicepsCm: biceps ? Number(biceps) : undefined,
@@ -40,7 +46,9 @@ export function MeasurementsPage() {
   });
 
   return (
-    <Page title={t("measurements.title")}>
+    <>
+      <SyncStatusBanner />
+      <Page title={t("measurements.title")}>
       {listQ.isLoading ? <p>{t("shell.loading")}</p> : null}
       <ul className="flex flex-col gap-2">
         {(listQ.data ?? []).map((m) => {
@@ -112,5 +120,6 @@ export function MeasurementsPage() {
         </Button>
       </form>
     </Page>
+    </>
   );
 }

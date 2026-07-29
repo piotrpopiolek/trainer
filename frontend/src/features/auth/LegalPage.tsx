@@ -23,9 +23,13 @@ export function LegalPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!q.data) throw new Error("missing_disclaimer");
-      await acceptDisclaimer(q.data);
-      const me = await fetchMe();
-      setMe(me);
+      const result = await acceptDisclaimer(q.data);
+      if (result.pendingSync && me) {
+        setMe({ ...me, health_disclaimer_accepted: true });
+      } else {
+        const next = await fetchMe();
+        setMe(next);
+      }
       await qc.invalidateQueries({ queryKey: ["me"] });
     },
     onSuccess: () => navigate("/", { replace: true }),
