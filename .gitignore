@@ -53,3 +53,5 @@ frontend/playwright/.cache/
 *.log
 tmp/
 .temp/
+*.pdf
+*.PDF

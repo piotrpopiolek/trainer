@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from app.seed.loader import SEED_ROOT
@@ -51,10 +52,18 @@ def _nonempty_clean(value: object) -> bool:
     return bool(text) and not _has_draft_marker(text)
 
 
+def _sentence_count(text: str) -> int:
+    """Count sentence-like units ending with . ! or ? (FR-020a: 2–6)."""
+    parts = [p.strip() for p in re.split(r"[.!?]+", text) if p.strip()]
+    return len(parts)
+
+
 def strict_ready_ok(seed_root: Path | None = None) -> tuple[bool, str]:
     """F1.prod: program + 3 days + 6 exercises + 60 steps ready, no [DRAFT]."""
     root = seed_root or SEED_ROOT
+    entities_path = root / "cc" / "entities.json"
     pl_path = root / "cc" / "pl-PL" / "catalog.json"
+    entities = json.loads(entities_path.read_text(encoding="utf-8"))
     pl = json.loads(pl_path.read_text(encoding="utf-8"))
     issues: list[str] = []
 
@@ -82,12 +91,27 @@ def strict_ready_ok(seed_root: Path | None = None) -> tuple[bool, str]:
         if not _nonempty_clean(ex.get("description")):
             issues.append(f"exercise:{slug}:description")
 
+    expected_slugs = [e["slug"] for e in (entities.get("exercises") or [])]
+    steps_n = int(entities.get("steps_per_exercise") or 10)
+    expected_keys = {(slug, n) for slug in expected_slugs for n in range(1, steps_n + 1)}
+
     steps = pl.get("steps") or []
     if len(steps) != 60:
         issues.append(f"steps:count={len(steps)}")
+    seen: set[tuple[str, int]] = set()
     for step in steps:
         status = step.get("content_status")
-        label = f"{step.get('exercise_slug')}#{step.get('step_number')}"
+        slug = str(step.get("exercise_slug") or "")
+        try:
+            num = int(step.get("step_number"))
+        except (TypeError, ValueError):
+            issues.append(f"{slug}#:bad_step_number")
+            continue
+        label = f"{slug}#{num}"
+        key = (slug, num)
+        if key in seen:
+            issues.append(f"{label}:duplicate")
+        seen.add(key)
         if status != "ready":
             issues.append(f"{label}:status")
         if not _nonempty_clean(step.get("name")):
@@ -95,9 +119,17 @@ def strict_ready_ok(seed_root: Path | None = None) -> tuple[bool, str]:
         desc = step.get("description") or ""
         if not _nonempty_clean(desc):
             issues.append(f"{label}:description")
-        elif len(desc.split(".")) < 2:
-            # FR-020a: 2–6 sentences — soft lower bound (at least two sentence-ish parts)
-            issues.append(f"{label}:description_too_short")
+        else:
+            sc = _sentence_count(desc)
+            if sc < 2 or sc > 6:
+                issues.append(f"{label}:description_sentence_count={sc}")
+
+    missing = expected_keys - seen
+    extra = seen - expected_keys
+    for slug, num in sorted(missing)[:5]:
+        issues.append(f"{slug}#{num}:missing")
+    for slug, num in sorted(extra)[:5]:
+        issues.append(f"{slug}#{num}:unexpected")
 
     if issues:
         return False, f"strict gate failed ({len(issues)} issues); e.g. {issues[0]}"

@@ -78,9 +78,16 @@ age -d -i /path/to/backup.key \
    pg_restore -h localhost -p 5433 -U trainer -d trainer --clean --if-exists /tmp/trainer.dump
    ```
 
-4. Migrations: `docker compose run --rm api alembic current` must equal `head`. If restore is from pre-migration backup, run `alembic upgrade head` only when intentional.
-5. Smoke: `GET /api/health`, Google login, spot-check session/progress counts vs pre-backup notes.
-6. Before any prod Alembic migration: take a fresh encrypted backup first.
+4. Re-grant `trainer_app` (nightly dump uses `--no-acl` / `--no-owner`):
+
+   ```bash
+   docker compose exec -T db psql -U trainer -d trainer \
+     -v ON_ERROR_STOP=1 -f - < infra/restore/regrant_app.sql
+   ```
+
+5. Migrations: `docker compose run --rm api alembic current` must equal `head`. If restore is from pre-migration backup, run `alembic upgrade head` only when intentional.
+6. Smoke: `GET /api/health`, Google login, spot-check session/progress counts vs pre-backup notes. Optionally `docker compose run --rm api python -m app.seed` (idempotent) to confirm app-role writes.
+7. Before any prod Alembic migration: take a fresh encrypted backup first.
 
 ## Account purge (FR-006c)
 
