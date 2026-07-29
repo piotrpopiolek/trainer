@@ -119,7 +119,7 @@ jobs:
         run: node scripts/check_i18n_pl.mjs
 
   content-gate:
-    name: Content gate (soft until F1.prod)
+    name: Content gate (strict pl-PL ready)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -128,8 +128,25 @@ jobs:
           python-version: "3.13"
       - name: Run content gate
         env:
-          TRAINER_CONTENT_GATE_STRICT: "0"
+          TRAINER_CONTENT_GATE_STRICT: "1"
         run: python scripts/check_content_gate.py
+
+  restore-drill:
+    name: Restore drill (FR-081a)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare env
+        run: bash scripts/gen_dev_env.sh
+      - name: Build images
+        run: |
+          docker compose build api
+          docker compose --profile ops build backup
+      - name: Restore drill
+        run: bash infra/restore/restore_drill.sh
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 
   e2e:
     name: Playwright E2E (Compose)

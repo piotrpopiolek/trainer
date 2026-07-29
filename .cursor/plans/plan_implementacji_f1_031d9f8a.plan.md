@@ -46,7 +46,7 @@ todos:
     status: completed
   - id: f1prod-gates
     content: "F1.prod: restore drill, kompletny katalog pl-PL 60x ready, twardy content gate w CI, swiezy backup przed migracja prod"
-    status: pending
+    status: completed
 isProject: false
 ---
 

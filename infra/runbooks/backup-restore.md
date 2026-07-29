@@ -17,6 +17,16 @@ docker compose --profile ops run --rm backup
 
 Artifacts land in `infra/backup/out/` (bind-mounted outside the app container filesystem; copy off-host in prod). The job streams `pg_dump | openssl` (or age) so **plaintext dumps never** write to that directory — only `.enc` / `.age` (plus atomic `.partial` cleaned on failure).
 
+## Rel16 — backup before prod migration
+
+Before any production `alembic upgrade`:
+
+1. Run a fresh encrypted backup (`docker compose --profile ops run --rm backup`).
+2. Confirm `backup.ok` + `LAST_OK`.
+3. Copy the artifact off the app host.
+4. Only then run migrations.
+5. Periodically run the [restore drill](../restore/README.md) (`infra/restore/restore_drill.sh`) so RTO stays realistic.
+
 Structured logs:
 
 - `backup.ok file=… enc_bytes=… elapsed_s=…`

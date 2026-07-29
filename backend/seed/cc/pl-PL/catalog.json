@@ -1,468 +1,477 @@
 {
   "schema_version": 1,
   "locale": "pl-PL",
-  "catalog_version": 1,
+  "catalog_version": 2,
   "program": {
-    "name": "[DRAFT] Program Big Six",
-    "description": "[DRAFT] Sześć podstawowych wzorców ruchowych z progresją kroków. Treści własne — nie cytat z książki."
+    "name": "Program Big Six",
+    "description": "Sześć podstawowych wzorców ruchowych z dziesięciostopniową progresją. Treści własne aplikacji — bez cytatów z książek. Awans i regres ocenia serwer według reguł kroku."
   },
   "days": [
-    {"day_index": 1, "name": "[DRAFT] Dzień 1"},
-    {"day_index": 2, "name": "[DRAFT] Dzień 2"},
-    {"day_index": 3, "name": "[DRAFT] Dzień 3"}
+    {
+      "day_index": 1,
+      "name": "Dzień 1 — pompki i przysiady"
+    },
+    {
+      "day_index": 2,
+      "name": "Dzień 2 — podciągania i unoszenie nóg"
+    },
+    {
+      "day_index": 3,
+      "name": "Dzień 3 — mostek i pompki pionowe"
+    }
   ],
   "exercises": [
     {
       "slug": "push_ups",
-      "name": "[DRAFT] Pompki",
-      "description": "[DRAFT] Progresja pompek od wersji ściennych do trudniejszych wariantów."
+      "name": "Pompki",
+      "description": "Progresja pompek od wersji przy ścianie do wariantów jednoręcznych. Skupienie na linii ciała, kontroli barków i równym oddechu."
     },
     {
       "slug": "squats",
-      "name": "[DRAFT] Przysiady",
-      "description": "[DRAFT] Progresja przysiadów z naciskiem na kontrolę i zakres ruchu."
+      "name": "Przysiady",
+      "description": "Progresja przysiadów od wersji z podporą do przysiadu jednonóż. Nacisk na głębokość, stabilność kolan i napięcie tułowia."
     },
     {
       "slug": "pull_ups",
-      "name": "[DRAFT] Podciągania",
-      "description": "[DRAFT] Progresja podciągnięć od wariantów poziomych do pełnych."
+      "name": "Podciągania",
+      "description": "Progresja podciągnięć od wariantów poziomych do jednoręcznych. Praca łopatek, pełny zakres i brak huśtania."
     },
     {
       "slug": "leg_raises",
-      "name": "[DRAFT] Unoszenie nóg",
-      "description": "[DRAFT] Progresja pracy tułowia i bioder w pozycji zwisu lub leżenia."
+      "name": "Unoszenie nóg",
+      "description": "Progresja pracy tułowia i bioder od leżenia do zwisu. Stabilne lędźwie, kontrolowane tempo, bez zamachu."
     },
     {
       "slug": "bridges",
-      "name": "[DRAFT] Mostek biodrowy",
-      "description": "[DRAFT] Progresja mostka z naciskiem na tylny łańcuch i kontrolę."
+      "name": "Mostek",
+      "description": "Progresja mostka biodrowego i pełnego mostka. Tylny łańcuch, kontrola miednicy i bezpieczny zakres."
     },
     {
       "slug": "handstand_push_ups",
-      "name": "[DRAFT] Pompki w staniu na rękach",
-      "description": "[DRAFT] Progresja pompek pionowych od pozycji przy ścianie."
+      "name": "Pompki pionowe",
+      "description": "Progresja pompek w staniu na rękach przy ścianie. Linia ciała, stabilne barki i stopniowe pogłębianie zakresu."
     }
   ],
   "steps": [
     {
       "exercise_slug": "push_ups",
       "step_number": 1,
-      "name": "[DRAFT] Pompki — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki przy ścianie",
+      "description": "Stań twarzą do ściany, dłonie na wysokości klatki. Utrzymuj tułów w linii i zbliżaj mostek do ściany kontrolowanym ruchem. Wracaj do wyprostu łokci bez zapadania barków. Oddychaj równo i trzymaj napięty brzuch przez całą serię.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 2,
-      "name": "[DRAFT] Pompki — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki w podporze skośnym",
+      "description": "Dłonie oprzyj na stabilnym podwyższeniu, ciało w jednej linii od głowy do pięt. Opuszczaj klatkę do poziomu dłoni, potem wypychaj się w górę. Unikaj zapadania bioder i zbytniego unoszenia pośladków. Tempo spokojne, pełny zakres bez szarpania.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 3,
-      "name": "[DRAFT] Pompki — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki na kolanach",
+      "description": "Przyjmij podpor przodem z kolanami na podłożu i biodrami w linii z tułowiem. Opuszczaj klatkę nisko, trzymając łokcie blisko ciała. Wypychaj się do wyprostu, nie łamiąc bioder. Skup się na napięciu tułowia i równym oddechu.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 4,
-      "name": "[DRAFT] Pompki — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki połowiczne",
+      "description": "W podporze przodem ogranicz zakres do górnej połowy ruchu. Utrzymuj sztywny tułów i kontroluj fazę opuszczania. Nie blokuj oddechu na dole. Buduj siłę barków i tricepsów bez utraty linii ciała.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 5,
-      "name": "[DRAFT] Pompki — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki klasyczne",
+      "description": "Pełny podpor przodem, ciało w linii. Opuszczaj klatkę blisko podłoża i wypychaj się do wyprostu łokci. Barki stabilne, brzuch napięty, bez zapadania lędźwi. Ruch płynny w obu fazach.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 6,
-      "name": "[DRAFT] Pompki — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki wąskie",
+      "description": "Ustaw dłonie bliżej siebie pod barkami. Trzymaj łokcie blisko tułowia podczas opuszczania. Wypychaj się mocno w górę, nie unosząc bioder. Wariacja kładzie nacisk na triceps i kontrolę łopatek.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 7,
-      "name": "[DRAFT] Pompki — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki nierówne",
+      "description": "Jedną dłoń oprzyj na niewielkim podwyższeniu, drugą na podłożu. Zachowaj linię ciała i równomierne tempo. Zmieniaj strony między seriami lub w kolejnych treningach. Unikaj rotacji barków i zapadania bioder.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 8,
-      "name": "[DRAFT] Pompki — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki prawie jednoręczne",
+      "description": "Przenieś większość obciążenia na jedną rękę, drugą trzymaj lekko dla równowagi. Opuszczaj się kontrolowanie, nie skręcając tułowia. Wypychaj się w górę bez szarpnięcia. Trenuj obie strony w zrównoważonym wolumenie.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 9,
-      "name": "[DRAFT] Pompki — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki z dźwignią",
+      "description": "Ustaw pozycję tak, by pracująca ręka dźwigała większą dźwignię ciała. Zachowaj napięcie tułowia i stabilny bark. Opuszczaj i wypychaj w pełnym możliwym zakresie. Tempo wolne, bez utraty linii bioder.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 10,
-      "name": "[DRAFT] Pompki — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki jednoręczne",
+      "description": "Wykonuj pełny ruch na jednej ręce z tułowiem w linii. Druga ręka pozostaje wolna lub lekko dotyka podłoża tylko w razie utraty równowagi. Kontroluj rotację i oddech. Buduj siłę symetrycznie na obu stronach.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 1,
-      "name": "[DRAFT] Przysiady — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiady przy oparciu",
+      "description": "Trzymaj się stabilnego oparcia i zejdź w przysiad do komfortowej głębokości. Kolana prowadź w linii ze stopami, pięty na podłożu. Wróć do stania bez szarpania. Oddychaj równo i utrzymuj wyprostowany tułów.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 2,
-      "name": "[DRAFT] Przysiady — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiady wspomagane",
+      "description": "Użyj lekkiego podparcia dłoni tylko do równowagi. Zejdź biodrami w dół i wróć do wyprostu bioder. Nie zapadaj klatki i nie unosź pięt. Ruch kontrolowany w obu fazach.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 3,
-      "name": "[DRAFT] Przysiady — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad pudełkowy",
+      "description": "Siadaj na stabilne pudełko lub stopień i wstawać bez zamachu. Zachowaj napięcie brzucha i kierunek kolan. Dotknięcie siedzenia jest krótkie, bez pełnego odpoczynku. Buduj pewność głębokości i kontroli.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 4,
-      "name": "[DRAFT] Przysiady — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad połowiczny",
+      "description": "Zejdź do około połowy zakresu i wróć do stania. Utrzymuj ciężar na środku stopy. Nie zapadaj kolan do środka. Tempo spokojne, bez odbicia z dołu.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 5,
-      "name": "[DRAFT] Przysiady — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad pełny",
+      "description": "Zejdź głęboko z piętami na podłożu i tułowiem stabilnym. Kolana śledzą linię stóp. Wróć do pełnego wyprostu bioder. Oddychaj i trzymaj napięcie tułowia przez całą serię.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 6,
-      "name": "[DRAFT] Przysiady — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad wąski",
+      "description": "Ustaw stopy bliżej siebie i zachowaj równowagę. Zejdź kontrolowanie, nie unosząc pięt. Wróć do stania bez szarpania kolan. Wariacja zwiększa wymagania mobilności i kontroli.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 7,
-      "name": "[DRAFT] Przysiady — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad nierówny",
+      "description": "Jedną stopę oprzyj na lekkim podwyższeniu. Zachowaj pion tułowia i równomierne tempo. Zmieniaj strony między seriami. Unikaj zapadania kolana pracującej nogi do środka.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 8,
-      "name": "[DRAFT] Przysiady — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad prawie jednonóż",
+      "description": "Przenieś większość obciążenia na jedną nogę, drugą używaj lekko do równowagi. Zejdź i wróć kontrolowanie. Nie skręcaj bioder. Trenuj obie strony w podobnym wolumenie.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 9,
-      "name": "[DRAFT] Przysiady — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad z dźwignią",
+      "description": "Ustaw pozycję tak, by pracująca noga dźwigała większą część masy ciała. Utrzymuj równowagę i napięcie tułowia. Ruch wolny, pełny możliwy zakres. Bez odbicia i bez utraty linii kolana.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "squats",
       "step_number": 10,
-      "name": "[DRAFT] Przysiady — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Przysiad jednonóż",
+      "description": "Wykonaj pełny przysiad na jednej nodze z kontrolą bioder i kolana. Druga noga pozostaje wolna. Wróć do stania bez szarpania. Buduj siłę i równowagę symetrycznie.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 1,
-      "name": "[DRAFT] Podciągania — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie poziome przy stole",
+      "description": "Chwyć stabilną krawędź i ustaw ciało pod skosem. Przyciągnij klatkę do krawędzi, łokcie blisko ciała. Opuszczaj się kontrolowanie do wyprostu. Utrzymuj napięty tułów i linię bioder.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 2,
-      "name": "[DRAFT] Podciągania — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie poziome niższe",
+      "description": "Zmniejsz kąt ciała, by zwiększyć obciążenie. Przyciągaj się równo, bez szarpania biodrami. Pełny wyprost na dole, kontrola na górze. Oddychaj i trzymaj łopatki aktywne.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 3,
-      "name": "[DRAFT] Podciągania — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie z nogami na podwyższeniu",
+      "description": "Stopy na podwyższeniu, ciało niemal poziomo. Przyciągaj klatkę do chwytu. Unikaj zapadania bioder. Ruch płynny, bez huśtania.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 4,
-      "name": "[DRAFT] Podciągania — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie półzakresowe",
+      "description": "Na drążku pracuj w górnej połowie zakresu. Utrzymuj napięcie barków i nie szarp. Opuszczaj się tylko do wybranego punktu. Buduj siłę bez utraty kontroli.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 5,
-      "name": "[DRAFT] Podciągania — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie pełne",
+      "description": "Z pełnego zwisu przyciągnij brodę nad drążek. Opuszczaj się do wyprostu łokci. Bez kippingu i bez nadmiernego huśtania. Tempo kontrolowane w obu fazach.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 6,
-      "name": "[DRAFT] Podciągania — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie wąskie",
+      "description": "Chwyt węższy niż barki. Przyciągaj się blisko tułowia. Nie wzruszaj barkami do uszu. Pełny zakres i równy oddech.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 7,
-      "name": "[DRAFT] Podciągania — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie nierówne",
+      "description": "Jedna ręka wyżej lub na grubszym chwycie. Zachowaj linię tułowia. Zmieniaj strony. Unikaj rotacji i szarpania.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 8,
-      "name": "[DRAFT] Podciągania — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie prawie jednoręczne",
+      "description": "Większość pracy na jednej ręce, druga lekko pomaga. Kontroluj opuszczanie. Trenuj obie strony. Bez huśtania biodrami.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 9,
-      "name": "[DRAFT] Podciągania — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie z dźwignią",
+      "description": "Ustaw asymetrię chwytu zwiększającą dźwignię. Trzymaj napięty core. Ruch wolny i pełny możliwy zakres. Stabilne barki przez całą serię.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 10,
-      "name": "[DRAFT] Podciągania — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podciąganie jednoręczne",
+      "description": "Przyciągaj się jedną ręką z kontrolą rotacji. Opuszczaj do pełnego wyprostu. Buduj siłę symetrycznie. Bez kippingu.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 1,
-      "name": "[DRAFT] Unoszenie nóg — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie kolan w leżeniu",
+      "description": "Leż na plecach, unosź zgięte kolana nad biodra. Przyciskaj lędźwie do podłoża. Opuszczaj nogi kontrolowanie. Oddychaj równo i nie szarp biodrami.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 2,
-      "name": "[DRAFT] Unoszenie nóg — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie prostych nóg w leżeniu",
+      "description": "Z leżenia unosź proste nogi do pionu. Lędźwie stabilne, brzuch napięty. Opuszczaj powoli bez odbicia. Zakres pełny w granicach kontroli.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 3,
-      "name": "[DRAFT] Unoszenie nóg — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie kolan w zwisie",
+      "description": "W zwisie unosź kolana do klatki. Nie huśtaj tułowiem. Opuszczaj kontrolowanie. Łopatki aktywne, barki stabilne.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 4,
-      "name": "[DRAFT] Unoszenie nóg — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg częściowe w zwisie",
+      "description": "Z zwisu unosź proste nogi do około połowy zakresu. Trzymaj tempo. Unikaj bujania. Buduj siłę zginaczy bioder i tułowia.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 5,
-      "name": "[DRAFT] Unoszenie nóg — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg do poziomu",
+      "description": "Unosź proste nogi do równoległości z podłożem. Core napięty. Opuszczaj wolno. Bez szarpania barkami.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 6,
-      "name": "[DRAFT] Unoszenie nóg — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg powyżej poziomu",
+      "description": "Prowadź nogi wyżej niż poziom, z kontrolą bioder. Nie gub napięcia brzucha. Wróć płynnie w dół. Oddech równy.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 7,
-      "name": "[DRAFT] Unoszenie nóg — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg do drążka",
+      "description": "Przybliżaj stopy w stronę drążka z prostymi nogami. Unikaj nadmiernego huśtania. Opuszczaj w kontroli. Pełne napięcie tułowia.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 8,
-      "name": "[DRAFT] Unoszenie nóg — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg z pauzą",
+      "description": "Na szczycie ruchu zatrzymaj się krótko. Zachowaj linię i spokojny oddech. Opuszczaj wolniej niż unoszenie. Buduj wytrzymałość kontroli.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 9,
-      "name": "[DRAFT] Unoszenie nóg — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg w wolnym tempie",
+      "description": "Cały ruch bardzo wolny, bez zamachu. Stabilne barki. Pełny zakres możliwy technicznie. Jakość ważniejsza od liczby powtórzeń.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 10,
-      "name": "[DRAFT] Unoszenie nóg — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Unoszenie nóg zaawansowane",
+      "description": "Wykonuj pełny zakres z maksymalną kontrolą bioder i tułowia. Bez kippingu. Symetria obu stron. Utrzymuj napięcie od pierwszego do ostatniego powtórzenia.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 1,
-      "name": "[DRAFT] Mostek — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek barkowy krótki",
+      "description": "Leż na plecach, wypychaj biodra lekko w górę. Naciskaj piętami, napinaj pośladki. Opuszczaj kontrolowanie. Oddychaj i nie zapadaj klatki.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 2,
-      "name": "[DRAFT] Mostek — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek biodrowy",
+      "description": "Wypychaj biodra do linii barków i kolan. Przytrzymaj krótko na górze. Opuszczaj wolno. Kolana stabilne, bez zapadania do środka.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 3,
-      "name": "[DRAFT] Mostek — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek z unoszeniem jednej nogi",
+      "description": "W mostku unieś jedną nogę, utrzymując biodra równo. Zmieniaj strony. Nie skręcaj miednicy. Tempo kontrolowane.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 4,
-      "name": "[DRAFT] Mostek — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek z rękami bliżej stóp",
+      "description": "Przysuń dłonie bliżej stóp, zwiększając wymaganie mobilności. Wypychaj biodra wysoko. Oddychaj swobodnie. Bez bólu w odcinku lędźwiowym — tylko kontrolowany zakres.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 5,
-      "name": "[DRAFT] Mostek — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek pełny",
+      "description": "Unosź biodra wysoko z oparciem na dłoniach i stopach. Patrz w górę lub lekko do tyłu w granicach komfortu. Wracać wolno. Stabilne barki i napięte pośladki.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 6,
-      "name": "[DRAFT] Mostek — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek z krótką pauzą",
+      "description": "Na szczycie utrzymaj pozycję kilka oddechów. Zachowaj równomierne obciążenie stóp. Opuszczaj kontrolowanie. Buduj izometrię tylnego łańcucha.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 7,
-      "name": "[DRAFT] Mostek — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek nierówny",
+      "description": "Jedną stopę lub dłoń ustaw na lekkim podwyższeniu. Utrzymuj biodra równo. Zmieniaj strony. Unikaj zapadania barków.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 8,
-      "name": "[DRAFT] Mostek — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek prawie jednonóż",
+      "description": "Przenieś większość obciążenia na jedną nogę. Druga lekko pomaga. Kontroluj miednicę. Trenuj obie strony.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 9,
-      "name": "[DRAFT] Mostek — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek z dźwignią",
+      "description": "Zwiększ wymaganie poprzez ustawienie stóp lub dłoni. Ruch wolny. Pełne napięcie pośladków i hamstringów. Bez szarpania w lędźwiach.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "bridges",
       "step_number": 10,
-      "name": "[DRAFT] Mostek — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Mostek zaawansowany",
+      "description": "Wykonuj pełny mostek z maksymalną kontrolą i równą pracą obu stron. Wchodź i schodź płynnie. Utrzymuj oddech. Jakość pozycji ważniejsza od tempa.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 1,
-      "name": "[DRAFT] HSPU — krok 1",
-      "description": "[DRAFT] Opis własny kroku 1. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Podpór przy ścianie twarzą do ściany",
+      "description": "Stań twarzą do ściany w lekkim podporze barkowym. Napnij brzuch i pośladki. Oddychaj równo. Buduj nawyk linii ciała bez zapadania lędźwi.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 2,
-      "name": "[DRAFT] HSPU — krok 2",
-      "description": "[DRAFT] Opis własny kroku 2. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Stanie na rękach przy ścianie",
+      "description": "Wejdź do stania na rękach z oparciem o ścianę. Trzymaj łokcie wypchnięte, barki aktywne. Oddychaj spokojnie. Zejdź kontrolowanie po serii.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 3,
-      "name": "[DRAFT] HSPU — krok 3",
-      "description": "[DRAFT] Opis własny kroku 3. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Ugięcia częściowe przy ścianie",
+      "description": "W staniu na rękach ugnij łokcie lekko i wróć do wyprostu. Głowa nie uderza w podłoże. Tempo wolne. Stabilny core.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 4,
-      "name": "[DRAFT] HSPU — krok 4",
-      "description": "[DRAFT] Opis własny kroku 4. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Ugięcia do połowy zakresu",
+      "description": "Opuszczaj się głębiej, ale nie do pełnego zakresu. Zachowaj linię bioder. Wypychaj do wyprostu. Bez utraty napięcia barków.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 5,
-      "name": "[DRAFT] HSPU — krok 5",
-      "description": "[DRAFT] Opis własny kroku 5. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe pełne przy ścianie",
+      "description": "Opuszczaj głowę blisko podłoża i wypychaj do wyprostu. Ściana tylko do równowagi. Oddychaj. Ruch płynny bez szarpania.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 6,
-      "name": "[DRAFT] HSPU — krok 6",
-      "description": "[DRAFT] Opis własny kroku 6. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe wąskie",
+      "description": "Dłonie bliżej siebie. Łokcie prowadź kontrolowanie. Nie zapadaj barków. Pełny możliwy zakres przy ścianie.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 7,
-      "name": "[DRAFT] HSPU — krok 7",
-      "description": "[DRAFT] Opis własny kroku 7. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe nierówne",
+      "description": "Jedną dłoń na lekkim podwyższeniu. Zachowaj linię. Zmieniaj strony. Unikaj rotacji tułowia.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 8,
-      "name": "[DRAFT] HSPU — krok 8",
-      "description": "[DRAFT] Opis własny kroku 8. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe prawie jednoręczne",
+      "description": "Przenieś obciążenie na jedną rękę przy lekkiej pomocy drugiej. Tempo wolne. Trenuj obie strony. Stabilny core.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 9,
-      "name": "[DRAFT] HSPU — krok 9",
-      "description": "[DRAFT] Opis własny kroku 9. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe z dźwignią",
+      "description": "Ustaw dźwignię zwiększającą trudność przy zachowaniu kontroli. Opuszczaj i wypychaj bez utraty linii. Ściana do asekuracji. Jakość ruchu priorytetem.",
+      "content_status": "ready"
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 10,
-      "name": "[DRAFT] HSPU — krok 10",
-      "description": "[DRAFT] Opis własny kroku 10. Do uzupełnienia przez PCO (2–6 zdań).",
-      "content_status": "draft"
+      "name": "Pompki pionowe zaawansowane",
+      "description": "Wykonuj pełny zakres z wysoką kontrolą barków i tułowia. Minimalne oparcie o ścianę. Symetria stron. Bezpieczne zejście po serii.",
+      "content_status": "ready"
     }
   ]
 }

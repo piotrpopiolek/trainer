@@ -1,2 +1,5 @@
 # Keep shell scripts LF so Compose Alpine `/bin/sh` accepts `set -eu`
 *.sh text eol=lf
+infra/restore/*.sh text eol=lf
+infra/backup/*.sh text eol=lf
+

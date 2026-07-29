@@ -40,28 +40,68 @@ def soft_structure_ok(seed_root: Path | None = None) -> tuple[bool, str]:
     return True, "structure ok (draft allowed until F1.prod)"
 
 
+def _has_draft_marker(value: str) -> bool:
+    return "[DRAFT]" in value
+
+
+def _nonempty_clean(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    return bool(text) and not _has_draft_marker(text)
+
+
 def strict_ready_ok(seed_root: Path | None = None) -> tuple[bool, str]:
+    """F1.prod: program + 3 days + 6 exercises + 60 steps ready, no [DRAFT]."""
     root = seed_root or SEED_ROOT
     pl_path = root / "cc" / "pl-PL" / "catalog.json"
     pl = json.loads(pl_path.read_text(encoding="utf-8"))
-    drafts: list[str] = []
-    for step in pl.get("steps") or []:
+    issues: list[str] = []
+
+    prog = pl.get("program") or {}
+    if not _nonempty_clean(prog.get("name")):
+        issues.append("program:name")
+    if not _nonempty_clean(prog.get("description")):
+        issues.append("program:description")
+
+    days = pl.get("days") or []
+    if len(days) != 3:
+        issues.append("days:count")
+    for day in days:
+        idx = day.get("day_index")
+        if not _nonempty_clean(day.get("name")):
+            issues.append(f"day#{idx}:name")
+
+    exercises = pl.get("exercises") or []
+    if len(exercises) != 6:
+        issues.append("exercises:count")
+    for ex in exercises:
+        slug = ex.get("slug") or "?"
+        if not _nonempty_clean(ex.get("name")):
+            issues.append(f"exercise:{slug}:name")
+        if not _nonempty_clean(ex.get("description")):
+            issues.append(f"exercise:{slug}:description")
+
+    steps = pl.get("steps") or []
+    if len(steps) != 60:
+        issues.append(f"steps:count={len(steps)}")
+    for step in steps:
         status = step.get("content_status")
-        name = step.get("name") or ""
-        description = step.get("description") or ""
         label = f"{step.get('exercise_slug')}#{step.get('step_number')}"
         if status != "ready":
-            drafts.append(f"{label}:status")
-        if not name.strip() or "[DRAFT]" in name:
-            drafts.append(f"{label}:name")
-        if not description.strip() or "[DRAFT]" in description:
-            drafts.append(f"{label}:description")
-    prog = pl.get("program") or {}
-    if "[DRAFT]" in (prog.get("name") or "") or "[DRAFT]" in (prog.get("description") or ""):
-        drafts.append("program")
-    if drafts:
-        return False, f"strict gate failed ({len(drafts)} issues); e.g. {drafts[0]}"
-    return True, "strict ready ok"
+            issues.append(f"{label}:status")
+        if not _nonempty_clean(step.get("name")):
+            issues.append(f"{label}:name")
+        desc = step.get("description") or ""
+        if not _nonempty_clean(desc):
+            issues.append(f"{label}:description")
+        elif len(desc.split(".")) < 2:
+            # FR-020a: 2–6 sentences — soft lower bound (at least two sentence-ish parts)
+            issues.append(f"{label}:description_too_short")
+
+    if issues:
+        return False, f"strict gate failed ({len(issues)} issues); e.g. {issues[0]}"
+    return True, "strict ready ok (60× pl-PL ready)"
 
 
 def run_content_gate(*, strict: bool | None = None) -> tuple[int, str]:

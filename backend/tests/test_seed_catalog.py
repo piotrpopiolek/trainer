@@ -1,13 +1,14 @@
 """Seed catalog structure + idempotent DB apply."""
 
 import json
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import settings
-from app.seed.content_gate import run_content_gate
+from app.seed.content_gate import run_content_gate, soft_structure_ok, strict_ready_ok
 from app.seed.ids import seed_id
 from app.seed.loader import SEED_ROOT, load_json
 from app.seed.runner import legal_content_hash, run_seed
@@ -21,7 +22,9 @@ def test_seed_json_structure() -> None:
     assert entities["steps_per_exercise"] == 10
     assert len(entities["days"]) == 3
     assert len(pl["steps"]) == 60
-    assert all(s.get("content_status") == "draft" for s in pl["steps"])
+    assert all(s.get("content_status") == "ready" for s in pl["steps"])
+    assert pl["catalog_version"] >= 2
+    assert "[DRAFT]" not in json.dumps(pl, ensure_ascii=False)
     legal = load_json("legal", "documents.json")
     assert {d["slug"] for d in legal["documents"]} >= {
         "health_disclaimer",
@@ -48,11 +51,38 @@ def test_content_gate_soft_passes_with_seed(monkeypatch: pytest.MonkeyPatch) -> 
     assert code == 0
 
 
-def test_content_gate_strict_fails_on_drafts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_content_gate_strict_passes_ready_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("TRAINER_CONTENT_GATE_STRICT", "1")
     code, msg = run_content_gate()
-    assert code == 1
+    assert code == 0
+    assert "strict ready ok" in msg
+
+
+def test_content_gate_strict_fails_on_draft_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cc = tmp_path / "cc"
+    (cc / "pl-PL").mkdir(parents=True)
+    entities = json.loads((SEED_ROOT / "cc" / "entities.json").read_text(encoding="utf-8"))
+    pl = json.loads(
+        (SEED_ROOT / "cc" / "pl-PL" / "catalog.json").read_text(encoding="utf-8")
+    )
+    pl["steps"][0]["content_status"] = "draft"
+    pl["steps"][0]["name"] = "[DRAFT] broken"
+    (cc / "entities.json").write_text(
+        json.dumps(entities, ensure_ascii=False), encoding="utf-8"
+    )
+    (cc / "pl-PL" / "catalog.json").write_text(
+        json.dumps(pl, ensure_ascii=False), encoding="utf-8"
+    )
+    ok, _ = soft_structure_ok(tmp_path)
+    assert ok
+    ok, msg = strict_ready_ok(tmp_path)
+    assert not ok
     assert "strict gate failed" in msg
+    monkeypatch.setenv("TRAINER_CONTENT_GATE_STRICT", "1")
 
 
 @pytest.mark.asyncio
@@ -83,7 +113,8 @@ async def test_seed_runner_idempotent() -> None:
                     "SELECT COUNT(*) FROM exercise_step_translations est "
                     "JOIN exercise_steps es ON es.id = est.exercise_step_id "
                     "JOIN exercises e ON e.id = es.exercise_id "
-                    "WHERE e.kind = 'cc' AND est.locale = 'pl-PL'"
+                    "WHERE e.kind = 'cc' AND est.locale = 'pl-PL' "
+                    "AND est.content_status = 'ready'"
                 )
             )
             days = await conn.scalar(text("SELECT COUNT(*) FROM program_days"))
