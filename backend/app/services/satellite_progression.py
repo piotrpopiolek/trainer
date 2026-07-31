@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -13,14 +14,10 @@ from app.domain.satellite_progression import (
     SatelliteEvaluationInput,
     SatelliteProgressionEvaluator,
 )
-from app.models.catalog import Exercise, ExerciseStep, SatelliteConfigVersion
-from app.models.progression import ProgressionSchema, UserExerciseProgress
+from app.models.catalog import SatelliteConfigVersion
+from app.models.progression import UserExerciseProgress
 from app.models.workout import SessionExerciseLog, WorkoutSession
-from app.schemas.satellite import (
-    ActiveMetricsV1,
-    parse_satellite_config_document,
-    parse_satellite_rules,
-)
+from app.schemas.satellite import parse_satellite_config_document
 from app.services.errors import DomainError
 
 
@@ -48,7 +45,7 @@ class SatelliteProgressionOrchestrator:
         )
         if row is None:
             raise DomainError("satellite_config_not_found", http_status=404)
-        if bytes(row.config_hash) != bytes(config_hash):
+        if not hmac.compare_digest(bytes(row.config_hash), bytes(config_hash)):
             raise DomainError("satellite_config_mismatch", http_status=422)
         return row
 
@@ -99,7 +96,6 @@ class SatelliteProgressionOrchestrator:
             config_hash=log.satellite_config_hash,
         )
         document = parse_satellite_config_document(config.document)
-        # Goal-only Stage 1: evaluate against the single step / current progress step.
         progress = await db.scalar(
             select(UserExerciseProgress)
             .where(
@@ -109,25 +105,16 @@ class SatelliteProgressionOrchestrator:
             .with_for_update()
         )
         step_number = progress.current_step_number if progress is not None else 1
-        step = await db.scalar(
-            select(ExerciseStep).where(
-                ExerciseStep.exercise_id == log.exercise_id,
-                ExerciseStep.step_number == step_number,
-            )
-        )
-        if step is None:
-            # Fall back to config document first step
-            cfg_step = sorted(document.steps, key=lambda s: (s.sort_order, str(s.step_id)))[0]
-            rules = cfg_step.rules
-            schema_version = 1
+
+        # Evaluate exclusively against the immutable hashed document — never
+        # ExerciseStep.rules (those may diverge after edit/bug; hash would be inert).
+        ordered = sorted(document.steps, key=lambda s: (s.sort_order, str(s.step_id)))
+        if document.progression.mode == "goal_only":
+            cfg_step = ordered[0]
         else:
-            rules = parse_satellite_rules(step.rules)
-            schema = await db.scalar(
-                select(ProgressionSchema).where(
-                    ProgressionSchema.id == step.progression_schema_id
-                )
-            )
-            schema_version = schema.schema_version if schema is not None else 1
+            cfg_step = next((s for s in ordered if s.sort_order == step_number), None)
+            if cfg_step is None:
+                raise DomainError("satellite_step_not_in_config", http_status=422)
 
         eligible = await self._is_active_for_day(
             db,
@@ -139,7 +126,7 @@ class SatelliteProgressionOrchestrator:
         try:
             evaluation = self._evaluator.evaluate(
                 SatelliteEvaluationInput(
-                    rules=rules,
+                    rules=cfg_step.rules,
                     active_metrics=document.active_metrics,
                     log_payload=log.sets,
                     skipped=log.skipped,
@@ -147,7 +134,7 @@ class SatelliteProgressionOrchestrator:
                     persisted_goal_met=bool(log.goal_met),
                     progression_eligible=eligible,
                     step_number=step_number,
-                    schema_version=schema_version,
+                    schema_version=config.schema_version,
                 )
             )
         except ValueError as exc:

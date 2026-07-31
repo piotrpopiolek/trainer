@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api";
 import { formatDateInTimezone } from "@/lib/dates";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import type { ProgressionEvent } from "@/lib/schemas";
+import { parseWeightInputToKgString } from "@/lib/satelliteContracts";
 import { useAuthStore } from "@/stores/authStore";
 import { useSyncStore } from "@/stores/syncStore";
 
@@ -94,9 +95,11 @@ function activeMetricsList(raw: unknown): string[] {
 }
 
 function formatWeightKg(raw: string): string {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return "0.000";
-  return n.toFixed(3);
+  try {
+    return parseWeightInputToKgString(raw);
+  } catch {
+    return "0.000";
+  }
 }
 
 export function TodayPage() {

@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { schemaVersion } from "@/lib/schemas";
+const schemaVersion = z.number().int().gte(1);
 
 const weightKg = z
   .string()
@@ -96,3 +96,22 @@ export const satelliteLogResultSchema = z
 
 export type SatelliteLogResult = z.infer<typeof satelliteLogResultSchema>;
 export type SatelliteRules = z.infer<typeof satelliteRulesSchema>;
+
+/** Canonical weight string via integer grams (avoids float drift). */
+export function weightKgFromGrams(grams: number): string {
+  if (!Number.isInteger(grams) || grams <= 0) {
+    throw new Error("invalid_weight_grams");
+  }
+  const whole = Math.floor(grams / 1000);
+  const frac = grams % 1000;
+  return `${whole}.${String(frac).padStart(3, "0")}`;
+}
+
+export function parseWeightInputToKgString(raw: string): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error("invalid_weight_kg");
+  }
+  const grams = Math.round(n * 1000);
+  return weightKgFromGrams(grams);
+}

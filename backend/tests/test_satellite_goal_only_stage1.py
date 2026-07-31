@@ -313,3 +313,81 @@ async def test_type_c_completed_online(db: AsyncSession) -> None:
         commit=True,
     )
     assert read.logs[0].goal_met is True
+
+
+@pytest.mark.asyncio
+async def test_evaluate_uses_config_document_not_divergent_step_rules(
+    db: AsyncSession,
+) -> None:
+    """P1 regression: poisoned ExerciseStep.rules must not change goal_met."""
+    from app.models.catalog import ExerciseStep
+    from app.models.workout import SessionExerciseLog
+
+    user = await _ready(db, "config-source@ex.com")
+    sat = await create_satellite(
+        db,
+        user=user,
+        body=SatelliteCreateV1.model_validate(
+            {
+                "schema_version": 1,
+                "name": "Poisoned step",
+                "exercise_type": "B",
+                "active_metrics": {"schema_version": 1, "metrics": ["reps"]},
+                "schedule_kind": "daily",
+                "steps": [
+                    {
+                        "step_number": 1,
+                        "name": "Working",
+                        "rules": {
+                            "schema_version": 1,
+                            "goal": {"type": "reps", "sets": 1, "min_reps": 10},
+                        },
+                    }
+                ],
+                "client_mutation_id": str(new_uuid7()),
+            }
+        ),
+        commit=True,
+    )
+    step = await db.scalar(
+        select(ExerciseStep).where(ExerciseStep.exercise_id == sat.id)
+    )
+    assert step is not None
+    step.rules = {
+        "schema_version": 1,
+        "goal": {"type": "reps", "sets": 1, "min_reps": 99},
+    }
+    await db.commit()
+
+    read = await create_session(
+        db,
+        user=user,
+        body=SessionCreateV1(
+            schema_version=1,
+            performed_at=datetime(2026, 7, 28, 10, 0, tzinfo=UTC),
+            local_date=date(2026, 7, 28),
+            client_mutation_id=new_uuid7(),
+            client_timezone="Europe/Warsaw",
+            logs=[
+                SessionLogCreateV1(
+                    exercise_id=sat.id,
+                    exercise_kind="satellite",
+                    sets={
+                        "schema_version": 1,
+                        "completed": None,
+                        "sets": [{"reps": 10}],
+                    },
+                    satellite_config_version_id=sat.current_config_version_id,
+                    satellite_config_hash=sat.config_hash,
+                )
+            ],
+        ),
+        commit=True,
+    )
+    assert read.logs[0].goal_met is True
+    log_row = await db.scalar(
+        select(SessionExerciseLog).where(SessionExerciseLog.id == read.logs[0].id)
+    )
+    assert log_row is not None
+    assert log_row.rules_snapshot is not None
+    assert log_row.rules_snapshot.get("goal", {}).get("min_reps") == 10

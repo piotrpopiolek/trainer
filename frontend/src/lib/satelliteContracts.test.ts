@@ -3,12 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { canonicalize, sha256JcsHex } from "@/lib/canonicalJson";
 import {
+  parseWeightInputToKgString,
   satelliteLogResultSchema,
   satelliteRulesSchema,
   satelliteSetSchema,
+  weightKgFromGrams,
 } from "@/lib/satelliteContracts";
+import { canonicalize, sha256JcsHex } from "@/lib/canonicalJson";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const vectorsPath = path.join(
@@ -87,5 +89,12 @@ describe("satellite contracts Stage 1", () => {
       ],
     });
     expect(parsed.sets).toHaveLength(2);
+  });
+
+  it("normalizes weight via integer grams", () => {
+    expect(weightKgFromGrams(20250)).toBe("20.250");
+    expect(parseWeightInputToKgString("20.25")).toBe("20.250");
+    expect(() => weightKgFromGrams(0)).toThrow();
+    expect(() => parseWeightInputToKgString("-1")).toThrow();
   });
 });

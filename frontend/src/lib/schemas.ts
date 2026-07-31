@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { activeMetricsSchema, satelliteGoalSchema } from "@/lib/satelliteContracts";
+
 /** Every versioned API/JSONB document requires schema_version (FR-046). */
 export const schemaVersion = z.number().int().gte(1);
 
