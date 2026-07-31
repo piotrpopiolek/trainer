@@ -63,6 +63,42 @@ function setCountFromAdvance(advance: unknown): number {
   return typeof sets === "number" && sets >= 1 ? sets : 3;
 }
 
+type SatelliteGoal = {
+  type?: string;
+  sets?: number;
+  min_reps?: number | null;
+  min_duration_sec?: number | null;
+  require_both_sides?: boolean;
+};
+
+type LogTarget = {
+  id: string;
+  kind: "cc" | "satellite";
+  name: string;
+  sets: number;
+  useDuration: boolean;
+  goalType?: "reps" | "duration" | "completed";
+  requireBothSides?: boolean;
+  trackWeight?: boolean;
+  setSides?: Array<"left" | "right" | null>;
+  configVersionId?: string;
+  configHash?: string;
+};
+
+function activeMetricsList(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const metrics = (raw as { metrics?: unknown }).metrics;
+  return Array.isArray(metrics)
+    ? metrics.filter((m): m is string => typeof m === "string")
+    : [];
+}
+
+function formatWeightKg(raw: string): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "0.000";
+  return n.toFixed(3);
+}
+
 export function TodayPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -74,14 +110,10 @@ export function TodayPage() {
     id: string;
     revision: number;
   } | null>(null);
-  const [logExercise, setLogExercise] = useState<{
-    id: string;
-    kind: "cc" | "satellite";
-    name: string;
-    sets: number;
-    useDuration: boolean;
-  } | null>(null);
+  const [logExercise, setLogExercise] = useState<LogTarget | null>(null);
   const [setValues, setSetValues] = useState(["10", "10", "10"]);
+  const [weightValues, setWeightValues] = useState<string[]>([]);
+  const [completedFlag, setCompletedFlag] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [events, setEvents] = useState<ProgressionEvent[]>([]);
 
@@ -240,15 +272,57 @@ export function TodayPage() {
               <ExerciseRow
                 key={sat.exercise_id}
                 name={sat.name}
+                stepName={sat.step_name}
                 step={sat.current_step_number ?? 1}
                 onLog={() => {
-                  setSetValues(["10", "10", "10"]);
+                  const goal = (sat.goal ?? {}) as SatelliteGoal;
+                  const metrics = activeMetricsList(sat.active_metrics);
+                  const goalType =
+                    goal.type === "completed"
+                      ? "completed"
+                      : goal.type === "duration"
+                        ? "duration"
+                        : "reps";
+                  const requireBothSides = Boolean(goal.require_both_sides);
+                  const setCount =
+                    typeof goal.sets === "number" && goal.sets >= 1 ? goal.sets : 3;
+                  const setSides: Array<"left" | "right" | null> = [];
+                  if (goalType !== "completed") {
+                    if (requireBothSides) {
+                      for (let i = 0; i < setCount; i++) setSides.push("left");
+                      for (let i = 0; i < setCount; i++) setSides.push("right");
+                    } else {
+                      for (let i = 0; i < setCount; i++) setSides.push(null);
+                    }
+                  }
+                  const defaultVal =
+                    goalType === "duration"
+                      ? String(goal.min_duration_sec ?? 30)
+                      : String(goal.min_reps ?? 10);
+                  const trackWeight = metrics.includes("weight_kg");
+                  setCompletedFlag(false);
+                  setSetValues(
+                    goalType === "completed"
+                      ? []
+                      : Array.from({ length: setSides.length }, () => defaultVal),
+                  );
+                  setWeightValues(
+                    trackWeight
+                      ? Array.from({ length: setSides.length }, () => "20")
+                      : [],
+                  );
                   setLogExercise({
                     id: sat.exercise_id,
                     kind: "satellite",
                     name: sat.name,
-                    sets: 3,
-                    useDuration: false,
+                    sets: setSides.length || 1,
+                    useDuration: goalType === "duration",
+                    goalType,
+                    requireBothSides,
+                    trackWeight,
+                    setSides,
+                    configVersionId: sat.config_version_id ?? undefined,
+                    configHash: sat.config_hash ?? undefined,
                   });
                 }}
               />
@@ -279,6 +353,56 @@ export function TodayPage() {
                   if (!logExercise) return;
                   const now = new Date();
                   const useDuration = logExercise.useDuration;
+                  const isSatellite = logExercise.kind === "satellite";
+                  let setsPayload:
+                    | {
+                        schema_version: number;
+                        completed?: boolean | null;
+                        sets: Array<{
+                          reps?: number;
+                          duration_sec?: number;
+                          weight_kg?: string;
+                          sides?: "left" | "right" | "bilateral";
+                        }>;
+                      }
+                    | undefined;
+                  if (isSatellite && logExercise.goalType === "completed") {
+                    setsPayload = {
+                      schema_version: 1,
+                      completed: completedFlag,
+                      sets: [],
+                    };
+                  } else if (isSatellite) {
+                    setsPayload = {
+                      schema_version: 1,
+                      completed: null,
+                      sets: setValues.map((v, i) => {
+                        const side = logExercise.setSides?.[i] ?? null;
+                        const row: {
+                          reps?: number;
+                          duration_sec?: number;
+                          weight_kg?: string;
+                          sides?: "left" | "right" | "bilateral";
+                        } = useDuration
+                          ? { duration_sec: Number(v) || 0 }
+                          : { reps: Number(v) || 0 };
+                        if (side) row.sides = side;
+                        if (logExercise.trackWeight) {
+                          row.weight_kg = formatWeightKg(weightValues[i] ?? "0");
+                        }
+                        return row;
+                      }),
+                    };
+                  } else {
+                    setsPayload = {
+                      schema_version: 1,
+                      sets: setValues.map((v) =>
+                        useDuration
+                          ? { duration_sec: Number(v) || 0 }
+                          : { reps: Number(v) || 0 },
+                      ),
+                    };
+                  }
                   createMut.mutate({
                     performedAt: now.toISOString(),
                     localDate: formatDateInTimezone(userTz, now),
@@ -287,15 +411,17 @@ export function TodayPage() {
                       {
                         exercise_id: logExercise.id,
                         exercise_kind: logExercise.kind,
-                        section: "main",
-                        sets: {
-                          schema_version: 1,
-                          sets: setValues.map((v) =>
-                            useDuration
-                              ? { duration_sec: Number(v) || 0 }
-                              : { reps: Number(v) || 0 },
-                          ),
-                        },
+                        section: isSatellite ? "accessories" : "main",
+                        sets: setsPayload,
+                        ...(isSatellite &&
+                        logExercise.configVersionId &&
+                        logExercise.configHash
+                          ? {
+                              satellite_config_version_id:
+                                logExercise.configVersionId,
+                              satellite_config_hash: logExercise.configHash,
+                            }
+                          : {}),
                       },
                     ],
                   });
@@ -307,24 +433,61 @@ export function TodayPage() {
           }
         >
           <div className="flex flex-col gap-2">
-            {setValues.map((r, i) => (
-              <Input
-                key={i}
-                label={
-                  logExercise?.useDuration
-                    ? t("today.setDurationN", { n: i + 1 })
-                    : t("today.setN", { n: i + 1 })
-                }
-                type="number"
-                min={0}
-                value={r}
-                onChange={(e) => {
-                  const next = [...setValues];
-                  next[i] = e.target.value;
-                  setSetValues(next);
-                }}
-              />
-            ))}
+            {logExercise?.goalType === "completed" ? (
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={completedFlag}
+                  onChange={(e) => setCompletedFlag(e.target.checked)}
+                />
+                {t("today.markCompleted")}
+              </label>
+            ) : (
+              setValues.map((r, i) => {
+                const side = logExercise?.setSides?.[i];
+                const sideLabel =
+                  side === "left"
+                    ? t("today.sideLeft")
+                    : side === "right"
+                      ? t("today.sideRight")
+                      : null;
+                return (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Input
+                      label={
+                        sideLabel
+                          ? t("today.setSideN", { n: i + 1, side: sideLabel })
+                          : logExercise?.useDuration
+                            ? t("today.setDurationN", { n: i + 1 })
+                            : t("today.setN", { n: i + 1 })
+                      }
+                      type="number"
+                      min={0}
+                      value={r}
+                      onChange={(e) => {
+                        const next = [...setValues];
+                        next[i] = e.target.value;
+                        setSetValues(next);
+                      }}
+                    />
+                    {logExercise?.trackWeight ? (
+                      <Input
+                        label={t("today.weightKg")}
+                        type="number"
+                        min={0}
+                        step="0.001"
+                        value={weightValues[i] ?? ""}
+                        onChange={(e) => {
+                          const next = [...weightValues];
+                          next[i] = e.target.value;
+                          setWeightValues(next);
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
             {createMut.isError ? (
               <p className="text-sm text-rose-700" role="alert">
                 {createMut.error instanceof ApiError

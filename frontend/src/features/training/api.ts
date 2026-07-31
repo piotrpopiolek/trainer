@@ -38,9 +38,20 @@ export async function createSession(input: {
     exercise_kind: "cc" | "satellite";
     section?: "main" | "accessories";
     skipped?: boolean;
-    sets?: { schema_version: number; sets: Array<{ reps?: number }> };
+    sets?: {
+      schema_version: number;
+      completed?: boolean | null;
+      sets: Array<{
+        reps?: number;
+        duration_sec?: number;
+        weight_kg?: string;
+        sides?: "left" | "right" | "bilateral";
+      }>;
+    };
     notes?: string;
     sort_order?: number;
+    satellite_config_version_id?: string;
+    satellite_config_hash?: string;
   }>;
 }): Promise<Session> {
   const raw = await apiJson<unknown>("/api/sessions", {
@@ -76,17 +87,35 @@ export async function createSatellite(input: {
   schedule_kind: "daily" | "weekdays" | "category";
   weekdays?: number[];
   schedule_category?: "anytime" | "post_workout" | "rest_day";
-  goalReps: number;
-  goalSets: number;
+  goalReps?: number;
+  goalSets?: number;
+  requireBothSides?: boolean;
+  trackWeight?: boolean;
   stepName: string;
 }): Promise<Satellite> {
+  const isTypeC = input.exercise_type === "C";
+  const metrics: string[] = [];
+  if (!isTypeC) {
+    metrics.push("reps");
+    if (input.trackWeight) metrics.push("weight_kg");
+    if (input.requireBothSides) metrics.push("sides");
+  }
+  const goal = isTypeC
+    ? { type: "completed" as const }
+    : {
+        type: "reps" as const,
+        sets: input.goalSets ?? 3,
+        min_reps: input.goalReps ?? 10,
+        require_both_sides: input.requireBothSides ?? false,
+        min_weight_kg: null,
+      };
   const raw = await apiJson<unknown>("/api/satellites", {
     method: "POST",
     body: JSON.stringify({
       schema_version: 1,
       name: input.name,
       exercise_type: input.exercise_type,
-      active_metrics: { schema_version: 1, metrics: ["reps"] },
+      active_metrics: { schema_version: 1, metrics },
       schedule_kind: input.schedule_kind,
       weekdays: input.weekdays,
       schedule_category: input.schedule_category,
@@ -96,11 +125,7 @@ export async function createSatellite(input: {
           name: input.stepName,
           rules: {
             schema_version: 1,
-            goal: {
-              type: "reps",
-              sets: input.goalSets,
-              min_reps: input.goalReps,
-            },
+            goal,
           },
         },
       ],

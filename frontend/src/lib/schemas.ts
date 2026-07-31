@@ -61,6 +61,11 @@ export const todaySatelliteSchema = z.object({
   schedule_kind: z.string().nullable().optional(),
   schedule_category: z.string().nullable().optional(),
   current_step_number: z.number().nullable().optional(),
+  step_name: z.string().nullable().optional(),
+  active_metrics: z.unknown().nullable().optional(),
+  goal: z.unknown().nullable().optional(),
+  config_version_id: z.string().uuid().nullable().optional(),
+  config_hash: z.string().nullable().optional(),
 });
 
 export const progressionEventSchema = z.object({
@@ -101,6 +106,9 @@ export const sessionLogSchema = z.object({
   sets: z.unknown().nullable().optional(),
   goal_met: z.boolean(),
   counts_for_progression: z.boolean(),
+  progression_skipped: z.string().nullable().optional(),
+  satellite_config_version_id: z.string().uuid().nullable().optional(),
+  satellite_config_hash: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -146,6 +154,8 @@ export const satelliteSchema = z.object({
   weekdays: z.array(z.number()).nullable().optional(),
   schedule_category: z.string().nullable().optional(),
   revision: z.number(),
+  current_config_version_id: z.string().uuid().nullable().optional(),
+  config_hash: z.string().nullable().optional(),
   steps: z.array(z.record(z.unknown())),
 });
 

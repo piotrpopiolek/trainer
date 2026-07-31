@@ -200,11 +200,27 @@ export async function createSatelliteOfflineAware(
   }
   const mutationId = newClientMutationId();
   const entityId = newClientMutationId();
+  const isTypeC = input.exercise_type === "C";
+  const metrics: string[] = [];
+  if (!isTypeC) {
+    metrics.push("reps");
+    if (input.trackWeight) metrics.push("weight_kg");
+    if (input.requireBothSides) metrics.push("sides");
+  }
+  const goal = isTypeC
+    ? { type: "completed" as const }
+    : {
+        type: "reps" as const,
+        sets: input.goalSets ?? 3,
+        min_reps: input.goalReps ?? 10,
+        require_both_sides: input.requireBothSides ?? false,
+        min_weight_kg: null,
+      };
   const payload = {
     schema_version: 1,
     name: input.name,
     exercise_type: input.exercise_type,
-    active_metrics: { schema_version: 1, metrics: ["reps"] },
+    active_metrics: { schema_version: 1, metrics },
     schedule_kind: input.schedule_kind,
     weekdays: input.weekdays,
     schedule_category: input.schedule_category,
@@ -214,7 +230,7 @@ export async function createSatelliteOfflineAware(
         name: input.stepName,
         rules: {
           schema_version: 1,
-          goal: { type: "reps", sets: input.goalSets, min_reps: input.goalReps },
+          goal,
         },
       },
     ],
@@ -237,6 +253,8 @@ export async function createSatelliteOfflineAware(
     weekdays: input.weekdays ?? null,
     schedule_category: input.schedule_category ?? null,
     revision: 1,
+    current_config_version_id: null,
+    config_hash: null,
     steps: payload.steps as unknown as Array<Record<string, unknown>>,
   };
   await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);

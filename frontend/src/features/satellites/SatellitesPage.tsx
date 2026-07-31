@@ -28,8 +28,11 @@ export function SatellitesPage() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.me);
   const [name, setName] = useState("");
+  const [exerciseType, setExerciseType] = useState<"B" | "C">("B");
   const [goalSets, setGoalSets] = useState(3);
   const [goalReps, setGoalReps] = useState(10);
+  const [requireBothSides, setRequireBothSides] = useState(false);
+  const [trackWeight, setTrackWeight] = useState(false);
 
   const listQ = useQuery({
     queryKey: ["satellites"],
@@ -41,10 +44,12 @@ export function SatellitesPage() {
       if (!me?.id) throw new ApiError(401, "unauthorized");
       return createSatelliteOfflineAware(me.id, {
         name,
-        exercise_type: "B",
+        exercise_type: exerciseType,
         schedule_kind: "daily",
-        goalSets,
-        goalReps,
+        goalSets: exerciseType === "B" ? goalSets : undefined,
+        goalReps: exerciseType === "B" ? goalReps : undefined,
+        requireBothSides: exerciseType === "B" ? requireBothSides : false,
+        trackWeight: exerciseType === "B" ? trackWeight : false,
         stepName: t("satellites.defaultStepName"),
       });
     },
@@ -83,7 +88,7 @@ export function SatellitesPage() {
               <p className="font-medium">{s.name}</p>
               <p className="text-xs text-slate-500">
                 {scheduleKindLabel(s.schedule_kind, t)} ·{" "}
-                {t("satellites.steps", { n: s.steps.length })}
+                {t("satellites.steps", { n: s.steps.length })} · {s.exercise_type}
               </p>
             </li>
           ))}
@@ -107,23 +112,53 @@ export function SatellitesPage() {
             required
           />
           <Select
-            label={t("satellites.goalSets")}
-            value={goalSets}
-            onChange={(e) => setGoalSets(Number(e.target.value))}
+            label={t("satellites.exerciseType")}
+            value={exerciseType}
+            onChange={(e) => setExerciseType(e.target.value as "B" | "C")}
           >
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
+            <option value="B">{t("satellites.typeB")}</option>
+            <option value="C">{t("satellites.typeC")}</option>
           </Select>
-          <Input
-            label={t("satellites.goalReps")}
-            type="number"
-            min={1}
-            value={goalReps}
-            onChange={(e) => setGoalReps(Number(e.target.value))}
-          />
+          {exerciseType === "B" ? (
+            <>
+              <Select
+                label={t("satellites.goalSets")}
+                value={goalSets}
+                onChange={(e) => setGoalSets(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                label={t("satellites.goalReps")}
+                type="number"
+                min={1}
+                value={goalReps}
+                onChange={(e) => setGoalReps(Number(e.target.value))}
+              />
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={requireBothSides}
+                  onChange={(e) => setRequireBothSides(e.target.checked)}
+                />
+                {t("satellites.requireBothSides")}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={trackWeight}
+                  onChange={(e) => setTrackWeight(e.target.checked)}
+                />
+                {t("satellites.trackWeight")}
+              </label>
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">{t("satellites.typeCHint")}</p>
+          )}
           {createMut.isError ? (
             <p className="text-sm text-rose-700">
               {createMut.error instanceof ApiError
