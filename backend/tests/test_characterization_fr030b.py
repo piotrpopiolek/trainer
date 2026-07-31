@@ -2,11 +2,18 @@
 
 Do not rewrite these expectations to match the future satellite engine. Stage 1+ may
 add parallel suites with new contracts; CC tip/late and mixed-session rollback must stay.
+
+Companion suite (must not be weakened during satellite refactor):
+`backend/tests/test_progression_engine.py` locks CC tip/late/advance/fail_sessions,
+override, no-rewind, session date/content immutability, and evaluate idempotency.
+This file locks satellite goal-only, mixed-session atomicity, online≡sync, legal/tombstone,
+idempotent retry, and legacy type-order sort.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -31,6 +38,26 @@ from app.services.satellites import create_satellite
 from app.services.sessions import create_session
 from app.services.sync_push import push_batch, sort_push_items
 from tests.legal_fixtures import latest_health_disclaimer
+
+_CC_COMPANION_TESTS = (
+    "test_two_fails_cause_regress",
+    "test_three_success_advances",
+    "test_late_log_does_not_mutate_progress",
+    "test_soft_delete_does_not_rewind_progress",
+    "test_manual_override_resets_fail_streak",
+    "test_session_date_immutable",
+    "test_immutable_after_evaluate",
+)
+
+
+def test_fr030b_companion_cc_suite_still_present() -> None:
+    """Guard: CC tip/late/fail/override/immutability live in the companion file."""
+    companion = Path(__file__).with_name("test_progression_engine.py").read_text(
+        encoding="utf-8"
+    )
+    missing = [name for name in _CC_COMPANION_TESTS if f"def {name}" not in companion]
+    assert missing == [], f"FR-030b companion CC tests missing: {missing}"
+
 
 
 @pytest.fixture

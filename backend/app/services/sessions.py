@@ -75,6 +75,11 @@ def log_to_read(log: SessionExerciseLog) -> SessionLogReadV1:
         goal_met=log.goal_met,
         goal_evaluated_at=log.goal_evaluated_at,
         counts_for_progression=log.counts_for_progression,
+        progression_skipped=log.progression_skipped,
+        satellite_config_version_id=log.satellite_config_version_id,
+        satellite_config_hash=(
+            log.satellite_config_hash.hex() if log.satellite_config_hash is not None else None
+        ),
         notes=log.notes,
         sort_order=log.sort_order,
         revision=log.revision,
@@ -272,8 +277,26 @@ async def create_session(
         else:
             if item.sets is None:
                 raise DomainError("sets_required", http_status=422)
-            parse_versioned(SessionSetsV1, item.sets)
             sets_payload = item.sets
+
+        config_version_id = None
+        config_hash = None
+        if item.exercise_kind == "satellite":
+            if item.satellite_config_version_id is None or not item.satellite_config_hash:
+                raise DomainError("satellite_config_required", http_status=422)
+            try:
+                config_hash = bytes.fromhex(item.satellite_config_hash)
+            except ValueError as exc:
+                raise DomainError("satellite_config_hash_invalid", http_status=422) from exc
+            if len(config_hash) != 32:
+                raise DomainError("satellite_config_hash_invalid", http_status=422)
+            config_version_id = item.satellite_config_version_id
+            if not item.skipped:
+                from app.schemas.satellite import parse_satellite_log_result
+
+                parse_satellite_log_result(item.sets)
+        elif not item.skipped:
+            parse_versioned(SessionSetsV1, item.sets)
 
         name = await _exercise_name_snapshot(db, exercise=exercise, locale=resolved_locale)
         # Provisional snapshot for ck_session_logs_skipped_false; engine overwrites.
@@ -300,6 +323,8 @@ async def create_session(
             client_mutation_id=item.client_mutation_id or new_uuid7(),
             revision=1,
             client_updated_at=body.client_updated_at or performed_at,
+            satellite_config_version_id=config_version_id,
+            satellite_config_hash=config_hash,
         )
         db.add(log)
         try:

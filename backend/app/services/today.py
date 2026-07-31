@@ -15,6 +15,7 @@ from app.models.catalog import (
     ExerciseTranslation,
     ProgramDay,
     ProgramDayExercise,
+    SatelliteConfigVersion,
 )
 from app.models.progression import UserExerciseProgress
 from app.models.user import User
@@ -165,6 +166,19 @@ async def build_today(
                 UserExerciseProgress.exercise_id == sat.id,
             )
         )
+        step_number = progress.current_step_number if progress is not None else 1
+        step = await db.scalar(
+            select(ExerciseStep).where(
+                ExerciseStep.exercise_id == sat.id,
+                ExerciseStep.step_number == step_number,
+            )
+        )
+        cfg = None
+        if sat.current_config_version_id is not None:
+            cfg = await db.get(SatelliteConfigVersion, sat.current_config_version_id)
+        goal = None
+        if step is not None and isinstance(step.rules, dict):
+            goal = step.rules.get("goal")
         satellites_out.append(
             TodaySatelliteV1(
                 exercise_id=sat.id,
@@ -172,9 +186,12 @@ async def build_today(
                 exercise_type=sat.exercise_type,
                 schedule_kind=sat.schedule_kind,
                 schedule_category=sat.schedule_category,
-                current_step_number=(
-                    progress.current_step_number if progress is not None else None
-                ),
+                current_step_number=step_number,
+                step_name=step.name if step is not None else None,
+                active_metrics=sat.active_metrics,
+                goal=goal if isinstance(goal, dict) else None,
+                config_version_id=sat.current_config_version_id,
+                config_hash=cfg.config_hash.hex() if cfg is not None else None,
             )
         )
 

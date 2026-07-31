@@ -1,14 +1,16 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     Text,
     UniqueConstraint,
@@ -185,9 +187,110 @@ class Exercise(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    current_config_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "satellite_config_versions.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_exercises_current_config_version",
+        ),
+    )
+    pending_config_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "satellite_config_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_exercises_pending_config_version",
+        ),
+    )
 
 
-class ExerciseTranslation(Base):
+class SatelliteConfigVersion(Base):
+    __tablename__ = "satellite_config_versions"
+    __table_args__ = (
+        CheckConstraint("authored_revision >= 1", name="ck_sat_config_authored_revision"),
+        CheckConstraint("schema_version >= 1", name="ck_sat_config_schema_version"),
+        CheckConstraint(
+            "(document ? 'schema_version')",
+            name="ck_sat_config_document_schema",
+        ),
+        CheckConstraint(
+            "octet_length(config_hash) = 32",
+            name="ck_sat_config_hash_len",
+        ),
+        UniqueConstraint("exercise_id", "id", name="uq_sat_config_exercise_id"),
+        UniqueConstraint(
+            "user_id",
+            "registered_by_mutation_id",
+            name="uq_sat_config_user_mutation",
+        ),
+        Index("ix_sat_config_exercise_hash", "exercise_id", "config_hash"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    exercise_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("exercises.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    authored_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    document: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    config_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    registered_by_mutation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SatelliteConfigActivation(Base):
+    __tablename__ = "satellite_config_activations"
+    __table_args__ = (
+        UniqueConstraint(
+            "exercise_id",
+            "effective_from_local_date",
+            name="uq_sat_activation_exercise_from",
+        ),
+        Index(
+            "ix_sat_activation_lookup",
+            "exercise_id",
+            "config_version_id",
+            "effective_from_local_date",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    exercise_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("exercises.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    config_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("satellite_config_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    effective_from_local_date: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_until_local_date: Mapped[date | None] = mapped_column(Date)
+    activated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    superseded_by_activation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("satellite_config_activations.id", ondelete="RESTRICT"),
+    )
     __tablename__ = "exercise_translations"
     __table_args__ = (
         CheckConstraint(

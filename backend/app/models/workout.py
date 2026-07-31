@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     Text,
     UniqueConstraint,
@@ -163,6 +164,12 @@ class SessionExerciseLog(Base):
     counts_for_progression: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
+    progression_skipped: Mapped[str | None] = mapped_column(Text)
+    satellite_config_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("satellite_config_versions.id", ondelete="RESTRICT"),
+    )
+    satellite_config_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
     notes: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("0"))
     client_mutation_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))

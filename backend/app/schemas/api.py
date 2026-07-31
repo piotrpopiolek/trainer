@@ -43,13 +43,18 @@ class SessionLogCreateV1(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
     sort_order: int = Field(default=0, ge=0)
     client_mutation_id: UUID | None = None
+    satellite_config_version_id: UUID | None = None
+    satellite_config_hash: str | None = None
     # Ignored if present (FR-046a):
     goal_met: Any = None
     rules_snapshot: Any = None
     goal_evaluated_at: Any = None
     counts_for_progression: Any = None
+    progression_skipped: Any = None
     content_locale: Any = None
     step_number: Any = None
+    current_step_number: Any = None
+    fail_streak: Any = None
 
 
 class SessionCreateV1(BaseModel):
@@ -83,6 +88,9 @@ class SessionLogReadV1(BaseModel):
     goal_met: bool
     goal_evaluated_at: datetime | None
     counts_for_progression: bool
+    progression_skipped: str | None = None
+    satellite_config_version_id: UUID | None = None
+    satellite_config_hash: str | None = None
     notes: str | None
     sort_order: int
     revision: int
@@ -155,6 +163,11 @@ class TodaySatelliteV1(BaseModel):
     schedule_kind: str | None
     schedule_category: str | None
     current_step_number: int | None = None
+    step_name: str | None = None
+    active_metrics: dict[str, Any] | None = None
+    goal: dict[str, Any] | None = None
+    config_version_id: UUID | None = None
+    config_hash: str | None = None
 
 
 class TodaySessionDto(BaseModel):
@@ -249,6 +262,8 @@ class SatelliteReadV1(BaseModel):
     weekdays: list[int] | None
     schedule_category: str | None
     revision: int
+    current_config_version_id: UUID | None = None
+    config_hash: str | None = None
     steps: list[dict[str, Any]]
 
 

@@ -12,6 +12,8 @@ from app.models.catalog import (
     ProgramDayExercise,
     ProgramDayTranslation,
     ProgramTranslation,
+    SatelliteConfigActivation,
+    SatelliteConfigVersion,
 )
 from app.models.legal import LegalDocument, LegalDocumentTranslation, UserLegalAcceptance
 from app.models.onboarding import UserOnboarding
@@ -44,6 +46,8 @@ __all__ = [
     "ProgressionEvent",
     "ProgressionSchema",
     "RateLimitBucket",
+    "SatelliteConfigActivation",
+    "SatelliteConfigVersion",
     "SessionExerciseLog",
     "SyncConflictLog",
     "SyncDevice",
