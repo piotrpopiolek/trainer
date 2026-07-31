@@ -291,6 +291,9 @@ class SatelliteConfigActivation(Base):
         PGUUID(as_uuid=True),
         ForeignKey("satellite_config_activations.id", ondelete="RESTRICT"),
     )
+
+
+class ExerciseTranslation(Base):
     __tablename__ = "exercise_translations"
     __table_args__ = (
         CheckConstraint(
