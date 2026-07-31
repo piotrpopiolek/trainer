@@ -54,17 +54,19 @@ alwaysApply: false
 
 1. **Auth (FR-001/005d):** zły aud/iss/exp; replay state; `email_verified=false`; ten sam `sub` → ten sam user; 2 równoległe loginy przy 9 sesjach → ≤10.
 2. **IDOR (FR-005b):** User B → 404 / `rejected not_found` na zasoby A (sessions, logs, measurements, satelity, progress GET+override, sync push, conflicts, session detail, export/delete, `PATCH /account/schedule`).
-3. **Progresja (FR-034/034a/035):** fail/fail → regres; przerwa nie zeruje; tip vs late; late nie mutuje kroku/`fail_streak`; `rules_snapshot` + `content_locale`.
-4. **Sesje (FR-038/039):** `session_date_immutable`; `session_immutable_after_evaluate`; soft-delete + create; UNIQUE CC/dzień.
-5. **Sync (FR-072*/075):** CAS `rowcount`; `revision_jump`; legal defer/`legal_required`; batch ≤20; pull initial/delta/`resync_required`.
-6. **Konto:** purge pełny graf → `done` + zero childów; export stream bez sekretów; CSRF 403.
-7. **i18n (FR-007):** komplet `pl-PL`; fallback całego katalogu; brak mieszanego locale; ETag per locale.
+3. **CC progression (FR-030b/034/035):** characterization przed refaktorem; advance, fail/fail → auto-regres, override/no-rewind, tip vs late, `rules_snapshot`; czysty evaluator i orchestrator dają ten sam wynik.
+4. **Satelity (FR-045/051–053):** goal-only nie mutuje kroku; reps/duration/completed, required metrics/sides/decimal; config JCS/SHA-256 golden vectors; activation eligibility i `config_not_active_for_day`; daily success-before-deadline, finalizacja po +36 h, `failed_days`, recommendation accept/decline bez auto-regresu.
+5. **Sesje (FR-030b/038/039):** `session_date_immutable`; `session_immutable_after_evaluate`; soft-delete + create; UNIQUE CC/dzień; mieszana CC+satelity rollbackuje się w całości przy błędzie dowolnego logu; online i sync są równoważne.
+6. **Sync (FR-072*/075):** graf `depends_on` dla legal/session, tombstone/replacement i config/session; stable topological sort przed slicing; missing/failed/cycle; resolution-before-claim; ACK po mutation ID; `applied_detached`; CAS/race/retry; batch ≤20; pull initial/delta/`resync_required`.
+7. **Konto:** purge pełny graf, w tym config versions/activations/outcomes/recommendations → `done` + zero childów; export stream bez sekretów; CSRF 403.
+8. **i18n (FR-007):** komplet `pl-PL`; fallback całego katalogu; brak mieszanego locale; ETag per locale.
 
 Każde przejście stanu progresji / zapis sesji: test **pozytywny i negatywny**.
 
 ## Frontend — Vitest (unit)
 
-- Outbox: enqueue, sort legal→sesje→pomiary→satelity, soft-delete przed kolidującym create, `revision = last_known + 1`.
+- Outbox: enqueue; jeden `depends_on[]`; stable topological sort całej kolejki przed oknami ≤20; typy tylko jako tie-breaker legal→satellite/config→sessions→measurements; pending `blocked_by[]`; propagacja dependency failure; ACK po `client_mutation_id`; `applied_detached` terminalne; `revision = last_known + 1`.
+- Kontrakty satelitów: Zod discriminated union reps/duration/completed, required active metrics, sides i decimal string; wspólne z pytest golden vectors JCS/SHA-256.
 - Mapowanie `error_code` → klucze i18n; brak hardcoded PL w komponentach; komplet kluczy `pl-PL`.
 - Store/progress cache: brak lokalnej oceny awansu; idempotencja surface po `event.id` (logika).
 
@@ -74,10 +76,11 @@ Chromium; same-origin + cookie sesji (bez Bearer w storage).
 
 1. **Auth:** login Google (mock OAuth/test harness) → redirect; 401 → login, outbox nie drop.
 2. **Onboarding + legal:** akceptacja disclaimer z locale/hash → pierwsza sesja dozwolona; bez akceptacji zapis sesji zablokowany.
-3. **Today + sesja:** `GET /today` render; logowanie CC poniżej 3 min ścieżka happy; surface awansu/regresu po odpowiedzi serwera (modal/banner).
-4. **Offline (F1.1):** offline save → badge pending; online flush → sync success; konflikt tie/immutable → modal; soft-delete ocenionej → modal no-rewind + CTA override.
-5. **Rest / ustawienia:** „Trenuj mimo to” → D1/D2/D3; zmiana splitu/TZ → copy „od jutra”.
-6. **Konto:** export (POST+CSRF, plik); delete z potwierdzeniem; brak wycieku tokenu do JS storage.
+3. **Today + sesja:** `GET /today` render; logowanie CC poniżej 3 min; goal-only Hip Thrust; surface zdarzeń wyłącznie po odpowiedzi serwera.
+4. **Offline (F1.1):** offline config→session przez `depends_on`; badge pending/blocked; online flush → ACK po mutation ID; `applied_detached` konflikt bez utraty logu; tie/immutable modal; soft-delete ocenionej → no-rewind + CTA override.
+5. **Mini-progresja satelity:** Copenhagen obie strony; po serwerowej finalizacji failure UI pokazuje rekomendację, accept cofa krok, decline nie zmienia kroku; brak automatycznego regresu.
+6. **Rest / ustawienia:** „Trenuj mimo to” → D1/D2/D3; zmiana splitu/TZ → copy „od jutra”.
+7. **Konto:** export (POST+CSRF, plik); delete z potwierdzeniem; brak wycieku tokenu do JS storage.
 
 Selektory: `getByRole` / `getByTestId` stabilne; zakaz CSS kruchych pod layout. i18n: asercje po roli/kluczu testid, nie po pełnym copy PL (chyba że celowo test locale).
 

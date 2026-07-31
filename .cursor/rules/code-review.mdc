@@ -17,12 +17,13 @@ alwaysApply: false
 ## Kolejność kontroli
 
 1. Zgodność ze scope F1/F1.1/F1.prod oraz wymaganiami i zakazami PRD.
-2. Poprawność domenowa: backend-only progression, tip vs spóźniony log (FR-035), `counts_for_progression`, `local_date`, immutable sessions, `rules_snapshot`, idempotencja, CAS/LWW i kolejność locków.
+2. Poprawność domenowa: dwa backend-only silniki dispatchowane wyłącznie po `exercise_kind`; CC tip/late/`fail_sessions`/auto-regres vs satelitarne goal/config eligibility/daily outcomes/`failed_days`/regres po decyzji; czyste evaluatory, transactional orchestrators, atomowość mieszanej sesji, immutable sessions i historyczne snapshoty.
 3. Bezpieczeństwo: `user_id` z sesji, deny-by-default/404, IDOR sync i account, cookie/PKCE/CSRF, brak PII i sekretów w logach.
-4. Spójność danych i kontraktów: `schema_version`, migracje wstecz/naprzód, atomowość, retry, partial ACK, kompatybilność API–PWA.
+4. Spójność danych i kontraktów: odrębne Pydantic/Zod dla CC i satelitów, `schema_version`, immutable config + RFC 8785 JCS/hash, activation eligibility, migracje, atomowość, kompatybilność API–PWA.
 5. i18n (FR-007): brak tekstów domenowych hardcoded w UI; stabilne `error_code`; systemowy content/legal w `*_translations`; fallback całego katalogu do PL; locale w ETag/cache/snapshotach; legal acceptance wiąże dokładny locale/hash.
-6. Testy i operacyjność: scenariusz pozytywny, negatywny, współbieżność i regresja; IDOR marker; komplet kluczy `pl-PL`; brak mieszanego locale; backup przed migracją prod; monitoring purge.
-7. Utrzymywalność tylko wtedy, gdy powoduje realne ryzyko błędu; nie zgłaszaj preferencji stylistycznych pokrywanych przez formatter/linter.
+6. Sync: jeden `depends_on[]`, stable topological sort przed batch slicing, resolution-before-claim, ACK po `client_mutation_id`, `applied_detached`, brak osobnych defer-arbitrów, poprawna propagacja pending/quarantine oraz lock order claim→encja/config→progress/outcome.
+7. Testy i operacyjność: characterization gate FR-030b; scenariusz pozytywny, negatywny, mixed-session rollback, online=sync, współbieżność i IDOR; golden vectors hash; komplet `pl-PL`; backup przed migracją prod; monitoring purge.
+8. Utrzymywalność tylko wtedy, gdy powoduje realne ryzyko błędu; nie zgłaszaj preferencji stylistycznych pokrywanych przez formatter/linter.
 
 ## Podstawowe zasady inżynierskie
 

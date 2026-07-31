@@ -24,14 +24,14 @@ alwaysApply: true
 
 ## Priorytety przy implementacji
 
-1. Deterministyczny silnik progresji **wyłącznie na backendzie** i szybkie logowanie sesji (offline: zapis sesji; ocena awansu/regresu po sync na serwerze) — **F1.0**.
-2. Poprawny sync offline (idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038, progresja tip-only / spóźnione logi bez oceny / FR-035, SyncPull okna 30/365d + **obowiązkowa delta `since`** / FR-075) — F1.0 happy-path, pełny UX konfliktów **F1.1**; dopiero potem polish UI.
+1. Dwa deterministyczne silniki progresji **wyłącznie na backendzie**: CC (`ProgressionRulesV2`, tip/late, `fail_sessions`, auto-regres) i satelity (`SatelliteRulesV1`, goal-only lub daily outcomes/`failed_days`, regres tylko po akceptacji rekomendacji). `SessionService` utrwala całą mieszaną sesję atomowo, a dispatcher wybiera orchestrator wyłącznie po `exercise_kind` — **F1.0**.
+2. Poprawny sync offline: jeden `depends_on[]` dla legal→sesja, tombstone→replacement i config satelity→sesja; topological sort przed batch slicing, ACK po `client_mutation_id`, idempotencja, LWW po `revision`, sesje immutable po evaluate / FR-038 oraz SyncPull okna 30/365d + **obowiązkowa delta `since`** / FR-075. Tip/late dotyczy CC; satelity mają własną eligibility konfiguracji i daily outcomes. F1.0 happy-path, pełny UX konfliktów **F1.1**; dopiero potem polish UI.
 3. Content CC i onboarding w scope MVP (FR-020a/084) — track content równolegle od tyg. 1; nie „później”.
-4. Nie implementuj drugiej kopii reguł awansu/regresu w PWA — UI pokazuje progi z API i cache stanu z serwera.
+4. Nie implementuj w PWA drugiej kopii reguł CC ani satelitów (`goal_met`, eligibility, awans/regres, finalizacja dnia) — UI pokazuje konfigurację z API i cache stanu z serwera.
 
 ## Stack decyzje (nie zmieniaj bez zgody)
 
 - Backend: FastAPI. Frontend: React PWA (nie React Native w F1).
-- Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: kontrakt Pydantic/Zod + obowiązkowe `schema_version`. Slugi, enumy i `error_code` neutralne językowo; zakaz hardcoded tekstów domenowych w UI.
+- Reguły progresji i **wszystkie** dokumenty JSONB / payloady API: odrębne kontrakty Pydantic/Zod + obowiązkowe `schema_version`; zakaz dispatchu po kształcie JSON. Slugi, enumy i `error_code` neutralne językowo; zakaz hardcoded tekstów domenowych w UI.
 - Auth MVP: wyłącznie Google OAuth (Auth Code + PKCE; cookie `__Host-…` / FR-005a; claimy FR-001). **Topologia F1:** same-origin PWA + `/api`; CSRF na export/delete/schedule. **TTL:** sliding 30d / hard cap 90d / max 10 sesji (FR-005d). Izolacja: app-layer `user_id` + IDOR suite (w tym sync push / account); RLS F1 na `body_measurements`, reszta F2+ (FR-005b).
 - Na logu sesji: `rules_snapshot` z wersją reguł użytych przy ocenie — seed nie reinterpretuje historii.
