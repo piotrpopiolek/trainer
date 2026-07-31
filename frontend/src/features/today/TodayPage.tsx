@@ -13,7 +13,7 @@ import { fetchToday } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { formatDateInTimezone } from "@/lib/dates";
 import { errorCodeToI18nKey } from "@/lib/errors";
-import type { ProgressionEvent, Today } from "@/lib/schemas";
+import type { ProgressionEvent } from "@/lib/schemas";
 import { useAuthStore } from "@/stores/authStore";
 import { useSyncStore } from "@/stores/syncStore";
 

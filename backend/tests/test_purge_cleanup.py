@@ -11,16 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.core.ids import new_uuid7
 from app.models.auth import AuthSession, OAuthState
-from app.models.catalog import Exercise, ExerciseStep, Program
+from app.models.catalog import Exercise, Program
 from app.models.progression import (
     ProgressionEvent,
-    ProgressionSchema,
     UserExerciseProgress,
     UserProgramEnrollment,
 )
 from app.models.sync import RateLimitBucket
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
+from app.schemas.api import SatelliteCreateV1
 from app.services.cleanup import run_cleanup_batch
 from app.services.purge import (
     assert_user_training_gone,
@@ -28,6 +28,7 @@ from app.services.purge import (
     list_due_purge_users,
     run_purge_batch,
 )
+from app.services.satellites import create_satellite
 
 
 @pytest.fixture
@@ -53,18 +54,10 @@ async def _program(db: AsyncSession) -> Program:
     return prog
 
 
-async def _schema_id(db: AsyncSession) -> object:
-    row = await db.scalar(select(ProgressionSchema).limit(1))
-    if row is None:
-        pytest.skip("progression schema required")
-    return row.id
-
-
 async def _build_purgeable_user(db: AsyncSession) -> User:
     """Full training graph + soft-delete markers due for purge."""
     prog = await _program(db)
     exercise = await _cc_exercise(db)
-    schema_id = await _schema_id(db)
     now = datetime.now(UTC)
     user = User(
         id=new_uuid7(),
@@ -109,39 +102,34 @@ async def _build_purgeable_user(db: AsyncSession) -> User:
         )
     )
 
-    sat = Exercise(
-        id=new_uuid7(),
-        user_id=user.id,
-        name="Plank hold",
-        kind="satellite",
-        exercise_type="A",
-        schedule_kind="daily",
-        client_mutation_id=new_uuid7(),
-        revision=1,
-        client_updated_at=now,
-        active_metrics={"schema_version": 1, "metrics": ["reps"]},
-    )
-    db.add(sat)
-    await db.flush()
-    db.add(
-        ExerciseStep(
-            id=new_uuid7(),
-            exercise_id=sat.id,
-            step_number=1,
-            name="Hold",
-            rules={"schema_version": 1, "goal": {"sets": 1, "min_reps": 30}},
-            progression_schema_id=schema_id,
-            sort_order=1,
-        )
-    )
-    db.add(
-        UserExerciseProgress(
-            id=new_uuid7(),
-            user_id=user.id,
-            exercise_id=sat.id,
-            current_step_number=1,
-            fail_streak=0,
-        )
+    sat = await create_satellite(
+        db,
+        user=user,
+        body=SatelliteCreateV1.model_validate(
+            {
+                "schema_version": 1,
+                "name": "Plank hold",
+                "exercise_type": "B",
+                "active_metrics": {"schema_version": 1, "metrics": ["reps"]},
+                "schedule_kind": "daily",
+                "steps": [
+                    {
+                        "step_number": 1,
+                        "name": "Hold",
+                        "rules": {
+                            "schema_version": 1,
+                            "goal": {
+                                "type": "reps",
+                                "sets": 1,
+                                "min_reps": 30,
+                            },
+                        },
+                    }
+                ],
+                "client_mutation_id": str(new_uuid7()),
+            }
+        ),
+        commit=False,
     )
 
     session = WorkoutSession(
@@ -190,6 +178,7 @@ async def _build_purgeable_user(db: AsyncSession) -> User:
         )
     )
     await db.commit()
+    assert sat.id is not None
     return user
 
 

@@ -10,7 +10,12 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import AuthSession
-from app.models.catalog import Exercise, ExerciseStep
+from app.models.catalog import (
+    Exercise,
+    ExerciseStep,
+    SatelliteConfigActivation,
+    SatelliteConfigVersion,
+)
 from app.models.progression import (
     ProgressionEvent,
     UserExerciseProgress,
@@ -49,6 +54,26 @@ async def hard_purge_user(db: AsyncSession, *, user_id: UUID) -> None:
         )
     ).all()
     if sat_ids:
+        # Break RESTRICT FKs: exercise → config_version → exercise.
+        await db.execute(
+            update(Exercise)
+            .where(Exercise.id.in_(sat_ids))
+            .values(
+                current_config_version_id=None,
+                pending_config_version_id=None,
+                deleted_at=func.coalesce(Exercise.deleted_at, func.now()),
+            )
+        )
+        await db.execute(
+            delete(SatelliteConfigActivation).where(
+                SatelliteConfigActivation.exercise_id.in_(sat_ids)
+            )
+        )
+        await db.execute(
+            delete(SatelliteConfigVersion).where(
+                SatelliteConfigVersion.exercise_id.in_(sat_ids)
+            )
+        )
         await db.execute(delete(ExerciseStep).where(ExerciseStep.exercise_id.in_(sat_ids)))
         await db.execute(delete(Exercise).where(Exercise.id.in_(sat_ids)))
 
@@ -202,3 +227,19 @@ async def assert_user_training_gone(db: AsyncSession, *, user_id: UUID) -> None:
     )
     if int(sats or 0) > 0:
         raise AssertionError(f"satellites still present for {user_id}")
+
+    cfg = await db.scalar(
+        select(func.count())
+        .select_from(SatelliteConfigVersion)
+        .where(SatelliteConfigVersion.user_id == user_id)
+    )
+    if int(cfg or 0) > 0:
+        raise AssertionError(f"satellite_config_versions still present for {user_id}")
+
+    act = await db.scalar(
+        select(func.count())
+        .select_from(SatelliteConfigActivation)
+        .where(SatelliteConfigActivation.user_id == user_id)
+    )
+    if int(act or 0) > 0:
+        raise AssertionError(f"satellite_config_activations still present for {user_id}")

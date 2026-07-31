@@ -88,10 +88,10 @@ async def test_progress_owner_rejects_foreign_satellite(engine) -> None:
                 """
                 INSERT INTO exercises (
                   id, user_id, kind, exercise_type, name, schedule_kind,
-                  client_mutation_id, revision, client_updated_at
+                  client_mutation_id, revision, client_updated_at, deleted_at
                 ) VALUES (
                   :eid, :uid, 'satellite', 'B', 'Pull', 'daily',
-                  :cmid, 1, now()
+                  :cmid, 1, now(), now()
                 )
                 """
             ),
