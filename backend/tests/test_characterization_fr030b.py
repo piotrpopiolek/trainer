@@ -27,17 +27,75 @@ from app.models.progression import ProgressionEvent, UserExerciseProgress
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.schemas.api import SatelliteCreateV1, SessionCreateV1, SessionLogCreateV1
-from app.schemas.rules import ProgressionRulesV1
 from app.schemas.sync import SyncPushItemV1, SyncPushRequestV1
 from app.services.auth_session import AuthSessionService
 from app.services.errors import DomainError
 from app.services.legal import record_legal_acceptance
 from app.services.onboarding import complete_onboarding
-from app.services.progression import ProgressionEngine, goal_met_from_sets
+from app.services.progression import ProgressionEngine
 from app.services.satellites import create_satellite
-from app.services.sessions import create_session
+from app.services.sessions import create_session as _create_session_raw
 from app.services.sync_push import push_batch, sort_push_items
 from tests.legal_fixtures import latest_health_disclaimer
+
+
+async def _sat_config_refs(db: AsyncSession, exercise: Exercise) -> tuple[str, str]:
+    from app.models.catalog import SatelliteConfigVersion
+
+    assert exercise.current_config_version_id is not None
+    cfg = await db.get(SatelliteConfigVersion, exercise.current_config_version_id)
+    assert cfg is not None
+    return str(cfg.id), cfg.config_hash.hex()
+
+
+async def _sat_log_async(
+    db: AsyncSession,
+    exercise: Exercise,
+    *,
+    sets: dict,
+    section: str = "accessories",
+) -> SessionLogCreateV1:
+    from app.models.catalog import SatelliteConfigVersion
+
+    assert exercise.current_config_version_id is not None
+    cfg = await db.get(SatelliteConfigVersion, exercise.current_config_version_id)
+    assert cfg is not None
+    payload = dict(sets)
+    payload.setdefault("completed", None)
+    return SessionLogCreateV1(
+        exercise_id=exercise.id,
+        exercise_kind="satellite",
+        section=section,
+        sets=payload,
+        satellite_config_version_id=cfg.id,
+        satellite_config_hash=cfg.config_hash.hex(),
+    )
+
+
+async def create_session(db, *, user, body, commit=True, session_id=None):
+    """Characterization wrapper: attach config refs for satellite logs."""
+    logs: list[SessionLogCreateV1] = []
+    for item in body.logs:
+        if item.exercise_kind == "satellite":
+            ex = await db.get(Exercise, item.exercise_id)
+            assert ex is not None
+            sets = item.sets or {"schema_version": 1, "completed": True, "sets": []}
+            # Stage 1: empty-set completed is invalid; promote legacy [{}] to completed=true.
+            if (
+                isinstance(sets.get("sets"), list)
+                and len(sets["sets"]) == 1
+                and sets["sets"][0] == {}
+            ):
+                sets = {"schema_version": 1, "completed": True, "sets": []}
+            logs.append(
+                await _sat_log_async(db, ex, sets=sets, section=item.section)
+            )
+        else:
+            logs.append(item)
+    body = body.model_copy(update={"logs": logs})
+    return await _create_session_raw(
+        db, user=user, body=body, commit=commit, session_id=session_id
+    )
 
 _CC_COMPANION_TESTS = (
     "test_two_fails_cause_regress",
@@ -173,44 +231,85 @@ def _session_body(
 
 
 # ---------------------------------------------------------------------------
-# A. Legacy goal_met_from_sets (document behaviors Stage 1 will replace)
+# A. Stage 1 satellite goal contracts (replaces legacy len(sets) completed)
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_goal_reps_duration_completed_semantics() -> None:
-    """Legacy: completed ≡ len(sets)>=1; reps/duration use or-0 fallbacks."""
-    reps = ProgressionRulesV1.model_validate(
-        {"schema_version": 1, "goal": {"type": "reps", "sets": 3, "min_reps": 10}}
-    )
-    assert goal_met_from_sets(
-        reps, {"schema_version": 1, "sets": [{"reps": 10}, {"reps": 10}, {"reps": 10}]}
-    )
-    assert not goal_met_from_sets(
-        reps, {"schema_version": 1, "sets": [{"reps": 10}, {"reps": 10}, {"reps": 9}]}
-    )
-
-    duration = ProgressionRulesV1.model_validate(
-        {
-            "schema_version": 1,
-            "goal": {"type": "duration", "sets": 2, "min_duration_sec": 20},
-        }
-    )
-    assert goal_met_from_sets(
-        duration,
-        {"schema_version": 1, "sets": [{"duration_sec": 20}, {"duration_sec": 25}]},
-    )
-    assert not goal_met_from_sets(
-        duration,
-        {"schema_version": 1, "sets": [{"duration_sec": 20}, {"duration_sec": 19}]},
+def test_stage1_satellite_goal_reps_duration_completed_semantics() -> None:
+    from app.domain.satellite_progression import satellite_goal_met
+    from app.schemas.satellite import (
+        ActiveMetricsV1,
+        SatelliteGoalCompletedV1,
+        SatelliteGoalDurationV1,
+        SatelliteGoalRepsV1,
+        SatelliteLogResultV1,
+        SatelliteRulesV1,
+        SatelliteSetV1,
     )
 
-    completed = ProgressionRulesV1.model_validate(
-        {"schema_version": 1, "goal": {"type": "completed"}}
+    reps = SatelliteRulesV1(
+        schema_version=1,
+        goal=SatelliteGoalRepsV1(type="reps", sets=3, min_reps=10),
     )
-    assert not goal_met_from_sets(completed, {"schema_version": 1, "sets": []})
-    assert goal_met_from_sets(completed, {"schema_version": 1, "sets": [{"reps": None}]})
-    # Legacy accepts a structurally empty object inside sets[] as "completed".
-    assert goal_met_from_sets(completed, {"schema_version": 1, "sets": [{}]})
+    active_reps = ActiveMetricsV1(schema_version=1, metrics=["reps"])
+    assert satellite_goal_met(
+        reps,
+        SatelliteLogResultV1(
+            schema_version=1,
+            sets=[
+                SatelliteSetV1(reps=10),
+                SatelliteSetV1(reps=10),
+                SatelliteSetV1(reps=10),
+            ],
+        ),
+        active_metrics=active_reps,
+    )
+    assert not satellite_goal_met(
+        reps,
+        SatelliteLogResultV1(
+            schema_version=1,
+            sets=[
+                SatelliteSetV1(reps=10),
+                SatelliteSetV1(reps=10),
+                SatelliteSetV1(reps=9),
+            ],
+        ),
+        active_metrics=active_reps,
+    )
+
+    duration = SatelliteRulesV1(
+        schema_version=1,
+        goal=SatelliteGoalDurationV1(type="duration", sets=2, min_duration_sec=20),
+    )
+    active_dur = ActiveMetricsV1(schema_version=1, metrics=["duration_sec"])
+    assert satellite_goal_met(
+        duration,
+        SatelliteLogResultV1(
+            schema_version=1,
+            sets=[
+                SatelliteSetV1(duration_sec=20),
+                SatelliteSetV1(duration_sec=25),
+            ],
+        ),
+        active_metrics=active_dur,
+    )
+
+    completed = SatelliteRulesV1(
+        schema_version=1, goal=SatelliteGoalCompletedV1(type="completed")
+    )
+    active_c = ActiveMetricsV1(schema_version=1, metrics=[])
+    assert not satellite_goal_met(
+        completed,
+        SatelliteLogResultV1(schema_version=1, completed=None, sets=[]),
+        active_metrics=active_c,
+    )
+    assert satellite_goal_met(
+        completed,
+        SatelliteLogResultV1(schema_version=1, completed=True, sets=[]),
+        active_metrics=active_c,
+    )
+    with pytest.raises(ValueError, match="empty_set"):
+        SatelliteSetV1()
 
 
 # ---------------------------------------------------------------------------
@@ -568,6 +667,7 @@ async def test_online_and_sync_same_payload_cc_and_goal_satellite(
 
     mut = new_uuid7()
     sid = new_uuid7()
+    cfg_id, cfg_hash = await _sat_config_refs(db, sat_sy)
     sync_out = await push_batch(
         db,
         user=user_sync,
@@ -597,7 +697,9 @@ async def test_online_and_sync_same_payload_cc_and_goal_satellite(
                                 "exercise_id": str(sat_sy.id),
                                 "exercise_kind": "satellite",
                                 "section": "accessories",
-                                "sets": sets_sat,
+                                "sets": {**sets_sat, "completed": None},
+                                "satellite_config_version_id": cfg_id,
+                                "satellite_config_hash": cfg_hash,
                             },
                         ],
                     },
@@ -605,7 +707,7 @@ async def test_online_and_sync_same_payload_cc_and_goal_satellite(
             ],
         ),
     )
-    assert sync_out.results[0].status == "applied"
+    assert sync_out.results[0].status == "applied", sync_out.results[0]
 
     online_by = {log.exercise_kind: log for log in online.logs}
     sync_logs = (
@@ -932,6 +1034,7 @@ async def test_sync_retry_same_mutation_idempotent_for_satellite_session(
     )
     mut = new_uuid7()
     sid = new_uuid7()
+    cfg_id, cfg_hash = await _sat_config_refs(db, sat)
     item = SyncPushItemV1(
         client_mutation_id=mut,
         entity_type="workout_session",
@@ -948,7 +1051,13 @@ async def test_sync_retry_same_mutation_idempotent_for_satellite_session(
                 {
                     "exercise_id": str(sat.id),
                     "exercise_kind": "satellite",
-                    "sets": {"schema_version": 1, "sets": [{"reps": 10}]},
+                    "sets": {
+                        "schema_version": 1,
+                        "completed": None,
+                        "sets": [{"reps": 10}],
+                    },
+                    "satellite_config_version_id": cfg_id,
+                    "satellite_config_hash": cfg_hash,
                 }
             ],
         },
@@ -956,7 +1065,7 @@ async def test_sync_retry_same_mutation_idempotent_for_satellite_session(
     first = await push_batch(
         db, user=user, body=SyncPushRequestV1(schema_version=1, items=[item])
     )
-    assert first.results[0].status == "applied"
+    assert first.results[0].status == "applied", first.results[0]
     second = await push_batch(
         db, user=user, body=SyncPushRequestV1(schema_version=1, items=[item])
     )

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.progression_types import ProgressionEvaluation
+from app.domain.progression_types import ProgressionEvaluation  # noqa: F401 — typing/docs
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.services.cc_progression import CcProgressionOrchestrator
 from app.services.errors import DomainError
@@ -45,24 +45,25 @@ class ProgressionDispatcher:
     ) -> EvaluateResult:
         kind = log.exercise_kind
         if kind == "cc":
-            result = await self._cc.evaluate_log(db, log, session=session)
-        elif kind == "satellite":
+            result, events = await self._cc.evaluate_log(db, log, session=session)
+            return EvaluateResult(
+                is_tip=result.is_tip,
+                progression_skipped=result.progression_skipped,
+                goal_met=result.goal_met,
+                events=events,
+            )
+        if kind == "satellite":
             result = await self._satellite.evaluate_log(db, log, session=session)
-        else:
-            raise DomainError("exercise_kind_mismatch", http_status=422)
-        return _to_compat(result)
+            return EvaluateResult(
+                is_tip=result.is_tip,
+                progression_skipped=result.progression_skipped,
+                goal_met=result.goal_met,
+                events=[],
+            )
+        raise DomainError("exercise_kind_mismatch", http_status=422)
 
     async def manual_override(self, db: AsyncSession, **kwargs):
         return await self._cc.manual_override(db, **kwargs)
-
-
-def _to_compat(result: ProgressionEvaluation) -> EvaluateResult:
-    return EvaluateResult(
-        is_tip=result.is_tip,
-        progression_skipped=result.progression_skipped,
-        goal_met=result.goal_met,
-        events=[],
-    )
 
 
 # Composition root used by SessionService / progress router.

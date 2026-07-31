@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -198,7 +198,8 @@ async def create_satellite(
         client_mutation_id=body.client_mutation_id,
         revision=1,
         client_updated_at=now,
-        current_config_version_id=None,
+        # Pre-assign so NOT NULL CHECK passes; FK is DEFERRABLE until config INSERT.
+        current_config_version_id=config_version_id,
     )
     db.add(ex)
     await db.flush()
@@ -230,7 +231,9 @@ async def create_satellite(
     db.add(cfg)
     await db.flush()
 
-    local_from = now.astimezone(UTC).date()
+    # Initial activation covers any past log date for Stage 1 online; Stage 4
+    # pending/effective_on will tighten promote semantics.
+    local_from = date(2000, 1, 1)
     db.add(
         SatelliteConfigActivation(
             id=new_uuid7(),
@@ -241,7 +244,6 @@ async def create_satellite(
             effective_until_local_date=None,
         )
     )
-    ex.current_config_version_id = cfg.id
 
     db.add(
         UserExerciseProgress(

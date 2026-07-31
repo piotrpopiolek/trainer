@@ -165,7 +165,7 @@ class CcProgressionOrchestrator:
         session: WorkoutSession,
         progress: UserExerciseProgress,
         evaluation: ProgressionEvaluation,
-    ) -> ProgressionEvaluation:
+    ) -> list[ProgressionEvent]:
         log.step_number = evaluation.step_number
         log.rules_snapshot = evaluation.rules_snapshot
         log.progression_schema_version = evaluation.progression_schema_version
@@ -180,22 +180,23 @@ class CcProgressionOrchestrator:
             if patch.fail_streak is not None:
                 progress.fail_streak = patch.fail_streak
             progress.last_session_at = log.performed_at
+        events: list[ProgressionEvent] = []
         for proposal in evaluation.events:
-            db.add(
-                ProgressionEvent(
-                    id=new_uuid7(),
-                    user_id=log.user_id,
-                    exercise_id=log.exercise_id,
-                    session_id=session.id,
-                    event_type=proposal.event_type,
-                    from_step=proposal.from_step,
-                    to_step=proposal.to_step,
-                    reason=proposal.reason,
-                    rules_snapshot=proposal.rules_snapshot,
-                    progression_schema_version=proposal.progression_schema_version,
-                )
+            ev = ProgressionEvent(
+                id=new_uuid7(),
+                user_id=log.user_id,
+                exercise_id=log.exercise_id,
+                session_id=session.id,
+                event_type=proposal.event_type,
+                from_step=proposal.from_step,
+                to_step=proposal.to_step,
+                reason=proposal.reason,
+                rules_snapshot=proposal.rules_snapshot,
+                progression_schema_version=proposal.progression_schema_version,
             )
-        return evaluation
+            db.add(ev)
+            events.append(ev)
+        return events
 
     async def evaluate_log(
         self,
@@ -203,7 +204,7 @@ class CcProgressionOrchestrator:
         log: SessionExerciseLog,
         *,
         session: WorkoutSession,
-    ) -> ProgressionEvaluation:
+    ) -> tuple[ProgressionEvaluation, list[ProgressionEvent]]:
         if log.session_id != session.id or log.user_id != session.user_id:
             raise DomainError("session_log_mismatch", http_status=422)
         if session.deleted_at is not None or log.superseded_at is not None:
@@ -246,9 +247,11 @@ class CcProgressionOrchestrator:
                 schema_version=schema_version,
             )
         )
-        self._apply(db, log=log, session=session, progress=progress, evaluation=evaluation)
+        events = self._apply(
+            db, log=log, session=session, progress=progress, evaluation=evaluation
+        )
         await db.flush()
-        return evaluation
+        return evaluation, events
 
     async def manual_override(
         self,
