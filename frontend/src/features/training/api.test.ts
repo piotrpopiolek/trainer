@@ -105,6 +105,8 @@ describe("training api", () => {
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [sat] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(sat), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(sat), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(sat), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [meas] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(meas), { status: 200 }))
       .mockResolvedValueOnce(
@@ -138,6 +140,22 @@ describe("training api", () => {
       schedule_kind: "daily",
       goalSets: 3,
       goalReps: 10,
+      stepName: "Cel",
+    });
+    await createSatellite({
+      name: "Hip Thrust",
+      exercise_type: "B",
+      schedule_kind: "daily",
+      goalSets: 3,
+      goalReps: 10,
+      requireBothSides: true,
+      trackWeight: true,
+      stepName: "Cel",
+    });
+    await createSatellite({
+      name: "Mobility",
+      exercise_type: "C",
+      schedule_kind: "daily",
       stepName: "Cel",
     });
     expect(await listMeasurements()).toHaveLength(1);

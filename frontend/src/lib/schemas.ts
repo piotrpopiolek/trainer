@@ -62,8 +62,8 @@ export const todaySatelliteSchema = z.object({
   schedule_category: z.string().nullable().optional(),
   current_step_number: z.number().nullable().optional(),
   step_name: z.string().nullable().optional(),
-  active_metrics: z.unknown().nullable().optional(),
-  goal: z.unknown().nullable().optional(),
+  active_metrics: activeMetricsSchema.nullable().optional(),
+  goal: satelliteGoalSchema.nullable().optional(),
   config_version_id: z.string().uuid().nullable().optional(),
   config_hash: z.string().nullable().optional(),
 });

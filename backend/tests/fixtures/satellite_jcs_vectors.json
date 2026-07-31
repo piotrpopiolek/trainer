@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "vectors": [
+    {
+      "id": "goal_only_reps_both_sides_weight",
+      "document": {
+        "schema_version": 1,
+        "exercise_type": "B",
+        "active_metrics": {
+          "schema_version": 1,
+          "metrics": ["reps", "sides", "weight_kg"]
+        },
+        "progression": { "mode": "goal_only" },
+        "steps": [
+          {
+            "step_id": "01900000-0000-7000-8000-000000000001",
+            "sort_order": 1,
+            "rules": {
+              "schema_version": 1,
+              "goal": {
+                "type": "reps",
+                "sets": 3,
+                "min_reps": 10,
+                "min_weight_kg": null,
+                "require_both_sides": true
+              }
+            }
+          }
+        ]
+      },
+      "jcs": "{\"active_metrics\":{\"metrics\":[\"reps\",\"sides\",\"weight_kg\"],\"schema_version\":1},\"exercise_type\":\"B\",\"progression\":{\"mode\":\"goal_only\"},\"schema_version\":1,\"steps\":[{\"rules\":{\"goal\":{\"min_reps\":10,\"min_weight_kg\":null,\"require_both_sides\":true,\"sets\":3,\"type\":\"reps\"},\"schema_version\":1},\"sort_order\":1,\"step_id\":\"01900000-0000-7000-8000-000000000001\"}]}",
+      "sha256_hex": "70ba1a2d1e5654c6c313acb00a69a39e7dd557ce5041172cb21df8ea23e5e130"
+    },
+    {
+      "id": "goal_only_type_c_completed",
+      "document": {
+        "schema_version": 1,
+        "exercise_type": "C",
+        "active_metrics": {
+          "schema_version": 1,
+          "metrics": []
+        },
+        "progression": { "mode": "goal_only" },
+        "steps": [
+          {
+            "step_id": "01900000-0000-7000-8000-000000000002",
+            "sort_order": 1,
+            "rules": {
+              "schema_version": 1,
+              "goal": { "type": "completed" }
+            }
+          }
+        ]
+      },
+      "jcs": "{\"active_metrics\":{\"metrics\":[],\"schema_version\":1},\"exercise_type\":\"C\",\"progression\":{\"mode\":\"goal_only\"},\"schema_version\":1,\"steps\":[{\"rules\":{\"goal\":{\"type\":\"completed\"},\"schema_version\":1},\"sort_order\":1,\"step_id\":\"01900000-0000-7000-8000-000000000002\"}]}",
+      "sha256_hex": "259d3867d2da017da7c5750b0fb4045178cabf3159fa4b32407cf3478e567e13"
+    }
+  ]
+}
