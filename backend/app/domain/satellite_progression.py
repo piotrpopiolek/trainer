@@ -140,9 +140,7 @@ class SatelliteProgressionEvaluator:
             )
 
         result = parse_satellite_log_result(inp.log_payload)
-        if result.sets == [] and not isinstance(inp.rules.goal, SatelliteGoalCompletedV1):
-            # empty list OK only for completed with completed=true and no sets required
-            pass
+        # Empty sets ⇒ goal not met for reps/duration; type C uses completed=true.
         met = satellite_goal_met(inp.rules, result, active_metrics=inp.active_metrics)
         skipped = None if inp.progression_eligible else "config_not_active_for_day"
         return ProgressionEvaluation(

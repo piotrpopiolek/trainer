@@ -25,7 +25,6 @@ from app.schemas.satellite import (
     SatelliteConfigDocumentV1,
     SatelliteConfigStepV1,
     SatelliteProgressionPolicyGoalOnlyV1,
-    SatelliteProgressionPolicyStepsV1,
     parse_satellite_rules,
 )
 from app.services.errors import DomainError
@@ -110,25 +109,16 @@ async def create_satellite(
 ) -> SatelliteReadV1:
     if not body.steps:
         raise DomainError("steps_required", http_status=422)
-    if not (1 <= len(body.steps) <= 5):
-        raise DomainError("invalid_step_count", http_status=422)
+    # Stage 1: goal-only only — multi-step / mode=steps deferred to Stage 3.
+    if len(body.steps) != 1:
+        raise DomainError("stage1_goal_only_one_step", http_status=422)
 
     try:
         active_metrics = ActiveMetricsV1.model_validate(body.active_metrics)
     except Exception as exc:
         raise DomainError("invalid_active_metrics", http_status=422) from exc
 
-    progression: SatelliteProgressionPolicyGoalOnlyV1 | SatelliteProgressionPolicyStepsV1
-    if len(body.steps) == 1:
-        progression = SatelliteProgressionPolicyGoalOnlyV1(mode="goal_only")
-    else:
-        progression = SatelliteProgressionPolicyStepsV1(
-            mode="steps",
-            regression={
-                "mode": "suggest_after_failed_days",
-                "threshold": 2,
-            },
-        )
+    progression = SatelliteProgressionPolicyGoalOnlyV1(mode="goal_only")
 
     # Serialize create vs concurrent (FR-050).
     await db.execute(select(User).where(User.id == user.id).with_for_update())

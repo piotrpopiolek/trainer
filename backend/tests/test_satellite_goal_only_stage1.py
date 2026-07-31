@@ -391,3 +391,41 @@ async def test_evaluate_uses_config_document_not_divergent_step_rules(
     assert log_row is not None
     assert log_row.rules_snapshot is not None
     assert log_row.rules_snapshot.get("goal", {}).get("min_reps") == 10
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_multi_step_in_stage1(db: AsyncSession) -> None:
+    from app.services.errors import DomainError
+
+    user = await _ready(db, "multi-step@ex.com")
+    body = SatelliteCreateV1.model_validate(
+        {
+            "schema_version": 1,
+            "name": "Two steps",
+            "exercise_type": "B",
+            "active_metrics": {"schema_version": 1, "metrics": ["reps"]},
+            "schedule_kind": "daily",
+            "steps": [
+                {
+                    "step_number": 1,
+                    "name": "A",
+                    "rules": {
+                        "schema_version": 1,
+                        "goal": {"type": "reps", "sets": 1, "min_reps": 5},
+                    },
+                },
+                {
+                    "step_number": 2,
+                    "name": "B",
+                    "rules": {
+                        "schema_version": 1,
+                        "goal": {"type": "reps", "sets": 1, "min_reps": 8},
+                    },
+                },
+            ],
+            "client_mutation_id": str(new_uuid7()),
+        }
+    )
+    with pytest.raises(DomainError) as exc:
+        await create_satellite(db, user=user, body=body, commit=False)
+    assert exc.value.error_code == "stage1_goal_only_one_step"

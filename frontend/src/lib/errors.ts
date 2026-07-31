@@ -14,6 +14,20 @@ const KNOWN: Record<string, string> = {
   unauthorized: "errors.unauthorized",
   not_found: "errors.notFound",
   nothing_to_update: "errors.nothingToUpdate",
+  satellite_config_required: "errors.satelliteConfigRequired",
+  satellite_config_not_found: "errors.satelliteConfigNotFound",
+  satellite_config_mismatch: "errors.satelliteConfigMismatch",
+  satellite_config_hash_invalid: "errors.satelliteConfigHashInvalid",
+  invalid_weight_kg: "errors.invalidWeightKg",
+  weight_kg_must_be_decimal_string: "errors.invalidWeightKg",
+  weight_kg_too_many_places: "errors.invalidWeightKg",
+  empty_set: "errors.emptySet",
+  invalid_satellite_rules: "errors.invalidSatelliteRules",
+  invalid_active_metrics: "errors.invalidActiveMetrics",
+  invalid_step_count: "errors.invalidStepCount",
+  steps_required: "errors.stepsRequired",
+  stage1_goal_only_one_step: "errors.stage1GoalOnlyOneStep",
+  bilateral_not_allowed_when_require_both_sides: "errors.bilateralNotAllowed",
 };
 
 export function errorCodeToI18nKey(errorCode: string): string {
