@@ -25,7 +25,9 @@ function item(
   };
 }
 
-describe("outbox sort FR-072a", () => {
+describe("outbox sort FR-072a (legacy type-order characterization)", () => {
+  // FR-030b: locks current production order until depends_on topological sort lands.
+  // Do not rewrite this to the future tie-breaker (legal → satellite/config → sessions → measurements).
   it("orders legal → session → measurement → satellite and deletes before upserts", () => {
     const sorted = sortOutboxItems([
       item({
