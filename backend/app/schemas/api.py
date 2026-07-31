@@ -13,16 +13,21 @@ from app.schemas.sets import SessionSetsV1
 
 
 class BodyMetricsV1(VersionedModel):
+    """FR-061: defaults weight/waist/biceps; optional chest/thigh/neck/abdomen/hips/calf."""
+
     SCHEMA_VERSION = 1
     schema_version: int = Field(1, ge=1)
     weight_kg: float | None = Field(default=None, ge=0)
     waist_cm: float | None = Field(default=None, ge=0)
-    chest_cm: float | None = Field(default=None, ge=0)
-    hips_cm: float | None = Field(default=None, ge=0)
     biceps_cm: float | None = Field(default=None, ge=0)
+    chest_cm: float | None = Field(default=None, ge=0)
     thigh_cm: float | None = Field(default=None, ge=0)
     neck_cm: float | None = Field(default=None, ge=0)
+    abdomen_cm: float | None = Field(default=None, ge=0)
+    hips_cm: float | None = Field(default=None, ge=0)
     calves_cm: float | None = Field(default=None, ge=0)
+    # Alias for db-plan `calf_cm` (accepted; stored key remains calves_cm when both sent).
+    calf_cm: float | None = Field(default=None, ge=0)
 
 
 class SessionLogCreateV1(BaseModel):

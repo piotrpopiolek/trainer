@@ -105,9 +105,18 @@
   "measurements": {
     "title": "Pomiary sylwetki",
     "add": "Nowy pomiar",
+    "defaultsHint": "Domyślne: waga, pas, biceps — uzupełnij to, co mierzysz dziś.",
+    "optionalHint": "Opcjonalne obwody",
     "weight": "Waga (kg)",
     "waist": "Pas (cm)",
     "biceps": "Biceps (cm)",
+    "chest": "Klatka (cm)",
+    "thigh": "Udo (cm)",
+    "neck": "Szyja (cm)",
+    "abdomen": "Brzuch (cm)",
+    "hips": "Biodra (cm)",
+    "calf": "Łydka (cm)",
+    "notes": "Notatka (opcjonalnie)",
     "submit": "Zapisz pomiar",
     "weightValue": "{{value}} kg",
     "cmValue": "{{value}} cm"

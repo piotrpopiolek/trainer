@@ -121,20 +121,33 @@ export async function createMeasurement(input: {
   weightKg?: number;
   waistCm?: number;
   bicepsCm?: number;
+  chestCm?: number;
+  thighCm?: number;
+  neckCm?: number;
+  abdomenCm?: number;
+  hipsCm?: number;
+  calvesCm?: number;
   notes?: string;
 }): Promise<Measurement> {
+  const metrics: Record<string, number | undefined> & { schema_version: number } = {
+    schema_version: 1,
+    weight_kg: input.weightKg,
+    waist_cm: input.waistCm,
+    biceps_cm: input.bicepsCm,
+    chest_cm: input.chestCm,
+    thigh_cm: input.thighCm,
+    neck_cm: input.neckCm,
+    abdomen_cm: input.abdomenCm,
+    hips_cm: input.hipsCm,
+    calves_cm: input.calvesCm,
+  };
   const raw = await apiJson<unknown>("/api/measurements", {
     method: "POST",
     body: JSON.stringify({
       schema_version: 1,
       measured_at: input.measuredAt,
       local_date: input.localDate,
-      metrics: {
-        schema_version: 1,
-        weight_kg: input.weightKg,
-        waist_cm: input.waistCm,
-        biceps_cm: input.bicepsCm,
-      },
+      metrics,
       notes: input.notes,
       client_mutation_id: newClientMutationId(),
     }),
