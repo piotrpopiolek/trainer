@@ -14,7 +14,7 @@ from app.models.catalog import Exercise, ExerciseStep
 from app.models.progression import ProgressionEvent, UserExerciseProgress
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
-from app.schemas.rules import ProgressionRulesV1
+from app.schemas.rules import ProgressionRulesV1, parse_progression_rules
 from app.services.progression import ProgressionEngine, goal_met_from_sets
 from app.services.session_rules import (
     DuplicateExerciseSameDayError,
@@ -55,6 +55,32 @@ def _sets(reps: list[int]) -> dict:
         "schema_version": 1,
         "sets": [{"reps": r} for r in reps],
     }
+
+
+def _sets_meeting_push(step: int) -> dict:
+    """Sets that meet push_ups advance (=progression) for the given step."""
+    # From backend/seed/cc/step_standards.json
+    table: dict[int, tuple[int, int, bool]] = {
+        1: (3, 50, False),
+        2: (3, 40, False),
+        3: (3, 30, False),
+        4: (2, 25, False),
+        5: (2, 20, False),
+        6: (2, 20, False),
+        7: (2, 20, True),
+        8: (2, 20, True),
+        9: (2, 20, True),
+        10: (1, 100, True),
+    }
+    sets_n, reps, both = table[step]
+    if not both:
+        return _sets([reps] * sets_n)
+    out: list[dict] = []
+    for _ in range(sets_n):
+        out.append({"reps": reps, "sides": "left"})
+    for _ in range(sets_n):
+        out.append({"reps": reps, "sides": "right"})
+    return {"schema_version": 1, "sets": out}
 
 
 async def _session_with_log(
@@ -244,7 +270,7 @@ async def test_success_resets_fail_streak_without_advance_at_max(db: AsyncSessio
         exercise=exercise,
         local_date=d,
         performed_at=t,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(10),
         step_number=10,
     )
     result = await engine.evaluate_log(db, log, session=session)
@@ -287,7 +313,7 @@ async def test_three_success_advances(db: AsyncSession) -> None:
         exercise=exercise,
         local_date=d,
         performed_at=t,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(1),
         step_number=1,
     )
     result = await engine.evaluate_log(db, log, session=session)
@@ -308,8 +334,8 @@ async def test_three_success_advances(db: AsyncSession) -> None:
     )
     assert step is not None
     # FR-037: snapshot is step rules used at evaluate (not reinterpreted later).
-    snap = ProgressionRulesV1.model_validate(log.rules_snapshot)
-    seed = ProgressionRulesV1.model_validate(step.rules)
+    snap = parse_progression_rules(log.rules_snapshot)
+    seed = parse_progression_rules(step.rules)
     assert snap == seed
     assert result.events[0].rules_snapshot == log.rules_snapshot
 
@@ -340,7 +366,7 @@ async def test_late_log_does_not_mutate_progress(db: AsyncSession) -> None:
         exercise=exercise,
         local_date=newer_day,
         performed_at=newer_at,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(1),
         step_number=2,
     )
     await engine.evaluate_log(db, log_new, session=s_new)
@@ -449,7 +475,7 @@ async def test_immutable_after_evaluate(db: AsyncSession) -> None:
     d = date(2026, 7, 5)
     t = datetime(2026, 7, 5, 11, 0, tzinfo=UTC)
     session, log = await _session_with_log(
-        db, user=user, exercise=exercise, local_date=d, performed_at=t, sets=_sets([10, 10, 10])
+        db, user=user, exercise=exercise, local_date=d, performed_at=t, sets=_sets_meeting_push(1)
     )
     # Positive: before evaluate, content updates are allowed.
     await assert_mutable_for_content_update(db, session)
@@ -468,7 +494,7 @@ async def test_soft_delete_supersedes_logs_and_allows_new_same_day(
     d = date(2026, 7, 6)
     t = datetime(2026, 7, 6, 8, 0, tzinfo=UTC)
     session, log = await _session_with_log(
-        db, user=user, exercise=exercise, local_date=d, performed_at=t, sets=_sets([10, 10, 10])
+        db, user=user, exercise=exercise, local_date=d, performed_at=t, sets=_sets_meeting_push(1)
     )
     await db.commit()
     with pytest.raises(DuplicateExerciseSameDayError):
@@ -515,7 +541,7 @@ async def test_soft_delete_does_not_rewind_progress(db: AsyncSession) -> None:
         exercise=exercise,
         local_date=d,
         performed_at=t,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(1),
         step_number=1,
     )
     result = await engine.evaluate_log(db, log, session=session)
@@ -563,7 +589,7 @@ async def test_evaluate_log_is_idempotent(db: AsyncSession) -> None:
         exercise=exercise,
         local_date=d,
         performed_at=t,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(1),
         step_number=1,
     )
     first = await engine.evaluate_log(db, log, session=session)
@@ -621,7 +647,7 @@ async def test_evaluate_uses_progress_step_not_client_log_step(db: AsyncSession)
         exercise=exercise,
         local_date=d,
         performed_at=t,
-        sets=_sets([10, 10, 10]),
+        sets=_sets_meeting_push(1),
         step_number=1,
     )
     result = await engine.evaluate_log(db, log, session=session)

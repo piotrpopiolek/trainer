@@ -5,6 +5,11 @@
       "slug": "cc_default",
       "schema_version": 1,
       "description": "Default CC advance/regress contract v1"
+    },
+    {
+      "slug": "cc_default",
+      "schema_version": 2,
+      "description": "CC standards beginner/intermediate/progression; advance ≡ progression"
     }
   ],
   "program": {
@@ -45,13 +50,18 @@
     {
       "slug": "handstand_push_ups",
       "exercise_type": "A",
-      "active_metrics": {"schema_version": 1, "metrics": ["reps"]}
+      "active_metrics": {"schema_version": 1, "metrics": ["reps", "duration_sec"]}
     }
   ],
   "steps_per_exercise": 10,
   "step_rules_default": {
-    "schema_version": 1,
-    "advance": {"sets": 3, "min_reps": 10, "require_both_sides": false},
+    "schema_version": 2,
+    "standards": {
+      "beginner": {"sets": 1, "min_reps": 10, "require_both_sides": false},
+      "intermediate": {"sets": 2, "min_reps": 25, "require_both_sides": false},
+      "progression": {"sets": 3, "min_reps": 50, "require_both_sides": false}
+    },
+    "advance": {"sets": 3, "min_reps": 50, "require_both_sides": false},
     "regress": {"fail_sessions": 2},
     "goal": null
   }

@@ -59,12 +59,20 @@
     "log": "Zapisz",
     "logTitle": "Log: {{name}}",
     "setN": "Seria {{n}}",
+    "setDurationN": "Seria {{n}} (sekundy)",
     "saveLog": "Zapisz wynik",
     "saved": "Sesja zapisana.",
     "deleteSession": "Usuń",
     "noRewindTitle": "Usunięcie nie cofa progresji",
     "noRewindBody": "Soft-delete sesji nie cofa awansu ani fail_streak. Korekta kroku: Progres → Dostosuj krok.",
-    "confirmDelete": "Usuń sesję"
+    "confirmDelete": "Usuń sesję",
+    "standardBeginner": "Początkowy",
+    "standardIntermediate": "Średni",
+    "standardProgression": "Przejście",
+    "stepDetails": "Wykonanie i wskazówki",
+    "sectionExecution": "Wykonanie",
+    "sectionRationale": "Rentgen",
+    "sectionTechnique": "Doskonalenie"
   },
   "progress": {
     "title": "Mój progres CC",

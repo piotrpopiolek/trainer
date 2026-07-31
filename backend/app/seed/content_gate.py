@@ -121,8 +121,11 @@ def strict_ready_ok(seed_root: Path | None = None) -> tuple[bool, str]:
             issues.append(f"{label}:description")
         else:
             sc = _sentence_count(desc)
-            if sc < 2 or sc > 6:
+            if sc < 1 or sc > 6:
                 issues.append(f"{label}:description_sentence_count={sc}")
+        for field in ("execution", "rationale", "technique"):
+            if not _nonempty_clean(step.get(field)):
+                issues.append(f"{label}:{field}")
 
     missing = expected_keys - seen
     extra = seen - expected_keys

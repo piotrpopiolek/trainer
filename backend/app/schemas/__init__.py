@@ -7,7 +7,7 @@ from app.schemas.onboarding import (
     OnboardingQuestionnaireV1,
     OnboardingStepsMapV1,
 )
-from app.schemas.rules import ProgressionRulesV1
+from app.schemas.rules import ProgressionRulesV1, ProgressionRulesV2, parse_progression_rules
 from app.schemas.sets import SessionSetsV1
 
 __all__ = [
@@ -16,7 +16,9 @@ __all__ = [
     "OnboardingQuestionnaireV1",
     "OnboardingStepsMapV1",
     "ProgressionRulesV1",
+    "ProgressionRulesV2",
     "SessionSetsV1",
     "VersionedModel",
+    "parse_progression_rules",
     "parse_versioned",
 ]

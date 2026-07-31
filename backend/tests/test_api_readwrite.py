@@ -126,6 +126,13 @@ async def test_today_and_session_create(api_client: AsyncClient, db: AsyncSessio
     assert body["is_rest_day"] is False
     assert body["split_day"] == 1
     assert len(body["cc_exercises"]) == 2
+    first = body["cc_exercises"][0]
+    assert first.get("standards") is not None
+    assert "beginner" in first["standards"]
+    assert "progression" in first["standards"]
+    assert first.get("execution")
+    assert first.get("rationale")
+    assert first.get("technique")
 
     push = await db.scalar(select(Exercise).where(Exercise.slug == "push_ups"))
     assert push is not None
@@ -145,7 +152,7 @@ async def test_today_and_session_create(api_client: AsyncClient, db: AsyncSessio
                     "section": "main",
                     "sets": {
                         "schema_version": 1,
-                        "sets": [{"reps": 10}, {"reps": 10}, {"reps": 10}],
+                        "sets": [{"reps": 50}, {"reps": 50}, {"reps": 50}],
                     },
                 }
             ],

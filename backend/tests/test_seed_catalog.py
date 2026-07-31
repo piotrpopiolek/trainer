@@ -23,7 +23,12 @@ def test_seed_json_structure() -> None:
     assert len(entities["days"]) == 3
     assert len(pl["steps"]) == 60
     assert all(s.get("content_status") == "ready" for s in pl["steps"])
-    assert pl["catalog_version"] >= 2
+    assert pl["catalog_version"] >= 4
+    assert all(
+        s.get("execution") and s.get("rationale") and s.get("technique") for s in pl["steps"]
+    )
+    standards = load_json("cc", "step_standards.json")
+    assert len(standards["steps"]) == 60
     assert "[DRAFT]" not in json.dumps(pl, ensure_ascii=False)
     legal = load_json("legal", "documents.json")
     legal_pl = load_json("legal", "pl-PL.json")

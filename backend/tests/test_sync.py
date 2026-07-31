@@ -123,7 +123,7 @@ async def test_sync_push_session_and_pull(api_client: AsyncClient, db: AsyncSess
                             "section": "main",
                             "sets": {
                                 "schema_version": 1,
-                                "sets": [{"reps": 10}, {"reps": 10}, {"reps": 10}],
+                                "sets": [{"reps": 50}, {"reps": 50}, {"reps": 50}],
                             },
                         }
                     ],

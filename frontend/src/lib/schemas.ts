@@ -38,6 +38,19 @@ export const todayCcExerciseSchema = z.object({
   current_step_number: z.number(),
   advance: z.unknown().nullable().optional(),
   regress: z.unknown().nullable().optional(),
+  standards: z
+    .object({
+      beginner: z.unknown(),
+      intermediate: z.unknown(),
+      progression: z.unknown(),
+    })
+    .nullable()
+    .optional(),
+  step_name: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  execution: z.string().nullable().optional(),
+  rationale: z.string().nullable().optional(),
+  technique: z.string().nullable().optional(),
 });
 
 export const todaySatelliteSchema = z.object({

@@ -134,6 +134,12 @@ class TodayCcExerciseV1(BaseModel):
     current_step_number: int
     advance: dict[str, Any] | None = None
     regress: dict[str, Any] | None = None
+    standards: dict[str, Any] | None = None
+    step_name: str | None = None
+    description: str | None = None
+    execution: str | None = None
+    rationale: str | None = None
+    technique: str | None = None
 
 
 class TodaySatelliteV1(BaseModel):
@@ -166,6 +172,9 @@ class CatalogStepV1(BaseModel):
     step_number: int
     name: str
     description: str
+    execution: str = ""
+    rationale: str = ""
+    technique: str = ""
     content_status: str
     rules: dict[str, Any]
 

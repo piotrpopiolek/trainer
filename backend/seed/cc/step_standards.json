@@ -1,0 +1,1145 @@
+{
+  "schema_version": 1,
+  "steps": [
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 50,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 40,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 12,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "push_ups",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 1,
+        "min_reps": 100,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 50,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 40,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 35,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 50,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "squats",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 50,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 40,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 11,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 4,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 3,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 3,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 7,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "pull_ups",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 1,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 3,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 40,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 35,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 25,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "leg_raises",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 50,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 40,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 3,
+        "min_reps": 30,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 25,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 8,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 6,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 3,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 2,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 4,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 1,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 3,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "bridges",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 1,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 3,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 1,
+      "beginner": {
+        "sets": 1,
+        "min_duration_sec": 30,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 1,
+        "min_duration_sec": 60,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 1,
+        "min_duration_sec": 120,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 2,
+      "beginner": {
+        "sets": 1,
+        "min_duration_sec": 10,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 1,
+        "min_duration_sec": 30,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 1,
+        "min_duration_sec": 60,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 3,
+      "beginner": {
+        "sets": 1,
+        "min_duration_sec": 30,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 1,
+        "min_duration_sec": 60,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 1,
+        "min_duration_sec": 120,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 4,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 20,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 5,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 15,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 6,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": false
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 9,
+        "require_both_sides": false
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 12,
+        "require_both_sides": false
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 7,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 10,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 8,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 4,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 8,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 9,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 3,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 4,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 2,
+        "min_reps": 6,
+        "require_both_sides": true
+      }
+    },
+    {
+      "exercise_slug": "handstand_push_ups",
+      "step_number": 10,
+      "beginner": {
+        "sets": 1,
+        "min_reps": 1,
+        "require_both_sides": true
+      },
+      "intermediate": {
+        "sets": 2,
+        "min_reps": 2,
+        "require_both_sides": true
+      },
+      "progression": {
+        "sets": 1,
+        "min_reps": 5,
+        "require_both_sides": true
+      }
+    }
+  ]
+}

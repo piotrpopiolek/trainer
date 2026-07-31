@@ -294,6 +294,9 @@ class ExerciseStepTranslation(Base):
     locale: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    execution: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    rationale: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    technique: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     content_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'draft'")
     )

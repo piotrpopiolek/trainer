@@ -32,6 +32,33 @@ from app.seed.loader import load_json
 LOCALE_PL = "pl-PL"
 
 
+def _threshold_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "sets": int(raw["sets"]),
+        "require_both_sides": bool(raw.get("require_both_sides", False)),
+    }
+    if raw.get("min_reps") is not None:
+        out["min_reps"] = int(raw["min_reps"])
+    if raw.get("min_duration_sec") is not None:
+        out["min_duration_sec"] = int(raw["min_duration_sec"])
+    return out
+
+
+def rules_v2_from_standards(entry: dict[str, Any]) -> dict[str, Any]:
+    progression = _threshold_dict(entry["progression"])
+    return {
+        "schema_version": 2,
+        "standards": {
+            "beginner": _threshold_dict(entry["beginner"]),
+            "intermediate": _threshold_dict(entry["intermediate"]),
+            "progression": progression,
+        },
+        "advance": progression,
+        "regress": {"fail_sessions": 2},
+        "goal": None,
+    }
+
+
 def legal_content_hash(title: str, body: str) -> bytes:
     """SHA-256 of canonical JSON {title,body} (NFC) → BYTEA (db-plan §1.3a)."""
     payload = {
@@ -45,8 +72,13 @@ def legal_content_hash(title: str, body: str) -> bytes:
 async def seed_all(session: AsyncSession) -> dict[str, int]:
     entities = load_json("cc", "entities.json")
     pl = load_json("cc", "pl-PL", "catalog.json")
+    standards_doc = load_json("cc", "step_standards.json")
     legal_docs = load_json("legal", "documents.json")
     legal_pl = load_json("legal", "pl-PL.json")
+
+    standards_by_key = {
+        (s["exercise_slug"], int(s["step_number"])): s for s in standards_doc["steps"]
+    }
 
     counts = {
         "progression_schemas": 0,
@@ -78,7 +110,7 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
         schema_ids[(item["slug"], item["schema_version"])] = sid
         counts["progression_schemas"] += 1
 
-    default_schema_id = schema_ids[("cc_default", 1)]
+    default_schema_id = schema_ids[("cc_default", 2)]
     program_slug = entities["program"]["slug"]
     program_id = seed_id("program", program_slug)
     await session.execute(
@@ -207,6 +239,8 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
     for slug, eid in exercise_ids.items():
         for step_number in range(1, steps_n + 1):
             step_id = seed_id("exercise_step", slug, str(step_number))
+            std = standards_by_key.get((slug, step_number))
+            rules = rules_v2_from_standards(std) if std is not None else rules_default
             await session.execute(
                 insert(ExerciseStep)
                 .values(
@@ -215,14 +249,14 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
                     step_number=step_number,
                     name=None,
                     description=None,
-                    rules=rules_default,
+                    rules=rules,
                     progression_schema_id=default_schema_id,
                     sort_order=step_number,
                 )
                 .on_conflict_do_update(
                     constraint="uq_exercise_steps_exercise_step",
                     set_={
-                        "rules": rules_default,
+                        "rules": rules,
                         "progression_schema_id": default_schema_id,
                         "sort_order": step_number,
                     },
@@ -237,6 +271,9 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
                     locale=LOCALE_PL,
                     name=st["name"],
                     description=st["description"],
+                    execution=st.get("execution") or "",
+                    rationale=st.get("rationale") or "",
+                    technique=st.get("technique") or "",
                     content_status=st.get("content_status", "draft"),
                 )
                 .on_conflict_do_update(
@@ -244,6 +281,9 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
                     set_={
                         "name": st["name"],
                         "description": st["description"],
+                        "execution": st.get("execution") or "",
+                        "rationale": st.get("rationale") or "",
+                        "technique": st.get("technique") or "",
                         "content_status": st.get("content_status", "draft"),
                     },
                 )

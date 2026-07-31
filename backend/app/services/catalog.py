@@ -166,6 +166,9 @@ async def build_cc_catalog(
                     step_number=step.step_number,
                     name=strans.name if strans else (step.name or f"step-{step.step_number}"),
                     description=strans.description if strans else (step.description or ""),
+                    execution=strans.execution if strans else "",
+                    rationale=strans.rationale if strans else "",
+                    technique=strans.technique if strans else "",
                     content_status=strans.content_status if strans else "draft",
                     rules=step.rules,
                 )

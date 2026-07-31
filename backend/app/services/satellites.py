@@ -13,8 +13,7 @@ from app.models.catalog import Exercise, ExerciseStep
 from app.models.progression import ProgressionSchema, UserExerciseProgress
 from app.models.user import User
 from app.schemas.api import SatelliteCreateV1, SatelliteReadV1
-from app.schemas.common import parse_versioned
-from app.schemas.rules import ProgressionRulesV1
+from app.schemas.rules import parse_progression_rules
 from app.services.errors import DomainError
 
 MAX_SATELLITES = 10
@@ -90,7 +89,7 @@ async def create_satellite(
     if not (1 <= len(body.steps) <= 5):
         raise DomainError("invalid_step_count", http_status=422)
     for step in body.steps:
-        rules = parse_versioned(ProgressionRulesV1, step.rules)
+        rules = parse_progression_rules(step.rules)
         if len(body.steps) == 1 and rules.goal is None:
             raise DomainError("goal_required", http_status=422)
 
@@ -133,7 +132,7 @@ async def create_satellite(
     db.add(ex)
     await db.flush()
     for step in sorted(body.steps, key=lambda s: s.step_number):
-        parse_versioned(ProgressionRulesV1, step.rules)
+        parse_progression_rules(step.rules)
         db.add(
             ExerciseStep(
                 id=new_uuid7(),

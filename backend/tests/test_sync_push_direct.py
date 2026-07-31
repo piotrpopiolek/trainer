@@ -111,7 +111,7 @@ async def test_push_batch_session_measurement_satellite(db: AsyncSession) -> Non
                             "section": "main",
                             "sets": {
                                 "schema_version": 1,
-                                "sets": [{"reps": 10}, {"reps": 10}, {"reps": 10}],
+                                "sets": [{"reps": 50}, {"reps": 50}, {"reps": 50}],
                             },
                         }
                     ],

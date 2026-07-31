@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "locale": "pl-PL",
-  "catalog_version": 3,
+  "catalog_version": 4,
   "program": {
     "name": "Program Big Six",
     "description": "Sześć podstawowych wzorców ruchowych z dziesięciostopniową progresją. Treści własne aplikacji — bez cytatów z książek. Awans i regres ocenia serwer według reguł kroku."
@@ -57,421 +57,601 @@
       "exercise_slug": "push_ups",
       "step_number": 1,
       "name": "Pompki przy ścianie",
-      "description": "Stań twarzą do ściany i oprzyj dłonie na wysokości klatki piersiowej. Zbliżaj mostek do ściany kontrolowanym ruchem, utrzymując tułów w jednej linii. Wracaj do wyprostu łokci bez zapadania barków. Oddychaj równo i trzymaj napięty brzuch przez całą serię.",
-      "content_status": "ready"
+      "description": "Lekkie pompki przy ścianie uczą linii ciała i kontroli barków.",
+      "content_status": "ready",
+      "execution": "Stań twarzą do ściany, dłonie na wysokości klatki. Zbliżaj mostek do ściany i wracaj do wyprostu łokci. Utrzymuj napięty brzuch i równy oddech.",
+      "rationale": "To najbezpieczniejsze wprowadzenie do wzorca pompkowego — małe obciążenie, duża kontrola łopatek.",
+      "technique": "Jeśli barki unoszą się do uszu, zejdź dłonie nieco niżej i skróć zakres."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 2,
       "name": "Pompki w podporze skośnym",
-      "description": "Oprzyj dłonie na stabilnym podwyższeniu i ustaw ciało w linii od głowy do pięt. Opuszczaj klatkę do poziomu dłoni, a następnie wypychaj się w górę. Nie zapadaj bioder i nie unoś pośladków ponad linię. Zachowaj spokojne tempo oraz pełny zakres bez szarpania.",
-      "content_status": "ready"
+      "description": "Podpór na podwyższeniu zwiększa dźwignię przy zachowaniu linii.",
+      "content_status": "ready",
+      "execution": "Dłonie na stabilnym podwyższeniu, ciało od głowy do pięt w linii. Opuszczaj klatkę do dłoni i wypychaj w górę bez zapadania bioder.",
+      "rationale": "Buduje siłę pchającą barków i tricepsów przy mniejszym obciążeniu niż pełny podpor.",
+      "technique": "Im niższe podwyższenie, tym trudniej — zmieniaj wysokość stopniowo."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 3,
       "name": "Pompki na kolanach",
-      "description": "Przyjmij podpor przodem z kolanami na podłożu i biodrami w linii z tułowiem. Opuszczaj klatkę nisko, prowadząc łokcie blisko ciała. Wypychaj się do wyprostu, nie łamiąc bioder w dół ani w górę. Skup się na napięciu tułowia i równym oddechu.",
-      "content_status": "ready"
+      "description": "Pełny tor pompek z odciążeniem przez kolana.",
+      "content_status": "ready",
+      "execution": "Podpor z kolanami na podłożu, biodra w linii z tułowiem. Opuszczaj klatkę nisko, łokcie blisko ciała, wracaj do wyprostu.",
+      "rationale": "Uczy pełnego zakresu bez przeciążania barków u osób budujących bazę.",
+      "technique": "Nie załamuj bioder w dół — myśl o sztywnej desce od kolan w górę."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 4,
       "name": "Pompki połowiczne",
-      "description": "W podporze przodem ogranicz zakres do górnej połowy ruchu. Utrzymuj sztywny tułów i świadomie spowalniaj fazę opuszczania. Nie blokuj oddechu w dolnym punkcie. Buduj siłę barków i tricepsów bez utraty linii ciała.",
-      "content_status": "ready"
+      "description": "Górna połowa zakresu buduje siłę wyprostu.",
+      "content_status": "ready",
+      "execution": "W podporze ogranicz zejście do połowy. Spowalniaj ekscentrykę i wypychaj do pełnego wyprostu.",
+      "rationale": "Izoluje trudniejszą część pompek klasycznych.",
+      "technique": "Zaznacz kredą lub taśmą głębokość, do której schodzisz."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 5,
       "name": "Pompki klasyczne",
-      "description": "Ustaw pełny podpor przodem z ciałem w jednej linii. Opuszczaj klatkę blisko podłoża i wypychaj się do wyprostu łokci. Utrzymuj stabilne barki oraz napięty brzuch, bez zapadania lędźwi. Wykonuj płynny ruch w obu fazach.",
-      "content_status": "ready"
+      "description": "Pełny podpor i pełny zakres.",
+      "content_status": "ready",
+      "execution": "Ciało w linii, klatka blisko podłoża, wyprost łokci na górze. Barki stabilne, brzuch napięty.",
+      "rationale": "Fundament siły pchającej całego tułowia.",
+      "technique": "Unikaj „falowania” bioder — napnij pośladki lekko przez całą serię."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 6,
       "name": "Pompki wąskie",
-      "description": "Ustaw dłonie bliżej siebie, mniej więcej pod barkami. Podczas opuszczania prowadź łokcie blisko tułowia. Wypychaj się mocno w górę, nie unosząc bioder. Ta wersja kładzie nacisk na triceps i kontrolę łopatek.",
-      "content_status": "ready"
+      "description": "Węższy rozstaw dłoni mocniej angażuje triceps.",
+      "content_status": "ready",
+      "execution": "Dłonie pod barkami lub bliżej. Łokcie prowadź blisko tułowia.",
+      "rationale": "Przygotowuje do wariantów nierównych i jednoręcznych.",
+      "technique": "Jeśli bolą nadgarstki, użyj paralleli lub pięści."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 7,
       "name": "Pompki nierówne",
-      "description": "Jedną dłoń oprzyj na niewielkim podwyższeniu, a drugą na podłożu. Zachowaj linię ciała i równomierne tempo w obu fazach. Zmieniaj strony między seriami albo w kolejnych treningach. Unikaj rotacji barków i zapadania bioder.",
-      "content_status": "ready"
+      "description": "Asymetria uczy przenoszenia obciążenia na jedną stronę.",
+      "content_status": "ready",
+      "execution": "Jedna dłoń na małym podwyższeniu. Zachowaj linię i równe tempo; zmieniaj strony.",
+      "rationale": "Most między pompka dwuręczną a pracą unilateralną.",
+      "technique": "Zwiększaj wysokość podwyższenia małymi krokami."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 8,
       "name": "Pompki prawie jednoręczne",
-      "description": "Przenieś większość obciążenia na jedną rękę, a drugą używaj tylko do równowagi. Opuszczaj się kontrolowanie, nie skręcając tułowia. Wypychaj się w górę bez szarpnięcia. Trenuj obie strony w zrównoważonym wolumenie.",
-      "content_status": "ready"
+      "description": "Większość masy na jednej ręce, druga tylko asekuruje.",
+      "content_status": "ready",
+      "execution": "Przenieś ciężar na pracującą stronę. Opuszczaj bez rotacji tułowia. Trenuj obie strony.",
+      "rationale": "Wysoka wymagalność stabilizacji barku i core.",
+      "technique": "Trzymaj stopy szerzej dla równowagi na początku."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 9,
       "name": "Pompki z dźwignią",
-      "description": "Ustaw pozycję tak, aby pracująca ręka dźwigała większą dźwignię ciała. Utrzymuj napięcie tułowia i stabilny bark przez cały ruch. Opuszczaj i wypychaj w pełnym możliwym zakresie. Pracuj w wolnym tempie, bez utraty linii bioder.",
-      "content_status": "ready"
+      "description": "Ustawienie zwiększa moment na pracującej ręce.",
+      "content_status": "ready",
+      "execution": "Wydłuż dźwignię po stronie wolnej ręki. Ruch wolny, pełny możliwy zakres.",
+      "rationale": "Ostatni most przed pełną pompka jednoręczną.",
+      "technique": "Nie gub linii bioder — lepiej krótszy zakres niż skręt."
     },
     {
       "exercise_slug": "push_ups",
       "step_number": 10,
       "name": "Pompki jednoręczne",
-      "description": "Wykonuj pełny ruch na jednej ręce z tułowiem w linii. Druga ręka pozostaje wolna albo tylko lekko asekuruje równowagę. Kontroluj rotację tułowia i spokojny oddech. Buduj siłę symetrycznie na obu stronach.",
-      "content_status": "ready"
+      "description": "Pełny ruch na jednej ręce.",
+      "content_status": "ready",
+      "execution": "Wolna ręka nie podpiera. Kontroluj rotację i oddech; buduj obie strony.",
+      "rationale": "Mistrzowski wariant siły pchającej.",
+      "technique": "Wracaj do #8–#9, gdy forma się sypie przed objętością."
     },
     {
       "exercise_slug": "squats",
       "step_number": 1,
       "name": "Przysiady przy oparciu",
-      "description": "Trzymaj się stabilnego oparcia i zejdź w przysiad do komfortowej głębokości. Prowadź kolana w linii ze stopami, a pięty trzymaj na podłożu. Wróć do stania bez szarpania biodrami. Oddychaj równo i utrzymuj możliwie wyprostowany tułów.",
-      "content_status": "ready"
+      "description": "Bezpieczny przysiad z lekkim trzymaniem.",
+      "content_status": "ready",
+      "execution": "Trzymaj stabilne oparcie, zejdź do komfortowej głębokości, pięty na podłożu, kolana śledzą stopy.",
+      "rationale": "Uczy wzorca zgięcia bioder i kolan przy minimalnym ryzyku utraty równowagi.",
+      "technique": "Oparcie tylko do równowagi — nie ciągnij się rękami w górę."
     },
     {
       "exercise_slug": "squats",
       "step_number": 2,
       "name": "Przysiady wspomagane",
-      "description": "Użyj lekkiego podparcia dłoni wyłącznie do utrzymania równowagi. Zejdź biodrami w dół i wróć do pełnego wyprostu bioder. Nie zapadaj klatki i nie unoś pięt. Kontroluj obie fazy ruchu.",
-      "content_status": "ready"
+      "description": "Minimalna pomoc dłoni.",
+      "content_status": "ready",
+      "execution": "Lekki kontakt z oparciem, zejdź i wróć do wyprostu bioder bez unoszenia pięt.",
+      "rationale": "Przejście do samodzielnego przysiadu.",
+      "technique": "Skracaj czas trzymania aż dłonie tylko „dotykają”."
     },
     {
       "exercise_slug": "squats",
       "step_number": 3,
       "name": "Przysiad pudełkowy",
-      "description": "Siadaj na stabilne pudełko lub stopień i wstawaj bez zamachu. Utrzymuj napięcie brzucha oraz kierunek kolan nad stopami. Dotknięcie siedzenia ma być krótkie, bez pełnego odpoczynku. Buduj pewność głębokości i kontroli.",
-      "content_status": "ready"
+      "description": "Siad na pudło uczy głębokości i kontroli.",
+      "content_status": "ready",
+      "execution": "Siadaj na stabilne pudło, krótki kontakt, wstań bez zamachu.",
+      "rationale": "Buduje pewność dołu ruchu.",
+      "technique": "Dobierz wysokość pudła tak, by biodra schodziły poniżej linii równoległej, jeśli mobilność pozwala."
     },
     {
       "exercise_slug": "squats",
       "step_number": 4,
       "name": "Przysiad połowiczny",
-      "description": "Zejdź do około połowy zakresu przysiadu i wróć do stania. Utrzymuj ciężar na środku stopy. Nie zapadaj kolan do środka. Pracuj w spokojnym tempie, bez odbicia z dołu.",
-      "content_status": "ready"
+      "description": "Połowa zakresu z naciskiem na kontrolę.",
+      "content_status": "ready",
+      "execution": "Zejdź do połowy, wróć bez zapadania kolan do środka.",
+      "rationale": "Wzmacnia zakres przed pełnym przysiadem.",
+      "technique": "Tempo 3 sekundy w dół pomaga utrzymać linię."
     },
     {
       "exercise_slug": "squats",
       "step_number": 5,
       "name": "Przysiad pełny",
-      "description": "Zejdź głęboko z piętami na podłożu i stabilnym tułowiem. Kolana śledzą linię stóp przez cały ruch. Wróć do pełnego wyprostu bioder. Oddychaj i trzymaj napięcie tułowia przez całą serię.",
-      "content_status": "ready"
+      "description": "Głęboki przysiad z piętami na ziemi.",
+      "content_status": "ready",
+      "execution": "Zejdź głęboko, tułów stabilny, pełny wyprost bioder na górze.",
+      "rationale": "Główny wzorzec siły nóg i bioder.",
+      "technique": "Jeśli pięty odrywają się, lekko rozszerz rozstaw lub podłóż cienkie kliny tymczasowo."
     },
     {
       "exercise_slug": "squats",
       "step_number": 6,
       "name": "Przysiad wąski",
-      "description": "Ustaw stopy bliżej siebie i zadbaj o równowagę. Zejdź kontrolowanie, nie unosząc pięt. Wróć do stania bez szarpania kolan. Ta wersja zwiększa wymagania mobilności i kontroli.",
-      "content_status": "ready"
+      "description": "Węższa baza stóp zwiększa wymagania mobilności.",
+      "content_status": "ready",
+      "execution": "Stopy bliżej, zejdź kontrolowanie, wróć bez szarpania.",
+      "rationale": "Przygotowuje do wariantów asymetrycznych.",
+      "technique": "Nie forsuj głębokości kosztem zapadania klatki."
     },
     {
       "exercise_slug": "squats",
       "step_number": 7,
       "name": "Przysiad nierówny",
-      "description": "Jedną stopę oprzyj na lekkim podwyższeniu. Zachowaj możliwie pionowy tułów i równomierne tempo. Zmieniaj strony między seriami. Nie pozwalaj kolanu pracującej nogi zapadać do środka.",
-      "content_status": "ready"
+      "description": "Jedna stopa wyżej zmienia obciążenie.",
+      "content_status": "ready",
+      "execution": "Stopa na małym podwyższeniu, pion tułowia, zmiana stron.",
+      "rationale": "Wprowadza unilateralną pracę bioder.",
+      "technique": "Pilnuj kolana pracującej nogi nad stopą."
     },
     {
       "exercise_slug": "squats",
       "step_number": 8,
       "name": "Przysiad prawie jednonóż",
-      "description": "Przenieś większość obciążenia na jedną nogę, a drugą używaj lekko do równowagi. Zejdź i wróć w kontrolowanym tempie. Nie skręcaj bioder w trakcie ruchu. Trenuj obie strony w podobnym wolumenie.",
-      "content_status": "ready"
+      "description": "Większość obciążenia na jednej nodze.",
+      "content_status": "ready",
+      "execution": "Druga noga lekko asekuruje; zejdź i wróć bez skrętu bioder.",
+      "rationale": "Most do przysiadu jednonóż.",
+      "technique": "Trzymaj ręce przed sobą dla przeciwwagi."
     },
     {
       "exercise_slug": "squats",
       "step_number": 9,
       "name": "Przysiad z dźwignią",
-      "description": "Ustaw pozycję tak, by pracująca noga dźwigała większą część masy ciała. Utrzymuj równowagę i napięcie tułowia. Wykonuj wolny ruch w pełnym możliwym zakresie. Unikaj odbicia z dołu oraz utraty linii kolana.",
-      "content_status": "ready"
+      "description": "Ustawienie maksymalizuje obciążenie jednej nogi.",
+      "content_status": "ready",
+      "execution": "Wolny ruch, pełny możliwy zakres, bez odbicia.",
+      "rationale": "Wysoka wymagalność stabilizacji miednicy.",
+      "technique": "Lepiej płytko i czysto niż głęboko ze skrętem."
     },
     {
       "exercise_slug": "squats",
       "step_number": 10,
       "name": "Przysiad jednonóż",
-      "description": "Wykonaj pełny przysiad na jednej nodze z kontrolą bioder i kolana. Druga noga pozostaje wolna przez cały ruch. Wróć do stania bez szarpania. Buduj siłę i równowagę symetrycznie na obu stronach.",
-      "content_status": "ready"
+      "description": "Pełny przysiad na jednej nodze.",
+      "content_status": "ready",
+      "execution": "Druga noga wolna; kontrola kolana i biodra; obie strony.",
+      "rationale": "Mistrzowski wariant siły nóg.",
+      "technique": "Ćwicz zejście do pudła jako regresję techniczną."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 1,
       "name": "Podciąganie poziome przy stole",
-      "description": "Chwyć stabilną krawędź stołu lub poręczy i ustaw ciało pod skosem. Przyciągnij klatkę do krawędzi, prowadząc łokcie blisko ciała. Opuszczaj się kontrolowanie aż do wyprostu ramion. Utrzymuj napięty tułów i linię bioder.",
-      "content_status": "ready"
+      "description": "Poziome przyciąganie przy małym obciążeniu.",
+      "content_status": "ready",
+      "execution": "Chwyt stabilnej krawędzi, ciało pod skosem, przyciągnij klatkę, opuść do wyprostu.",
+      "rationale": "Buduje wzorzec ściągania łopatek bez pełnego zwisu.",
+      "technique": "Im bardziej poziomo, tym trudniej."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 2,
       "name": "Podciąganie poziome niższe",
-      "description": "Zmniejsz kąt ciała względem podłoża, aby zwiększyć obciążenie. Przyciągaj się równo, bez szarpania biodrami. Na dole osiągnij pełny wyprost, a na górze utrzymaj kontrolę. Oddychaj spokojnie i utrzymuj aktywne łopatki.",
-      "content_status": "ready"
+      "description": "Mniejszy kąt = większe obciążenie.",
+      "content_status": "ready",
+      "execution": "Nogi dalej, przyciągaj równo bez szarpania biodrami.",
+      "rationale": "Progresja siły grzbietu w bezpiecznym torze.",
+      "technique": "Napnij pośladki, by nie zapadać bioder."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 3,
       "name": "Podciąganie z nogami na podwyższeniu",
-      "description": "Ustaw stopy na podwyższeniu tak, by ciało było niemal poziome. Przyciągaj klatkę do chwytu w równym tempie. Nie zapadaj bioder w dół podczas ruchu. Pracuj płynnie, bez huśtania.",
-      "content_status": "ready"
+      "description": "Niemal poziome ciało.",
+      "content_status": "ready",
+      "execution": "Stopy na podwyższeniu, przyciągaj klatkę do chwytu płynnie.",
+      "rationale": "Najbliższy pełnemu podciąganiu wariant z odciążeniem.",
+      "technique": "Unikaj „pompki biodrami”."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 4,
       "name": "Podciąganie półzakresowe",
-      "description": "Na drążku pracuj głównie w górnej połowie zakresu. Utrzymuj napięcie barków i unikaj szarpania. Opuszczaj się tylko do wcześniej wybranego punktu. Buduj siłę przy zachowaniu pełnej kontroli.",
-      "content_status": "ready"
+      "description": "Górna połowa na drążku.",
+      "content_status": "ready",
+      "execution": "Pracuj od wybranego punktu do brody nad drążkiem i z powrotem.",
+      "rationale": "Buduje siłę w najtrudniejszym wycinku.",
+      "technique": "Zaznacz taśmą dolny punkt zakresu."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 5,
       "name": "Podciąganie pełne",
-      "description": "Z pełnego zwisu przyciągnij brodę nad drążek. Opuszczaj się do wyprostu łokci w kontrolowanym tempie. Nie używaj kippingu ani nadmiernego huśtania. Dbaj o płynność w obu fazach ruchu.",
-      "content_status": "ready"
+      "description": "Zwis → broda nad drążkiem → wyprost.",
+      "content_status": "ready",
+      "execution": "Bez kippingu, kontrolowane obie fazy.",
+      "rationale": "Fundament siły ciągnącej.",
+      "technique": "Jeśli nie dasz rady, wróć do #3–#4 zamiast bujania."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 6,
       "name": "Podciąganie wąskie",
-      "description": "Ustaw chwyt węższy niż szerokość barków. Przyciągaj się blisko tułowia, bez otwierania łokci na boki. Nie wzruszaj barkami w kierunku uszu. Zachowaj pełny zakres i równy oddech.",
-      "content_status": "ready"
+      "description": "Węższy chwyt zmienia dźwignię ramion.",
+      "content_status": "ready",
+      "execution": "Chwyt węższy niż barki, przyciągaj blisko tułowia.",
+      "rationale": "Przygotowuje do asymetrii.",
+      "technique": "Nie wzruszaj barkami do uszu."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 7,
       "name": "Podciąganie nierówne",
-      "description": "Ustaw jedną rękę wyżej albo na grubszym elemencie chwytu. Przyciągaj się, utrzymując linię tułowia. Zmieniaj strony między seriami. Unikaj rotacji tułowia i szarpania biodrami.",
-      "content_status": "ready"
+      "description": "Jedna ręka wyżej lub na grubszym chwycie.",
+      "content_status": "ready",
+      "execution": "Zachowaj linię tułowia, zmieniaj strony, bez rotacji.",
+      "rationale": "Most do pracy jednoręcznej.",
+      "technique": "Zaczynaj od małej różnicy wysokości chwytu."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 8,
       "name": "Podciąganie prawie jednoręczne",
-      "description": "Przenieś większość pracy na jedną rękę, a drugą używaj tylko do lekkiej pomocy. Kontroluj fazę opuszczania przez cały zakres. Trenuj obie strony w zrównoważonym wolumenie. Nie pozwalaj biodrom huśtać się w przód i w tył.",
-      "content_status": "ready"
+      "description": "Większość pracy na jednej ręce.",
+      "content_status": "ready",
+      "execution": "Druga ręka lekko pomaga; kontroluj opuszczanie; obie strony.",
+      "rationale": "Wysoka stabilizacja barku.",
+      "technique": "Ugnij wolną nogę lekko, by ograniczyć huśtanie."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 9,
       "name": "Podciąganie z dźwignią",
-      "description": "Ustaw asymetrię chwytu tak, by zwiększyć dźwignię pracującej strony. Trzymaj napięty tułów od startu do końca powtórzenia. Wykonuj wolny ruch w pełnym możliwym zakresie. Utrzymuj stabilne barki przez całą serię.",
-      "content_status": "ready"
+      "description": "Asymetria chwytu zwiększa dźwignię.",
+      "content_status": "ready",
+      "execution": "Wolny ruch, napięty core, pełny możliwy zakres.",
+      "rationale": "Ostatni etap przed pełnym podciągnięciem jednoręcznym.",
+      "technique": "Skracaj pomoc drugiej ręki sesja po sesji."
     },
     {
       "exercise_slug": "pull_ups",
       "step_number": 10,
       "name": "Podciąganie jednoręczne",
-      "description": "Przyciągaj się jedną ręką z kontrolą rotacji tułowia. Opuszczaj się do pełnego wyprostu ramienia. Buduj siłę symetrycznie na obu stronach. Całkowicie unikaj kippingu i zamachu.",
-      "content_status": "ready"
+      "description": "Pełne podciągnięcie jedną ręką.",
+      "content_status": "ready",
+      "execution": "Kontrola rotacji, pełny wyprost na dole, bez kippingu.",
+      "rationale": "Mistrzowski wariant ciągnący.",
+      "technique": "Niska objętość, wysoka jakość; druga strona zawsze w tej samej sesji."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 1,
       "name": "Unoszenie kolan w leżeniu",
-      "description": "Leż na plecach i unoś zgięte kolana nad biodra. Przyciskaj lędźwie do podłoża przez cały ruch. Opuszczaj nogi kontrolowanie, bez odbicia. Oddychaj równo i nie szarp biodrami.",
-      "content_status": "ready"
+      "description": "Bezpieczny start pracy tułowia.",
+      "content_status": "ready",
+      "execution": "Leż na plecach, unoś zgięte kolana, lędźwie przyciśnięte do podłoża.",
+      "rationale": "Uczy kontroli miednicy bez zwisu.",
+      "technique": "Jeśli lędźwie odrywają się, zmniejsz zakres."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 2,
       "name": "Unoszenie prostych nóg w leżeniu",
-      "description": "Z leżenia unoś proste nogi w kierunku pionu. Utrzymuj stabilne lędźwie i napięty brzuch. Opuszczaj powoli, bez odbicia od podłoża. Pracuj w pełnym zakresie, na który pozwala kontrola.",
-      "content_status": "ready"
+      "description": "Dłuższa dźwignia nóg.",
+      "content_status": "ready",
+      "execution": "Unoś proste nogi, opuszczaj wolno bez odbicia.",
+      "rationale": "Wzmacnia zginacze bioder i prostowniki synchronicznie z brzuchem.",
+      "technique": "Lekko ugnij kolana, gdy nie dajesz rady utrzymać prostych nóg."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 3,
       "name": "Unoszenie kolan w zwisie",
-      "description": "W zwisie na drążku unoś kolana w kierunku klatki. Nie pozwalaj tułowiu huśtać się w przód i w tył. Opuszczaj nogi kontrolowanie do startu. Utrzymuj aktywne łopatki i stabilne barki.",
-      "content_status": "ready"
+      "description": "Przeniesienie wzorca do zwisu.",
+      "content_status": "ready",
+      "execution": "W zwisie unoś kolana do klatki bez huśtania.",
+      "rationale": "Wymaga chwytu i stabilnych barków.",
+      "technique": "Najpierw „martwy zwis” 20–30 s, potem unoszenia."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 4,
       "name": "Unoszenie nóg częściowe w zwisie",
-      "description": "Ze zwisu unoś proste nogi do około połowy zakresu. Zachowaj równe, przewidywalne tempo. Unikaj bujania całego ciała. Buduj siłę zginaczy bioder i tułowia.",
-      "content_status": "ready"
+      "description": "Proste nogi w połowie zakresu.",
+      "content_status": "ready",
+      "execution": "Unoś do połowy, tempo równe, bez bujania.",
+      "rationale": "Buduje siłę do pełnego poziomu.",
+      "technique": "Wyobraź sobie pauzę w górze na ułamek sekundy."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 5,
       "name": "Unoszenie nóg do poziomu",
-      "description": "Unoś proste nogi do równoległości z podłożem. Utrzymuj napięty core od początku ruchu. Opuszczaj nogi wolno do pozycji wyjściowej. Nie szarp barkami ani nie używaj zamachu.",
-      "content_status": "ready"
+      "description": "Nogi do równoległości z podłożem.",
+      "content_status": "ready",
+      "execution": "Core napięty, wolne opuszczanie, bez szarpania barkami.",
+      "rationale": "Klasyczny próg kontroli tułowia w zwisie.",
+      "technique": "Lekko odchyl barki „w dół i od uszu”."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 6,
       "name": "Unoszenie nóg powyżej poziomu",
-      "description": "Prowadź proste nogi wyżej niż poziom, z kontrolą bioder. Nie gub napięcia brzucha na szczycie ruchu. Wracaj płynnie w dół bez upadania nóg. Oddychaj równo przez całą serię.",
-      "content_status": "ready"
+      "description": "Zakres powyżej równoległości.",
+      "content_status": "ready",
+      "execution": "Prowadź nogi wyżej z kontrolą bioder, wracaj płynnie.",
+      "rationale": "Zwiększa wymaganie zginaczy i anty-huśtania.",
+      "technique": "Nie zamykaj klatki — oddychaj w górze."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 7,
       "name": "Unoszenie nóg do drążka",
-      "description": "Przybliżaj stopy w stronę drążka przy możliwie prostych nogach. Ogranicz huśtanie tułowia do minimum. Opuszczaj nogi w pełnej kontroli. Utrzymuj napięcie tułowia od pierwszego do ostatniego powtórzenia.",
-      "content_status": "ready"
+      "description": "Stopy w stronę drążka.",
+      "content_status": "ready",
+      "execution": "Proste nogi możliwie blisko drążka, kontrolowane zejście.",
+      "rationale": "Pełny zakres kompresji tułowia.",
+      "technique": "Mobilność tylnego łańcucha często limituje — rozluźnij biodra przed serią."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 8,
       "name": "Unoszenie nóg z pauzą",
-      "description": "Na szczycie ruchu zatrzymaj się na krótką pauzę. Zachowaj linię ciała i spokojny oddech. Opuszczaj nogi wolniej niż je unosisz. Buduj wytrzymałość kontroli zamiast pędzić wolumen.",
-      "content_status": "ready"
+      "description": "Izometria na szczycie.",
+      "content_status": "ready",
+      "execution": "Krótka pauza w górze, wolniejsze opuszczanie.",
+      "rationale": "Buduje wytrzymałość kontroli.",
+      "technique": "Licz „21–22” na pauzie zamiast trzymać w nieskończoność."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 9,
       "name": "Unoszenie nóg w wolnym tempie",
-      "description": "Wykonuj cały ruch bardzo wolno, bez jakiegokolwiek zamachu. Utrzymuj stabilne barki w zwisie. Pracuj w pełnym zakresie możliwym technicznie. Jakość powtórzenia jest ważniejsza od ich liczby.",
-      "content_status": "ready"
+      "description": "Cały ruch bardzo wolny.",
+      "content_status": "ready",
+      "execution": "Bez zamachu, stabilne barki, jakość > liczba.",
+      "rationale": "Eliminuje oszustwa momentum.",
+      "technique": "Celuj w 3 s w górę i 3 s w dół."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 10,
       "name": "Unoszenie nóg zaawansowane",
-      "description": "Wykonuj pełny zakres z maksymalną kontrolą bioder i tułowia. Całkowicie unikaj kippingu. Dbaj o symetrię obu stron ciała. Utrzymuj napięcie od pierwszego do ostatniego powtórzenia.",
-      "content_status": "ready"
+      "description": "Pełny zakres z maksymalną kontrolą.",
+      "content_status": "ready",
+      "execution": "Bez kippingu, symetria stron, napięcie przez całą serię.",
+      "rationale": "Mistrzowski wariant pracy tułowia w zwisie.",
+      "technique": "Rób mniej powtórzeń, gdy pojawia się huśtanie."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 1,
       "name": "Mostek barkowy krótki",
-      "description": "Leż na plecach i wypychaj biodra lekko w górę. Naciskaj piętami w podłoże i napinaj pośladki. Opuszczaj biodra kontrolowanie. Oddychaj swobodnie i nie zapadaj klatki.",
-      "content_status": "ready"
+      "description": "Lekkie wypchnięcie bioder na plecach.",
+      "content_status": "ready",
+      "execution": "Leż, wypychaj biodra piętami, napinaj pośladki, opuszczaj kontrolowanie.",
+      "rationale": "Bezpieczne wprowadzenie tylnego łańcucha.",
+      "technique": "Nie patrz w tył gwałtownie — broda lekko zbiera się."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 2,
       "name": "Mostek biodrowy",
-      "description": "Wypychaj biodra do linii barków i kolan. Przytrzymaj krótko pozycję na górze. Opuszczaj biodra wolno do startu. Utrzymuj kolana stabilne, bez zapadania do środka.",
-      "content_status": "ready"
+      "description": "Biodra do linii bark–kolano.",
+      "content_status": "ready",
+      "execution": "Wypchnij wysoko, krótka pauza, wolne zejście, kolana stabilne.",
+      "rationale": "Buduje pośladki i stabilizację miednicy.",
+      "technique": "Pchaj równomiernie obie pięty."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 3,
       "name": "Mostek z unoszeniem jednej nogi",
-      "description": "W mostku unieś jedną nogę, utrzymując biodra na równej wysokości. Zmieniaj strony między powtórzeniami lub seriami. Nie skręcaj miednicy w trakcie unoszenia. Pracuj w kontrolowanym tempie.",
-      "content_status": "ready"
+      "description": "Asymetria w mostku.",
+      "content_status": "ready",
+      "execution": "Unieś jedną nogę, biodra równo, zmiana stron.",
+      "rationale": "Wymusza antyrotację miednicy.",
+      "technique": "Zacznij od krótkiego uniesienia stopy tuż nad podłoże."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 4,
       "name": "Mostek z rękami bliżej stóp",
-      "description": "Przysuń dłonie bliżej stóp, zwiększając wymaganie mobilności. Wypychaj biodra wysoko przy stabilnych barkach. Oddychaj swobodnie przez cały ruch. Używaj tylko zakresu bez bólu w odcinku lędźwiowym.",
-      "content_status": "ready"
+      "description": "Większa mobilność barków i kręgosłupa.",
+      "content_status": "ready",
+      "execution": "Dłonie bliżej stóp, wypychaj biodra, oddychaj swobodnie.",
+      "rationale": "Przygotowuje do pełnego mostka.",
+      "technique": "Tylko zakres bez bólu lędźwi — skróć, gdy pojawi się kłucie."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 5,
       "name": "Mostek pełny",
-      "description": "Unoś biodra wysoko z oparciem na dłoniach i stopach. Patrz w górę lub lekko do tyłu w granicach komfortu szyi. Wracaj wolno do pozycji wyjściowej. Utrzymuj stabilne barki i napięte pośladki.",
-      "content_status": "ready"
+      "description": "Pełne wygięcie z oparciem dłoni i stóp.",
+      "content_status": "ready",
+      "execution": "Biodra wysoko, spokojny powrót, stabilne barki.",
+      "rationale": "Klasyczny mostek siłowo-mobilnościowy.",
+      "technique": "Rozstaw stóp i dłoni szerzej na początek."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 6,
       "name": "Mostek z krótką pauzą",
-      "description": "Na szczycie mostka utrzymaj pozycję przez kilka spokojnych oddechów. Rozkładaj obciążenie równomiernie na obie stopy. Opuszczaj biodra kontrolowanie. Buduj izometrię tylnego łańcucha.",
-      "content_status": "ready"
+      "description": "Izometria na szczycie.",
+      "content_status": "ready",
+      "execution": "Kilka oddechów w górze, równy nacisk stóp, kontrolowane zejście.",
+      "rationale": "Buduje wytrzymałość pozycji.",
+      "technique": "Nie wstrzymuj oddechu."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 7,
       "name": "Mostek nierówny",
-      "description": "Jedną stopę lub dłoń ustaw na lekkim podwyższeniu. Utrzymuj biodra równo mimo asymetrii podparcia. Zmieniaj strony między seriami. Nie pozwalaj barkom zapadać się do przodu.",
-      "content_status": "ready"
+      "description": "Lekka asymetria podparcia.",
+      "content_status": "ready",
+      "execution": "Stopa lub dłoń na podwyższeniu, biodra równo, zmiana stron.",
+      "rationale": "Wprowadza unilateralne obciążenie mostka.",
+      "technique": "Małe podwyższenie > duże na start."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 8,
       "name": "Mostek prawie jednonóż",
-      "description": "Przenieś większość obciążenia na jedną nogę. Druga noga może tylko lekko pomagać w równowadze. Kontroluj ustawienie miednicy przez cały ruch. Trenuj obie strony w podobnym wolumenie.",
-      "content_status": "ready"
+      "description": "Większość ciężaru na jednej nodze.",
+      "content_status": "ready",
+      "execution": "Druga noga lekko pomaga; kontrola miednicy; obie strony.",
+      "rationale": "Most do wariantów z dźwignią.",
+      "technique": "Napnij pośladek pracującej strony świadomie."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 9,
       "name": "Mostek z dźwignią",
-      "description": "Zwiększ trudność poprzez ustawienie stóp lub dłoni zwiększające dźwignię. Wykonuj ruch wolno i świadomie. Utrzymuj pełne napięcie pośladków i tylnej części ud. Unikaj szarpania w odcinku lędźwiowym.",
-      "content_status": "ready"
+      "description": "Ustawienie zwiększa trudność.",
+      "content_status": "ready",
+      "execution": "Wolny ruch, pełne napięcie tylnego łańcucha, bez szarpania lędźwi.",
+      "rationale": "Wysoka wymagalność kontroli.",
+      "technique": "Regresuj do #7, gdy pojawia się ból (nie dyskomfort rozciągnięcia)."
     },
     {
       "exercise_slug": "bridges",
       "step_number": 10,
       "name": "Mostek zaawansowany",
-      "description": "Wykonuj pełny mostek z wysoką kontrolą i równą pracą obu stron. Wchodź w pozycję i schodź z niej płynnie. Utrzymuj spokojny oddech. Jakość pozycji jest ważniejsza od tempa.",
-      "content_status": "ready"
+      "description": "Pełny mostek z wysoką kontrolą.",
+      "content_status": "ready",
+      "execution": "Płynne wejście i zejście, równa praca stron, spokojny oddech.",
+      "rationale": "Mistrzowski wariant tylnego łańcucha.",
+      "technique": "Jakość pozycji > liczba powtórzeń."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 1,
       "name": "Podpór przy ścianie twarzą do ściany",
-      "description": "Stań twarzą do ściany w lekkim podporze barkowym. Napnij brzuch i pośladki, budując linię ciała. Oddychaj równo przez całą serię. Nie zapadaj lędźwi i nie unos barków do uszu.",
-      "content_status": "ready"
+      "description": "Hold barkowy uczy linii przy ścianie.",
+      "content_status": "ready",
+      "execution": "Lekki podpor twarzą do ściany, brzuch i pośladki napięte, równy oddech.",
+      "rationale": "Buduje tolerancję obciążenia barków w pozycji odwróconej.",
+      "technique": "Nie zapadaj lędźwi — wypchnij lekko żebra „w dół”."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 2,
       "name": "Stanie na rękach przy ścianie",
-      "description": "Wejdź do stania na rękach z lekkim oparciem o ścianę. Trzymaj łokcie wypchnięte, a barki aktywne. Oddychaj spokojnie w pozycji. Zejdź kontrolowanie po zakończeniu serii.",
-      "content_status": "ready"
+      "description": "Pełne stanie na rękach z asekuracją.",
+      "content_status": "ready",
+      "execution": "Wejdź do stania, łokcie wypchnięte, barki aktywne, zejdź kontrolowanie.",
+      "rationale": "Fundament równowagi odwróconej.",
+      "technique": "Ćwicz bezpieczne zejście zanim wydłużysz hold."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 3,
       "name": "Ugięcia częściowe przy ścianie",
-      "description": "W staniu na rękach ugnij łokcie tylko lekko i wróć do wyprostu. Nie pozwalaj głowie uderzać w podłoże. Pracuj w wolnym tempie. Utrzymuj stabilny core przez cały ruch.",
-      "content_status": "ready"
+      "description": "Mikro-ugięcia w staniu na rękach.",
+      "content_status": "ready",
+      "execution": "Lekko ugnij łokcie i wróć; głowa nie uderza w podłoże; wolne tempo.",
+      "rationale": "Wprowadza ruch pompkowy w pozycji pionowej.",
+      "technique": "Mały zakres najpierw — ściana zawsze w zasięgu."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 4,
       "name": "Ugięcia do połowy zakresu",
-      "description": "Opuszczaj się głębiej niż w kroku poprzednim, ale nie do pełnego zakresu. Zachowaj linię bioder względem barków. Wypychaj się do pełnego wyprostu łokci. Nie gub napięcia barków na dole ruchu.",
-      "content_status": "ready"
+      "description": "Głębsze ugięcia bez pełnego zejścia.",
+      "content_status": "ready",
+      "execution": "Opuszczaj do połowy, linia bioder, wypychaj do wyprostu.",
+      "rationale": "Buduje siłę do pełnych pompek pionowych.",
+      "technique": "Taśma na ścianie jako marker głębokości."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 5,
       "name": "Pompki pionowe pełne przy ścianie",
-      "description": "Opuszczaj głowę blisko podłoża i wypychaj się do wyprostu. Ściana ma służyć tylko do równowagi. Oddychaj równo w obu fazach. Wykonuj płynny ruch bez szarpania.",
-      "content_status": "ready"
+      "description": "Pełny zakres przy asekuracji ściany.",
+      "content_status": "ready",
+      "execution": "Głowa blisko podłoża, wypychaj do wyprostu, ściana tylko do równowagi.",
+      "rationale": "Klasyczna pompka w staniu na rękach.",
+      "technique": "Napnij pośladki, by nie „załamywać” linii."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 6,
       "name": "Pompki pionowe wąskie",
-      "description": "Ustaw dłonie bliżej siebie niż w wersji klasycznej. Prowadź łokcie kontrolowanie, blisko linii ciała. Nie zapadaj barków podczas opuszczania. Pracuj w pełnym możliwym zakresie przy ścianie.",
-      "content_status": "ready"
+      "description": "Węższe dłonie = trudniejszy tor.",
+      "content_status": "ready",
+      "execution": "Dłonie bliżej, kontrolowane łokcie, bez zapadania barków.",
+      "rationale": "Przygotowuje do asymetrii.",
+      "technique": "Jeśli barki bolą (ostry ból), wróć do #5."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 7,
       "name": "Pompki pionowe nierówne",
-      "description": "Jedną dłoń oprzyj na lekkim podwyższeniu. Zachowaj linię ciała mimo asymetrii podparcia. Zmieniaj strony między seriami. Unikaj rotacji tułowia w trakcie ruchu.",
-      "content_status": "ready"
+      "description": "Jedna dłoń wyżej.",
+      "content_status": "ready",
+      "execution": "Podwyższenie pod jedną dłonią, linia ciała, zmiana stron.",
+      "rationale": "Most do pracy unilateralnej w pionie.",
+      "technique": "Minimalna różnica wysokości na start."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 8,
       "name": "Pompki pionowe prawie jednoręczne",
-      "description": "Przenieś obciążenie na jedną rękę przy lekkiej pomocy drugiej. Pracuj w wolnym, przewidywalnym tempie. Trenuj obie strony w zrównoważonym wolumenie. Utrzymuj stabilny core i linię bioder.",
-      "content_status": "ready"
+      "description": "Większość obciążenia na jednej ręce.",
+      "content_status": "ready",
+      "execution": "Druga lekko pomaga; wolne tempo; obie strony; stabilny core.",
+      "rationale": "Wysoka stabilizacja barku w odwróceniu.",
+      "technique": "Krótsze serie, dłuższe przerwy."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 9,
       "name": "Pompki pionowe z dźwignią",
-      "description": "Ustaw dźwignię zwiększającą trudność, ale pozwalającą zachować kontrolę. Opuszczaj i wypychaj bez utraty linii ciała. Używaj ściany wyłącznie do asekuracji. Jakość ruchu ma pierwszeństwo przed liczbą powtórzeń.",
-      "content_status": "ready"
+      "description": "Dźwignia zwiększa trudność przy kontroli.",
+      "content_status": "ready",
+      "execution": "Opuszczaj i wypychaj bez utraty linii; ściana do asekuracji.",
+      "rationale": "Ostatni etap przed wariantem mistrzowskim.",
+      "technique": "Jakość ruchu > dopychanie objętości."
     },
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 10,
       "name": "Pompki pionowe zaawansowane",
-      "description": "Wykonuj pełny zakres z wysoką kontrolą barków i tułowia. Ogranicz oparcie o ścianę do niezbędnego minimum. Dbaj o symetrię obu stron. Zawsze schodź z pozycji w sposób bezpieczny i kontrolowany.",
-      "content_status": "ready"
+      "description": "Pełny zakres z minimalnym oparciem o ścianę.",
+      "content_status": "ready",
+      "execution": "Wysoka kontrola barków i tułowia, symetria, bezpieczne zejście.",
+      "rationale": "Mistrzowski wariant pompek pionowych.",
+      "technique": "Trenuj zmęczenie techniczne — stop, gdy linia znika."
     }
   ]
 }

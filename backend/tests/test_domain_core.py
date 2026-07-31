@@ -83,6 +83,47 @@ def test_parse_rules_v1_from_seed_shape() -> None:
     assert rules.advance.min_reps == 10
 
 
+def test_parse_rules_v2_standards_and_advance_match() -> None:
+    from app.schemas.rules import ProgressionRulesV2, parse_progression_rules
+
+    payload = {
+        "schema_version": 2,
+        "standards": {
+            "beginner": {"sets": 1, "min_reps": 10, "require_both_sides": False},
+            "intermediate": {"sets": 2, "min_reps": 25, "require_both_sides": False},
+            "progression": {"sets": 3, "min_reps": 50, "require_both_sides": False},
+        },
+        "advance": {"sets": 3, "min_reps": 50, "require_both_sides": False},
+        "regress": {"fail_sessions": 2},
+        "goal": None,
+    }
+    rules = parse_progression_rules(payload)
+    assert isinstance(rules, ProgressionRulesV2)
+    assert rules.advance.min_reps == 50
+    assert rules.standards.progression.min_reps == 50
+
+
+def test_parse_rules_v2_rejects_advance_mismatch() -> None:
+    from app.schemas.rules import ProgressionRulesV2
+    from app.services.errors import DomainError
+
+    with pytest.raises(DomainError):
+        parse_versioned(
+            ProgressionRulesV2,
+            {
+                "schema_version": 2,
+                "standards": {
+                    "beginner": {"sets": 1, "min_reps": 10, "require_both_sides": False},
+                    "intermediate": {"sets": 2, "min_reps": 25, "require_both_sides": False},
+                    "progression": {"sets": 3, "min_reps": 50, "require_both_sides": False},
+                },
+                "advance": {"sets": 3, "min_reps": 10, "require_both_sides": False},
+                "regress": {"fail_sessions": 2},
+                "goal": None,
+            },
+        )
+
+
 def test_resolve_cc_day_mon_wed_fri_anchor_1() -> None:
     # 2026-07-27 is Monday
     mon = date(2026, 7, 27)

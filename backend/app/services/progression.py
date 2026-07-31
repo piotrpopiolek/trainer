@@ -18,7 +18,7 @@ from app.models.progression import ProgressionEvent, ProgressionSchema, UserExer
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.schemas.common import parse_versioned
-from app.schemas.rules import AdvanceRuleV1, ProgressionRulesV1
+from app.schemas.rules import AdvanceRuleV1, ProgressionRules, parse_progression_rules
 from app.schemas.sets import SessionSetsV1, SessionSetV1
 from app.services.errors import DomainError
 
@@ -55,7 +55,7 @@ def _set_meets_advance(s: SessionSetV1, adv: AdvanceRuleV1) -> bool:
     return False
 
 
-def goal_met_from_sets(rules: ProgressionRulesV1, sets_payload: dict[str, Any] | None) -> bool:
+def goal_met_from_sets(rules: ProgressionRules, sets_payload: dict[str, Any] | None) -> bool:
     """Evaluate advance/goal thresholds against logged sets."""
     if sets_payload is None:
         return False
@@ -138,7 +138,7 @@ class ProgressionEngine:
         *,
         exercise_id: UUID,
         step_number: int,
-    ) -> tuple[ExerciseStep, ProgressionRulesV1, int]:
+    ) -> tuple[ExerciseStep, ProgressionRules, int]:
         step = await db.scalar(
             select(ExerciseStep).where(
                 ExerciseStep.exercise_id == exercise_id,
@@ -147,7 +147,7 @@ class ProgressionEngine:
         )
         if step is None:
             raise DomainError("exercise_step_not_found", http_status=422)
-        rules = parse_versioned(ProgressionRulesV1, step.rules)
+        rules = parse_progression_rules(step.rules)
         schema = await db.scalar(
             select(ProgressionSchema).where(ProgressionSchema.id == step.progression_schema_id)
         )

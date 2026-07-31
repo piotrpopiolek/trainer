@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.catalog import (
     Exercise,
     ExerciseStep,
+    ExerciseStepTranslation,
     ExerciseTranslation,
     ProgramDay,
     ProgramDayExercise,
@@ -117,6 +118,17 @@ async def build_today(
                     )
                 )
                 rules = step.rules if step is not None else {}
+                step_tr = None
+                if step is not None:
+                    step_tr = await db.scalar(
+                        select(ExerciseStepTranslation).where(
+                            ExerciseStepTranslation.exercise_step_id == step.id,
+                            ExerciseStepTranslation.locale == resolved,
+                        )
+                    )
+                standards = None
+                if isinstance(rules, dict):
+                    standards = rules.get("standards")
                 cc_exercises.append(
                     TodayCcExerciseV1(
                         exercise_id=ex.id,
@@ -125,6 +137,12 @@ async def build_today(
                         current_step_number=step_n,
                         advance=rules.get("advance") if isinstance(rules, dict) else None,
                         regress=rules.get("regress") if isinstance(rules, dict) else None,
+                        standards=standards if isinstance(standards, dict) else None,
+                        step_name=step_tr.name if step_tr else None,
+                        description=step_tr.description if step_tr else None,
+                        execution=step_tr.execution if step_tr else None,
+                        rationale=step_tr.rationale if step_tr else None,
+                        technique=step_tr.technique if step_tr else None,
                     )
                 )
 
