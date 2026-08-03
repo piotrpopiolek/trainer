@@ -24,7 +24,12 @@ from app.models.progression import ProgressionSchema, UserExerciseProgress
 from app.models.satellite_progress import SatelliteRegressionRecommendation
 from app.models.user import User
 from app.models.workout import SessionExerciseLog
-from app.schemas.api import SatelliteCreateV1, SatelliteReadV1, SatelliteStepCreateV1
+from app.schemas.api import (
+    SatelliteCloneV1,
+    SatelliteCreateV1,
+    SatelliteReadV1,
+    SatelliteStepCreateV1,
+)
 from app.schemas.satellite import (
     ActiveMetricsV1,
     SatelliteConfigDocumentV1,
@@ -155,6 +160,7 @@ async def _exercise_to_read(db: AsyncSession, ex: Exercise) -> SatelliteReadV1:
         ),
         config_effective_on=ex.config_effective_on,
         config_status="pending" if ex.pending_config_version_id is not None else "current",
+        cloned_from_exercise_id=ex.cloned_from_exercise_id,
         steps=[
             {
                 "step_id": str(s.id),
@@ -387,6 +393,7 @@ async def create_satellite(
     user: User,
     body: SatelliteCreateV1,
     exercise_id: UUID | None = None,
+    cloned_from_exercise_id: UUID | None = None,
     commit: bool = True,
 ) -> SatelliteReadV1:
     if not body.steps:
@@ -451,6 +458,7 @@ async def create_satellite(
         schedule_kind=body.schedule_kind,
         weekdays=body.weekdays,
         schedule_category=body.schedule_category,
+        cloned_from_exercise_id=cloned_from_exercise_id,
         client_mutation_id=body.client_mutation_id,
         revision=1,
         client_updated_at=now,
@@ -518,6 +526,81 @@ async def create_satellite(
     else:
         await db.flush()
     return await _exercise_to_read(db, ex)
+
+
+async def clone_satellite(
+    db: AsyncSession,
+    *,
+    user: User,
+    source_exercise_id: UUID,
+    body: SatelliteCloneV1,
+    commit: bool = True,
+) -> SatelliteReadV1:
+    """Clone satellite with new step/config IDs; no shared history (FR-054)."""
+    source = await db.scalar(
+        select(Exercise).where(
+            Exercise.id == source_exercise_id,
+            Exercise.user_id == user.id,
+            Exercise.kind == "satellite",
+            Exercise.deleted_at.is_(None),
+        )
+    )
+    if source is None:
+        raise DomainError("not_found", http_status=404)
+    if source.current_config_version_id is None:
+        raise DomainError("satellite_config_missing", http_status=500)
+
+    cfg = await db.get(SatelliteConfigVersion, source.current_config_version_id)
+    if cfg is None:
+        raise DomainError("satellite_config_missing", http_status=500)
+    document = parse_satellite_config_document(cfg.document)
+
+    step_name_by_id: dict[UUID, tuple[str | None, str | None]] = {}
+    for row in (
+        await db.scalars(
+            select(ExerciseStep).where(ExerciseStep.exercise_id == source.id)
+        )
+    ).all():
+        step_name_by_id[row.id] = (row.name, row.description)
+
+    new_steps: list[SatelliteStepCreateV1] = []
+    for step in sorted(document.steps, key=lambda s: s.sort_order):
+        old_name, old_desc = step_name_by_id.get(step.step_id, (None, None))
+        new_steps.append(
+            SatelliteStepCreateV1(
+                step_number=step.sort_order,
+                step_id=new_uuid7(),
+                name=old_name,
+                description=old_desc,
+                rules=step.rules.model_dump(mode="json"),
+            )
+        )
+
+    clone_name = body.name or f"{source.name or 'Satellite'} (kopia)"
+    create_body = SatelliteCreateV1(
+        schema_version=1,
+        name=clone_name,
+        exercise_type=document.exercise_type,
+        active_metrics=document.active_metrics.model_dump(mode="json"),
+        equipment=list(source.equipment or []),
+        tags=list(source.tags or []),
+        schedule_kind=source.schedule_kind or "daily",
+        weekdays=source.weekdays,
+        schedule_category=source.schedule_category,
+        progression=document.progression,
+        steps=new_steps,
+        client_mutation_id=body.client_mutation_id,
+        client_updated_at=body.client_updated_at,
+        config_version_id=body.config_version_id,
+    )
+    return await create_satellite(
+        db,
+        user=user,
+        body=create_body,
+        exercise_id=body.exercise_id,
+        cloned_from_exercise_id=source.id,
+        commit=commit,
+    )
 
 
 async def _apply_activation_ledger(

@@ -281,6 +281,19 @@ class SatelliteUpdateV1(SatelliteCreateV1):
     revision: int = Field(..., ge=2)
 
 
+class SatelliteCloneV1(BaseModel):
+    """Stage 4 Slice B — clone satellite with fresh step/config IDs (FR-054)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = Field(1, ge=1)
+    client_mutation_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    exercise_id: UUID | None = None
+    config_version_id: UUID | None = None
+    client_updated_at: datetime | None = None
+
+
 class SatelliteReadV1(BaseModel):
     schema_version: int = 1
     id: UUID
@@ -299,6 +312,7 @@ class SatelliteReadV1(BaseModel):
     pending_config_hash: str | None = None
     config_effective_on: date | None = None
     config_status: Literal["current", "pending"] = "current"
+    cloned_from_exercise_id: UUID | None = None
     steps: list[dict[str, Any]]
 
 

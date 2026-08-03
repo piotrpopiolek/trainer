@@ -13,6 +13,7 @@ from app.db.session import get_session
 from app.schemas.api import (
     ProgressionEventReadV1,
     ProgressItemV1,
+    SatelliteCloneV1,
     SatelliteCreateV1,
     SatelliteReadV1,
     SatelliteUpdateV1,
