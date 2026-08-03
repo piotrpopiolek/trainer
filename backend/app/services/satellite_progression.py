@@ -1,13 +1,15 @@
-"""Transactional satellite progression orchestrator (goal-only + daily outcomes Stage 3B)."""
+"""Transactional satellite progression orchestrator (goal-only + mini-progression)."""
 
 from __future__ import annotations
 
 import hmac
 from datetime import UTC, date, datetime
+from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import new_uuid7
@@ -19,10 +21,14 @@ from app.domain.satellite_progression import (
     compute_finalize_after,
     finalize_pending_failure,
     fold_daily_outcome,
+    propose_regression_suggestion,
 )
 from app.models.catalog import SatelliteConfigVersion
 from app.models.progression import ProgressionEvent, UserExerciseProgress
-from app.models.satellite_progress import SatelliteDailyOutcome
+from app.models.satellite_progress import (
+    SatelliteDailyOutcome,
+    SatelliteRegressionRecommendation,
+)
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.schemas.satellite import SatelliteConfigStepV1, parse_satellite_config_document
@@ -61,6 +67,20 @@ def _apply_state(row: SatelliteDailyOutcome, state: DailyOutcomeState) -> None:
 class SatelliteProgressionOrchestrator:
     def __init__(self) -> None:
         self._evaluator = SatelliteProgressionEvaluator()
+
+    @staticmethod
+    def _bump_revision(progress: UserExerciseProgress) -> int:
+        progress.progress_revision = int(progress.progress_revision) + 1
+        progress.updated_at = datetime.now(UTC)
+        return progress.progress_revision
+
+    async def _advisory_lock(
+        self, db: AsyncSession, *, user_id: UUID, exercise_id: UUID
+    ) -> None:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+            {"k": f"{user_id}:{exercise_id}"},
+        )
 
     async def _load_config_version(
         self,
@@ -111,14 +131,6 @@ class SatelliteProgressionOrchestrator:
         )
         return row is not None
 
-    async def _advisory_lock(
-        self, db: AsyncSession, *, user_id: UUID, exercise_id: UUID
-    ) -> None:
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
-            {"k": f"{user_id}:{exercise_id}"},
-        )
-
     async def _get_or_create_outcome(
         self,
         db: AsyncSession,
@@ -130,19 +142,8 @@ class SatelliteProgressionOrchestrator:
         config_version_id: UUID,
         finalize_after: datetime,
     ) -> SatelliteDailyOutcome:
-        existing = await db.scalar(
-            select(SatelliteDailyOutcome)
-            .where(
-                SatelliteDailyOutcome.user_id == user_id,
-                SatelliteDailyOutcome.exercise_id == exercise_id,
-                SatelliteDailyOutcome.local_date == local_date,
-            )
-            .with_for_update()
-        )
-        if existing is not None:
-            return existing
-
-        values: dict[str, object] = {
+        del finalize_after  # set by fold on first attempt
+        values = {
             "id": new_uuid7(),
             "user_id": user_id,
             "exercise_id": exercise_id,
@@ -152,8 +153,6 @@ class SatelliteProgressionOrchestrator:
             "has_attempt": False,
             "has_success": False,
             "status": "pending",
-            # finalize_after filled by fold on first attempt — avoids empty-row
-            # premature finalization when ``now`` is already past the deadline.
         }
         stmt = (
             insert(SatelliteDailyOutcome)
@@ -175,6 +174,192 @@ class SatelliteProgressionOrchestrator:
         if row is None:
             raise DomainError("satellite_outcome_create_failed", http_status=500)
         return row
+
+    async def _stale_pending_recommendations(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        now: datetime,
+    ) -> int:
+        result = await db.execute(
+            update(SatelliteRegressionRecommendation)
+            .where(
+                SatelliteRegressionRecommendation.user_id == user_id,
+                SatelliteRegressionRecommendation.exercise_id == exercise_id,
+                SatelliteRegressionRecommendation.status == "pending",
+            )
+            .values(status="stale", decided_at=now)
+        )
+        return int(result.rowcount or 0)
+
+    async def _maybe_create_suggestion(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        progress: UserExerciseProgress,
+        outcome: SatelliteDailyOutcome,
+        config_version_id: UUID,
+        threshold: int,
+        step_ladder: list[tuple[int, str]],
+        rules_snapshot: dict | None,
+        schema_version: int | None,
+        session_id: UUID | None,
+    ) -> ProgressionEvent | None:
+        proposal = propose_regression_suggestion(
+            step_number=progress.current_step_number,
+            fail_streak=progress.fail_streak,
+            threshold=threshold,
+            step_ladder=step_ladder,
+        )
+        if proposal is None:
+            return None
+        existing = await db.scalar(
+            select(SatelliteRegressionRecommendation.id).where(
+                SatelliteRegressionRecommendation.user_id == user_id,
+                SatelliteRegressionRecommendation.exercise_id == exercise_id,
+                SatelliteRegressionRecommendation.status == "pending",
+            )
+        )
+        if existing is not None:
+            return None
+        rec = SatelliteRegressionRecommendation(
+            id=new_uuid7(),
+            user_id=user_id,
+            exercise_id=exercise_id,
+            trigger_outcome_id=outcome.id,
+            config_version_id=config_version_id,
+            from_step_id=UUID(proposal.from_step_id),
+            to_step_id=UUID(proposal.to_step_id),
+            expected_progress_revision=progress.progress_revision,
+            status="pending",
+        )
+        try:
+            async with db.begin_nested():
+                db.add(rec)
+                await db.flush()
+        except IntegrityError:
+            return None
+        ev = ProgressionEvent(
+            id=new_uuid7(),
+            user_id=user_id,
+            exercise_id=exercise_id,
+            session_id=session_id,
+            event_type="satellite_regress_suggested",
+            from_step=proposal.from_step,
+            to_step=proposal.to_step,
+            reason=f"failed_days>={proposal.threshold}",
+            rules_snapshot=rules_snapshot,
+            progression_schema_version=schema_version,
+        )
+        db.add(ev)
+        return ev
+
+    async def decide_recommendation(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        recommendation_id: UUID,
+        decision: Literal["accept", "decline"],
+        commit: bool = True,
+    ) -> tuple[
+        SatelliteRegressionRecommendation,
+        UserExerciseProgress,
+        ProgressionEvent | None,
+    ]:
+        await self._advisory_lock(db, user_id=user_id, exercise_id=exercise_id)
+        rec = await db.scalar(
+            select(SatelliteRegressionRecommendation)
+            .where(
+                SatelliteRegressionRecommendation.id == recommendation_id,
+                SatelliteRegressionRecommendation.user_id == user_id,
+                SatelliteRegressionRecommendation.exercise_id == exercise_id,
+            )
+            .with_for_update()
+        )
+        if rec is None:
+            raise DomainError("not_found", http_status=404)
+
+        progress = await db.scalar(
+            select(UserExerciseProgress)
+            .where(
+                UserExerciseProgress.user_id == user_id,
+                UserExerciseProgress.exercise_id == exercise_id,
+            )
+            .with_for_update()
+        )
+        if progress is None:
+            raise DomainError("not_found", http_status=404)
+
+        now = datetime.now(UTC)
+        if rec.status == "accepted" and decision == "accept":
+            return rec, progress, None
+        if rec.status == "declined" and decision == "decline":
+            return rec, progress, None
+        if rec.status != "pending":
+            raise DomainError("recommendation_not_pending", http_status=409)
+
+        cas_ok = (
+            progress.progress_revision == rec.expected_progress_revision
+            and progress.current_step_id == rec.from_step_id
+        )
+        if not cas_ok:
+            rec.status = "stale"
+            rec.decided_at = now
+            await db.flush()
+            if commit:
+                await db.commit()
+            raise DomainError("recommendation_stale", http_status=409)
+
+        event: ProgressionEvent | None = None
+        if decision == "accept":
+            to_number = progress.current_step_number - 1
+            if to_number < 1:
+                rec.status = "stale"
+                rec.decided_at = now
+                await db.flush()
+                if commit:
+                    await db.commit()
+                raise DomainError("recommendation_stale", http_status=409)
+            from_number = progress.current_step_number
+            progress.current_step_number = to_number
+            progress.current_step_id = rec.to_step_id
+            progress.fail_streak = 0
+            self._bump_revision(progress)
+            rec.status = "accepted"
+            rec.decided_at = now
+            event = ProgressionEvent(
+                id=new_uuid7(),
+                user_id=user_id,
+                exercise_id=exercise_id,
+                session_id=None,
+                event_type="satellite_regress_confirmed",
+                from_step=from_number,
+                to_step=to_number,
+                reason="recommendation_accepted",
+                rules_snapshot=None,
+                progression_schema_version=None,
+            )
+            db.add(event)
+        else:
+            progress.fail_streak = 0
+            self._bump_revision(progress)
+            rec.status = "declined"
+            rec.decided_at = now
+
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(rec)
+            await db.refresh(progress)
+            if event is not None:
+                await db.refresh(event)
+        return rec, progress, event
 
     async def finalize_due_outcomes(
         self,
@@ -237,6 +422,28 @@ class SatelliteProgressionOrchestrator:
             _apply_state(locked, new_state)
             if progress is not None and streak is not None:
                 progress.fail_streak = streak
+                locked.applied_progress_revision = self._bump_revision(progress)
+                cfg = await db.get(SatelliteConfigVersion, locked.config_version_id)
+                if cfg is not None:
+                    document = parse_satellite_config_document(cfg.document)
+                    if document.progression.mode == "steps":
+                        ordered = sorted(
+                            document.steps, key=lambda s: (s.sort_order, str(s.step_id))
+                        )
+                        ladder = [(s.sort_order, str(s.step_id)) for s in ordered]
+                        await self._maybe_create_suggestion(
+                            db,
+                            user_id=user_id,
+                            exercise_id=locked.exercise_id,
+                            progress=progress,
+                            outcome=locked,
+                            config_version_id=cfg.id,
+                            threshold=document.progression.regression.threshold,
+                            step_ladder=ladder,
+                            rules_snapshot=None,
+                            schema_version=cfg.schema_version,
+                            session_id=None,
+                        )
             finalized += 1
         await db.flush()
         return finalized
@@ -254,6 +461,7 @@ class SatelliteProgressionOrchestrator:
         already_evaluated: bool,
         step_ladder: list[tuple[int, str]],
         session: WorkoutSession,
+        threshold: int,
     ) -> tuple[ProgressionEvaluation, list[ProgressionEvent]]:
         user = await db.get(User, log.user_id)
         tz_name = user.timezone if user is not None else "UTC"
@@ -263,7 +471,6 @@ class SatelliteProgressionOrchestrator:
         await self._advisory_lock(
             db, user_id=log.user_id, exercise_id=log.exercise_id
         )
-        # Re-lock progress after advisory (stable order: advisory → progress → outcome).
         progress_locked = await db.scalar(
             select(UserExerciseProgress)
             .where(
@@ -325,41 +532,60 @@ class SatelliteProgressionOrchestrator:
             step_ladder=step_ladder,
         )
         _apply_state(outcome, fold.state)
-        if fold.fail_streak is not None:
-            progress_locked.fail_streak = fold.fail_streak
 
         events: list[ProgressionEvent] = []
-        if (
-            fold.newly_finalized
-            and fold.state.result == "success"
-            and fold.advance_to is not None
-            and fold.advance_to_step_id is not None
-            and fold.advance_from is not None
-        ):
-            progress_locked.current_step_number = fold.advance_to
-            progress_locked.current_step_id = UUID(fold.advance_to_step_id)
-            proposal = EventProposal(
-                event_type="satellite_advance",
-                from_step=fold.advance_from,
-                to_step=fold.advance_to,
-                reason="daily_outcome_success",
-                rules_snapshot=evaluation.rules_snapshot,
-                progression_schema_version=evaluation.progression_schema_version,
-            )
-            ev = ProgressionEvent(
-                id=new_uuid7(),
+        if fold.newly_finalized and fold.state.result == "success":
+            await self._stale_pending_recommendations(
+                db,
                 user_id=log.user_id,
                 exercise_id=log.exercise_id,
-                session_id=session.id,
-                event_type=proposal.event_type,
-                from_step=proposal.from_step,
-                to_step=proposal.to_step,
-                reason=proposal.reason,
-                rules_snapshot=proposal.rules_snapshot,
-                progression_schema_version=proposal.progression_schema_version,
+                now=now,
             )
-            db.add(ev)
-            events.append(ev)
+            if fold.fail_streak is not None:
+                progress_locked.fail_streak = fold.fail_streak
+            if (
+                fold.advance_to is not None
+                and fold.advance_to_step_id is not None
+                and fold.advance_from is not None
+            ):
+                progress_locked.current_step_number = fold.advance_to
+                progress_locked.current_step_id = UUID(fold.advance_to_step_id)
+                ev = ProgressionEvent(
+                    id=new_uuid7(),
+                    user_id=log.user_id,
+                    exercise_id=log.exercise_id,
+                    session_id=session.id,
+                    event_type="satellite_advance",
+                    from_step=fold.advance_from,
+                    to_step=fold.advance_to,
+                    reason="daily_outcome_success",
+                    rules_snapshot=evaluation.rules_snapshot,
+                    progression_schema_version=evaluation.progression_schema_version,
+                )
+                db.add(ev)
+                events.append(ev)
+            outcome.applied_progress_revision = self._bump_revision(progress_locked)
+        elif fold.newly_finalized and fold.state.result == "failure":
+            if fold.fail_streak is not None:
+                progress_locked.fail_streak = fold.fail_streak
+                outcome.applied_progress_revision = self._bump_revision(progress_locked)
+                suggested = await self._maybe_create_suggestion(
+                    db,
+                    user_id=log.user_id,
+                    exercise_id=log.exercise_id,
+                    progress=progress_locked,
+                    outcome=outcome,
+                    config_version_id=config.id,
+                    threshold=threshold,
+                    step_ladder=step_ladder,
+                    rules_snapshot=evaluation.rules_snapshot,
+                    schema_version=evaluation.progression_schema_version,
+                    session_id=session.id,
+                )
+                if suggested is not None:
+                    events.append(suggested)
+        elif fold.fail_streak is not None:
+            progress_locked.fail_streak = fold.fail_streak
 
         return (
             ProgressionEvaluation(
@@ -473,6 +699,7 @@ class SatelliteProgressionOrchestrator:
                 already_evaluated=already_evaluated,
                 step_ladder=step_ladder,
                 session=session,
+                threshold=document.progression.regression.threshold,
             )
 
         log.step_number = evaluation.step_number

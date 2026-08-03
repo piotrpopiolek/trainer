@@ -142,6 +142,43 @@ class DailyOutcomeFoldResult:
     advance_to_step_id: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RegressionSuggestionProposal:
+    """Pure proposal when failed_day streak hits threshold (no auto-regress)."""
+
+    from_step: int
+    to_step: int
+    from_step_id: str
+    to_step_id: str
+    failed_day_streak: int
+    threshold: int
+
+
+def propose_regression_suggestion(
+    *,
+    step_number: int,
+    fail_streak: int,
+    threshold: int,
+    step_ladder: list[tuple[int, str]],
+) -> RegressionSuggestionProposal | None:
+    """Suggest −1 step when streak ≥ threshold; never on step 1."""
+    if step_number <= 1 or threshold < 1 or fail_streak < threshold:
+        return None
+    ladder = sorted(step_ladder, key=lambda t: t[0])
+    from_id = next((sid for num, sid in ladder if num == step_number), None)
+    to_id = next((sid for num, sid in ladder if num == step_number - 1), None)
+    if from_id is None or to_id is None:
+        return None
+    return RegressionSuggestionProposal(
+        from_step=step_number,
+        to_step=step_number - 1,
+        from_step_id=from_id,
+        to_step_id=to_id,
+        failed_day_streak=fail_streak,
+        threshold=threshold,
+    )
+
+
 def _snapshot(*, result: OutcomeResult, has_attempt: bool, has_success: bool) -> dict[str, Any]:
     return {
         "schema_version": 1,

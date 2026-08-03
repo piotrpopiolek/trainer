@@ -122,6 +122,11 @@ class SatelliteRegressionRecommendation(Base):
             unique=True,
             postgresql_where=text("status = 'pending'"),
         ),
+        Index(
+            "uq_satellite_regression_recommendations_trigger",
+            "trigger_outcome_id",
+            unique=True,
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)

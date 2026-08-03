@@ -121,6 +121,9 @@ class UserExerciseProgress(Base):
         ForeignKey("exercise_steps.id", ondelete="RESTRICT"),
     )
     fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    progress_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     last_session_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(
