@@ -252,6 +252,114 @@ async def test_sync_applied_detached_claim_and_conflict(db: AsyncSession) -> Non
 
 
 @pytest.mark.asyncio
+async def test_applied_detached_fulfills_session_depends_on(db: AsyncSession) -> None:
+    """Detached config registration still satisfies depends_on (FR-072d)."""
+    user = await _ready(db, "detached-deps@ex.com")
+    user_id = user.id
+    sat = await create_satellite(
+        db, user=user, body=_type_c_body(mutation_id=new_uuid7(), name="DepBase"), commit=True
+    )
+    sat_id = sat.id
+    v1 = sat.current_config_version_id
+    assert v1 is not None
+
+    ex = await db.get(Exercise, sat_id)
+    assert ex is not None
+    v2 = new_uuid7()
+    await register_satellite_config_version(
+        db,
+        user=user,
+        exercise=ex,
+        body=_type_c_body(
+            mutation_id=new_uuid7(),
+            config_version_id=v2,
+            expected_current=v1,
+            name="DepWinner",
+        ),
+        effective_from=date(2026, 8, 1),
+    )
+    await db.commit()
+
+    v3 = new_uuid7()
+    sat_mut = new_uuid7()
+    body = _type_c_body(
+        mutation_id=sat_mut,
+        config_version_id=v3,
+        expected_current=v1,
+        name="DepLoser",
+    )
+    first = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=sat_mut,
+                    entity_type="satellite",
+                    entity_id=sat_id,
+                    op="upsert",
+                    revision=2,
+                    payload=body.model_dump(mode="json"),
+                )
+            ],
+        ),
+    )
+    assert first.results[0].status == "applied_detached"
+
+    await db.rollback()
+    user = await db.get(User, user_id)
+    assert user is not None
+    stored = await db.get(SatelliteConfigVersion, v3)
+    assert stored is not None
+    hash_hex = stored.config_hash.hex()
+    sess_mut = new_uuid7()
+    second = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=sess_mut,
+                    entity_type="workout_session",
+                    entity_id=new_uuid7(),
+                    depends_on=[sat_mut],
+                    payload={
+                        "schema_version": 1,
+                        "performed_at": datetime(2026, 8, 3, 10, 0, tzinfo=UTC).isoformat(),
+                        "local_date": "2026-08-03",
+                        "client_mutation_id": str(sess_mut),
+                        "client_timezone": "Europe/Warsaw",
+                        "logs": [
+                            {
+                                "exercise_id": str(sat_id),
+                                "exercise_kind": "satellite",
+                                "section": "accessories",
+                                "sets": {
+                                    "schema_version": 1,
+                                    "completed": True,
+                                    "sets": [],
+                                },
+                                "satellite_config_version_id": str(v3),
+                                "satellite_config_hash": hash_hex,
+                            }
+                        ],
+                    },
+                )
+            ],
+        ),
+    )
+    result = second.results[0]
+    assert result.error_code not in {
+        "dependency_missing",
+        "dependency_failed",
+        "dependency_cycle",
+    }
+    assert result.status == "applied"
+
+
+@pytest.mark.asyncio
 async def test_log_on_detached_version_skips_progression(db: AsyncSession) -> None:
     user = await _ready(db, "detached-log@ex.com")
     sat = await create_satellite(
@@ -318,3 +426,77 @@ async def test_log_on_detached_version_skips_progression(db: AsyncSession) -> No
     assert log.goal_met is True
     assert log.counts_for_progression is False
     assert log.progression_skipped == "config_not_active_for_day"
+
+
+@pytest.mark.asyncio
+async def test_register_refreshes_exercise_step_rules_for_list(db: AsyncSession) -> None:
+    """Successful config activation must update ExerciseStep so list matches document."""
+    from app.models.catalog import ExerciseStep
+    from app.services.satellites import list_satellites
+
+    user = await _ready(db, "register-steps@ex.com")
+    create_body = SatelliteCreateV1.model_validate(
+        {
+            "schema_version": 1,
+            "name": "Hip thrust",
+            "exercise_type": "B",
+            "active_metrics": {"schema_version": 1, "metrics": ["reps"]},
+            "schedule_kind": "daily",
+            "steps": [
+                {
+                    "step_number": 1,
+                    "name": "Base",
+                    "rules": {
+                        "schema_version": 1,
+                        "goal": {"type": "reps", "sets": 3, "min_reps": 10},
+                    },
+                }
+            ],
+            "client_mutation_id": str(new_uuid7()),
+        }
+    )
+    sat = await create_satellite(db, user=user, body=create_body, commit=True)
+    v1 = sat.current_config_version_id
+    assert v1 is not None
+    before = await list_satellites(db, user_id=user.id)
+    assert before[0].steps[0]["rules"]["goal"]["min_reps"] == 10
+
+    ex = await db.get(Exercise, sat.id)
+    assert ex is not None
+    body = SatelliteCreateV1.model_validate(
+        {
+            "schema_version": 1,
+            "name": "Hip thrust",
+            "exercise_type": "B",
+            "active_metrics": {"schema_version": 1, "metrics": ["reps"]},
+            "schedule_kind": "daily",
+            "expected_current_config_version_id": str(v1),
+            "steps": [
+                {
+                    "step_number": 1,
+                    "name": "Updated",
+                    "rules": {
+                        "schema_version": 1,
+                        "goal": {"type": "reps", "sets": 3, "min_reps": 12},
+                    },
+                }
+            ],
+            "client_mutation_id": str(new_uuid7()),
+        }
+    )
+    win = await register_satellite_config_version(
+        db, user=user, exercise=ex, body=body, effective_from=date(2026, 8, 1)
+    )
+    await db.commit()
+    assert win.activation_applied is True
+
+    step = await db.scalar(
+        select(ExerciseStep).where(
+            ExerciseStep.exercise_id == sat.id, ExerciseStep.step_number == 1
+        )
+    )
+    assert step is not None
+    assert step.rules["goal"]["min_reps"] == 12
+
+    listed = await list_satellites(db, user_id=user.id)
+    assert listed[0].steps[0]["rules"]["goal"]["min_reps"] == 12

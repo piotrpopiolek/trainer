@@ -53,6 +53,11 @@ export async function listOutboxByStatus(
   return all.filter((i) => statuses.includes(i.status));
 }
 
+export async function listAllOutbox(userId: string): Promise<OutboxItem[]> {
+  const db = await openUserDb(userId);
+  return db.getAll("outbox");
+}
+
 export async function listFlushableOutbox(userId: string, now = new Date()): Promise<OutboxItem[]> {
   const items = await listOutboxByStatus(userId, ["pending"]);
   const iso = now.toISOString();

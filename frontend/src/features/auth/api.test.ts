@@ -141,6 +141,48 @@ describe("auth api", () => {
     expect(result.pendingSync).toBe(true);
   });
 
+  it("acceptDisclaimer rethrows client ApiError without outbox fallback", async () => {
+    const { useAuthStore } = await import("@/stores/authStore");
+    useAuthStore.getState().setMe({
+      schema_version: 1,
+      id: "018f0000-0000-7000-8000-000000000001",
+      email: "a@b.c",
+      display_name: "A",
+      locale: "pl-PL",
+      timezone: "Europe/Warsaw",
+      onboarding_completed: true,
+      health_disclaimer_accepted: false,
+      csrf_token: "t",
+    });
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      onLine: true,
+      storage: { persist: async () => false },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error_code: "schema_invalid" }), {
+          status: 422,
+        }),
+      ),
+    );
+    const doc = {
+      schema_version: 1 as const,
+      document_id: "018f0000-0000-7000-8000-000000000002",
+      slug: "health_disclaimer",
+      version: "1",
+      locale: "pl-PL",
+      title: "T",
+      body: "B",
+      content_hash: "a".repeat(64),
+    };
+    await expect(acceptDisclaimer(doc)).rejects.toMatchObject({
+      status: 422,
+      errorCode: "schema_invalid",
+    });
+  });
+
   it("patchSchedule sends CSRF", async () => {
     const { useAuthStore } = await import("@/stores/authStore");
     useAuthStore.getState().setMe({

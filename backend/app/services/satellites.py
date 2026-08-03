@@ -161,7 +161,7 @@ async def register_satellite_config_version(
     except Exception as exc:
         raise DomainError("invalid_active_metrics", http_status=422) from exc
 
-    _step_rows, config_steps = _build_config_steps(body.steps)
+    step_rows, config_steps = _build_config_steps(body.steps)
     try:
         document = SatelliteConfigDocumentV1(
             schema_version=1,
@@ -223,6 +223,34 @@ async def register_satellite_config_version(
         )
 
     await db.refresh(locked)
+    schema_id = await _satellite_schema_id(db)
+    for step_id, step, rules in step_rows:
+        existing_step = await db.scalar(
+            select(ExerciseStep).where(
+                ExerciseStep.exercise_id == locked.id,
+                ExerciseStep.step_number == step.step_number,
+            )
+        )
+        if existing_step is not None:
+            existing_step.name = step.name
+            existing_step.description = step.description
+            existing_step.rules = rules.model_dump(mode="json")
+            existing_step.sort_order = step.step_number
+            existing_step.progression_schema_id = schema_id
+        else:
+            db.add(
+                ExerciseStep(
+                    id=step_id,
+                    exercise_id=locked.id,
+                    step_number=step.step_number,
+                    name=step.name,
+                    description=step.description,
+                    rules=rules.model_dump(mode="json"),
+                    progression_schema_id=schema_id,
+                    sort_order=step.step_number,
+                )
+            )
+    await db.flush()
     local_from = effective_from or date(2000, 1, 1)
     open_act = await db.scalar(
         select(SatelliteConfigActivation)

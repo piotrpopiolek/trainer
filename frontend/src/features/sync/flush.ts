@@ -10,15 +10,18 @@ import {
 import { getLastPullServerTime, getOrCreateDeviceId, setLastPullServerTime } from "@/lib/db/meta";
 import {
   deleteOutboxItem,
+  listAllOutbox,
   listFlushableOutbox,
   resetInFlightToPending,
   updateOutboxItem,
 } from "@/lib/db/outbox";
+import { gateItemByDependencies } from "@/lib/sync/blockedBy";
 import { classifyAck, nextAttemptAtIso, type PushItemStatus } from "@/lib/sync/classify";
 import { takeFlushWindow, topologicalSortOutbox } from "@/lib/sync/sort";
 import { syncPull, syncPush, type SyncPushResponse } from "@/features/sync/api";
 import { ApiError } from "@/lib/api";
 import { progressionEventSchema, type ProgressionEvent } from "@/lib/schemas";
+import type { OutboxItem } from "@/lib/db/types";
 
 /** Pure helper — map sync push ACKs by mutation ID (FR-072a). */
 export function indexPushResultsByMutationId(
@@ -90,6 +93,8 @@ async function applyPushResults(
   // FR-072a/d: ACK by client_mutation_id — never by array index (server may reorder).
   const byMutationId = indexPushResultsByMutationId(response.results);
 
+  const quarantinedIds = new Set<string>();
+
   for (const item of windowItems) {
     const result = byMutationId.get(item.client_mutation_id);
     if (!result) {
@@ -111,6 +116,7 @@ async function applyPushResults(
       item.last_error_code = result.status;
       item.conflict_id = result.conflict_id ?? null;
       await updateOutboxItem(userId, item);
+      quarantinedIds.add(item.client_mutation_id);
       if (result.conflict_id) {
         await upsertConflict(userId, {
           id: result.conflict_id,
@@ -127,12 +133,28 @@ async function applyPushResults(
       item.status = "quarantine";
       item.last_error_code = action.errorCode;
       await updateOutboxItem(userId, item);
+      quarantinedIds.add(item.client_mutation_id);
     } else {
       item.status = "pending";
       item.attempts += 1;
       item.last_error_code = action.errorCode;
       item.next_attempt_at = nextAttemptAtIso(item.attempts);
       await updateOutboxItem(userId, item);
+    }
+  }
+
+  // FR-072b: quarantine dependents whose prerequisite just failed this ACK.
+  if (quarantinedIds.size > 0) {
+    const remaining = await listAllOutbox(userId);
+    for (const dep of remaining) {
+      if (dep.status !== "pending" && dep.status !== "in_flight") continue;
+      const hit = (dep.depends_on ?? []).filter((id) => quarantinedIds.has(id));
+      if (hit.length === 0) continue;
+      dep.status = "quarantine";
+      dep.last_error_code = "dependency_failed";
+      dep.blocked_by = [...hit].sort();
+      await updateOutboxItem(userId, dep);
+      quarantined += 1;
     }
   }
 
@@ -166,7 +188,38 @@ export async function flushOutbox(userId: string): Promise<FlushResult> {
 
     // Loop batches until empty / truncated stop / auth
     for (let round = 0; round < 10; round += 1) {
-      const ready = await listFlushableOutbox(userId);
+      const flushable = await listFlushableOutbox(userId);
+      if (flushable.length === 0) break;
+
+      const allOutbox = await listAllOutbox(userId);
+      const outboxById = new Map(
+        allOutbox.map((i) => [i.client_mutation_id, i] as const),
+      );
+      const flushableIds = new Set(flushable.map((i) => i.client_mutation_id));
+      const ready: OutboxItem[] = [];
+      for (const item of flushable) {
+        const gate = gateItemByDependencies(item, { outboxById, flushableIds });
+        if (gate.kind === "failed") {
+          item.status = "quarantine";
+          item.last_error_code = "dependency_failed";
+          item.blocked_by = gate.blocked_by;
+          await updateOutboxItem(userId, item);
+          aggregate.quarantined += 1;
+          continue;
+        }
+        if (gate.kind === "blocked") {
+          // Pending prereq: stay pending, no attempt / backoff (FR-072b).
+          item.blocked_by = gate.blocked_by;
+          item.status = "pending";
+          await updateOutboxItem(userId, item);
+          continue;
+        }
+        if (item.blocked_by.length > 0) {
+          item.blocked_by = [];
+          await updateOutboxItem(userId, item);
+        }
+        ready.push(item);
+      }
       if (ready.length === 0) break;
 
       const { ordered, cycleIds } = topologicalSortOutbox(ready);

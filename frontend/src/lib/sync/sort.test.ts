@@ -191,6 +191,65 @@ describe("outbox sort FR-072a (topo + tie-breaker)", () => {
     );
     expect(takeFlushWindow(items, 20)).toHaveLength(20);
   });
+
+  it("tie-breaks same-type satellites by entity_id then mutation id", () => {
+    const sorted = sortOutboxItems([
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-0000000000b2",
+        entity_type: "satellite",
+        entity_id: "018f0000-0000-7000-8000-000000000014",
+        op: "upsert",
+        client_updated_at: "2026-07-28T10:00:00.000Z",
+        payload: { client_updated_at: "2026-07-28T10:00:00.000Z" },
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-0000000000b1",
+        entity_type: "satellite",
+        entity_id: "018f0000-0000-7000-8000-000000000013",
+        op: "upsert",
+        client_updated_at: "2026-07-28T10:00:00.000Z",
+        payload: {},
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-0000000000b3",
+        entity_type: "satellite",
+        entity_id: "018f0000-0000-7000-8000-000000000014",
+        op: "upsert",
+        client_updated_at: "2026-07-28T10:00:00.000Z",
+        payload: null,
+      }),
+    ]);
+    expect(sorted.map((i) => i.client_mutation_id)).toEqual([
+      "018f0000-0000-7000-8000-0000000000b1",
+      "018f0000-0000-7000-8000-0000000000b2",
+      "018f0000-0000-7000-8000-0000000000b3",
+    ]);
+  });
+
+  it("uses performed_at when present on sessions", () => {
+    const sorted = sortOutboxItems([
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000051",
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000061",
+        op: "upsert",
+        client_updated_at: "2026-07-28T08:00:00.000Z",
+        payload: { performed_at: "2026-07-28T12:00:00.000Z", local_date: "2026-07-28" },
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000050",
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000060",
+        op: "upsert",
+        client_updated_at: "2026-07-28T09:00:00.000Z",
+        payload: { local_date: "2026-07-28" },
+      }),
+    ]);
+    expect(sorted.map((i) => i.client_mutation_id)).toEqual([
+      "018f0000-0000-7000-8000-000000000050",
+      "018f0000-0000-7000-8000-000000000051",
+    ]);
+  });
 });
 
 describe("ACK classify FR-072b", () => {
@@ -198,6 +257,12 @@ describe("ACK classify FR-072b", () => {
     expect(classifyAck("applied", null)).toEqual({ kind: "done" });
     expect(classifyAck("idempotent", null)).toEqual({ kind: "done" });
     expect(classifyAck("applied_detached", null)).toEqual({ kind: "done" });
+  });
+
+  it("retries unknown non-rejected statuses", () => {
+    expect(
+      classifyAck("pending" as unknown as Parameters<typeof classifyAck>[0], null),
+    ).toEqual({ kind: "retry", errorCode: null });
   });
 
   it("quarantines revision_jump and legal_required", () => {

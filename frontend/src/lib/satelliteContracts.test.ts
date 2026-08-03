@@ -21,6 +21,15 @@ const vectorsPath = path.join(
   "satellite_jcs_vectors.json",
 );
 
+describe("canonicalJson edges", () => {
+  it("escapes control chars and rejects unsupported types", () => {
+    expect(canonicalize({ note: 'a"b\\c\n' })).toContain("\\u000a");
+    expect(() => canonicalize(undefined)).toThrow(/jcs_unsupported_type/);
+    expect(() => canonicalize(Number.NaN)).toThrow("jcs_non_finite_number");
+    expect(() => canonicalize(1.5)).toThrow("jcs_float_forbidden");
+  });
+});
+
 describe("satellite contracts Stage 1", () => {
   it("matches shared JCS golden vectors", async () => {
     const payload = JSON.parse(readFileSync(vectorsPath, "utf8")) as {

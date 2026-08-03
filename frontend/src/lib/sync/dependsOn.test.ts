@@ -102,6 +102,56 @@ describe("resolveSessionDependsOn Slice D", () => {
       }),
     ).toEqual([extra]);
   });
+
+  it("includes in_flight legal but skips done/failed items", () => {
+    const legal = "018f0000-0000-7000-8000-0000000000a1";
+    const doneLegal = "018f0000-0000-7000-8000-0000000000a2";
+    const deps = resolveSessionDependsOn({
+      pending: [
+        item({
+          client_mutation_id: legal,
+          entity_type: "legal_acceptance",
+          entity_id: "018f0000-0000-7000-8000-0000000000c1",
+          op: "upsert",
+          status: "in_flight",
+        }),
+        item({
+          client_mutation_id: doneLegal,
+          entity_type: "legal_acceptance",
+          entity_id: "018f0000-0000-7000-8000-0000000000c2",
+          op: "upsert",
+          status: "done",
+        }),
+      ],
+      localDate: "2026-08-03",
+      logs: [],
+    });
+    expect(deps).toEqual([legal]);
+  });
+
+  it("ignores tombstone delete without string local_date", () => {
+    const deps = resolveSessionDependsOn({
+      pending: [
+        item({
+          client_mutation_id: "018f0000-0000-7000-8000-0000000000d1",
+          entity_type: "workout_session",
+          entity_id: "018f0000-0000-7000-8000-0000000000e1",
+          op: "delete",
+          payload: { local_date: 20260803 },
+        }),
+        item({
+          client_mutation_id: "018f0000-0000-7000-8000-0000000000d2",
+          entity_type: "workout_session",
+          entity_id: "018f0000-0000-7000-8000-0000000000e2",
+          op: "delete",
+          payload: null,
+        }),
+      ],
+      localDate: "2026-08-03",
+      logs: [],
+    });
+    expect(deps).toEqual([]);
+  });
 });
 
 describe("buildOfflineSatellitePin Slice D", () => {
@@ -136,5 +186,41 @@ describe("buildOfflineSatellitePin Slice D", () => {
     expect(pin.configHash).toBe(
       "259d3867d2da017da7c5750b0fb4045178cabf3159fa4b32407cf3478e567e13",
     );
+  });
+
+  it("applies type B defaults and generates client IDs", async () => {
+    const pin = await buildOfflineSatellitePin({
+      exercise_type: "B",
+      stepName: "Default reps",
+    });
+    expect(pin.steps[0]?.rules).toEqual({
+      schema_version: 1,
+      goal: {
+        type: "reps",
+        sets: 3,
+        min_reps: 10,
+        min_weight_kg: null,
+        require_both_sides: false,
+      },
+    });
+    expect(pin.activeMetrics.metrics).toEqual(["reps"]);
+    expect(pin.configVersionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(pin.steps[0]?.step_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(pin.configHash).toHaveLength(64);
+  });
+
+  it("adds weight_kg metric when trackWeight is set", async () => {
+    const pin = await buildOfflineSatellitePin({
+      exercise_type: "B",
+      stepName: "Weighted",
+      trackWeight: true,
+      stepId: "01900000-0000-7000-8000-000000000003",
+      configVersionId: "01900000-0000-7000-8000-000000000097",
+    });
+    expect(pin.activeMetrics.metrics).toEqual(["reps", "weight_kg"]);
   });
 });

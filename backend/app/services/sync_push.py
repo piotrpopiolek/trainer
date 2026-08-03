@@ -723,6 +723,24 @@ async def _set_claim_result_status(
         await db.flush()
 
 
+async def _delete_claim(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    client_mutation_id: UUID,
+) -> None:
+    """Remove a non-success claim so dependents are not falsely fulfilled (FR-072d)."""
+    row = await db.scalar(
+        select(ClientMutation).where(
+            ClientMutation.user_id == user_id,
+            ClientMutation.client_mutation_id == client_mutation_id,
+        )
+    )
+    if row is not None:
+        await db.delete(row)
+        await db.flush()
+
+
 async def _apply_satellite_upsert(
     db: AsyncSession,
     *,
@@ -941,6 +959,18 @@ async def push_batch(
             # revision_jump quarantine may retry after user fix with same id).
             if result.status == "rejected":
                 await db.rollback()
+                results.append(result)
+                result_by_id[item.client_mutation_id] = result
+                continue
+            # Conflict / immutable are terminal for this mutation but are not
+            # success — drop the claim, keep sync_conflict_logs (FR-072d).
+            if result.status in _FAILED_DEP_STATUSES:
+                await _delete_claim(
+                    db,
+                    user_id=user_id,
+                    client_mutation_id=item.client_mutation_id,
+                )
+                await db.commit()
                 results.append(result)
                 result_by_id[item.client_mutation_id] = result
                 continue

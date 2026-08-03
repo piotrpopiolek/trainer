@@ -403,3 +403,119 @@ async def test_depends_on_fulfilled_by_prior_client_mutation(db: AsyncSession) -
         ),
     )
     assert second.results[0].status == "applied"
+
+
+@pytest.mark.asyncio
+async def test_conflict_lost_claim_does_not_fulfill_cross_batch(
+    db: AsyncSession,
+) -> None:
+    """Conflict commits sync_conflict_logs but must not leave an applied claim (FR-072d)."""
+    from app.models.sync import SyncConflictLog
+    from app.models.workout import WorkoutSession
+
+    user = await _ready(db, "dep-conflict-claim@ex.com")
+    user_id = user.id
+    cc = await _cc(db)
+    cc_id = cc.id
+    sid = new_uuid7()
+    now = datetime(2026, 8, 3, 10, 0, tzinfo=UTC)
+    db.add(
+        WorkoutSession(
+            id=sid,
+            user_id=user.id,
+            performed_at=now,
+            local_date=date(2026, 8, 3),
+            client_mutation_id=new_uuid7(),
+            revision=3,
+            client_updated_at=now,
+        )
+    )
+    await db.commit()
+
+    conflict_mut = new_uuid7()
+    first = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=conflict_mut,
+                    entity_type="workout_session",
+                    entity_id=sid,
+                    op="upsert",
+                    revision=1,
+                    payload={
+                        "schema_version": 1,
+                        "performed_at": now.isoformat(),
+                        "local_date": "2026-08-03",
+                        "client_mutation_id": str(conflict_mut),
+                        "client_timezone": "Europe/Warsaw",
+                        "logs": [],
+                    },
+                )
+            ],
+        ),
+    )
+    assert first.results[0].status == "conflict_lost"
+    await db.rollback()
+    claim = await db.scalar(
+        select(ClientMutation).where(
+            ClientMutation.user_id == user_id,
+            ClientMutation.client_mutation_id == conflict_mut,
+        )
+    )
+    assert claim is None
+    clog = await db.scalar(
+        select(SyncConflictLog).where(
+            SyncConflictLog.user_id == user_id,
+            SyncConflictLog.entity_id == sid,
+        )
+    )
+    assert clog is not None
+
+    user = await db.get(User, user_id)
+    assert user is not None
+    sess_mut = new_uuid7()
+    second = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=sess_mut,
+                    entity_type="workout_session",
+                    entity_id=new_uuid7(),
+                    depends_on=[conflict_mut],
+                    payload={
+                        "schema_version": 1,
+                        "performed_at": datetime(2026, 8, 4, 10, 0, tzinfo=UTC).isoformat(),
+                        "local_date": "2026-08-04",
+                        "client_mutation_id": str(sess_mut),
+                        "client_timezone": "Europe/Warsaw",
+                        "logs": [
+                            {
+                                "exercise_id": str(cc_id),
+                                "exercise_kind": "cc",
+                                "sets": {
+                                    "schema_version": 1,
+                                    "sets": [{"reps": 10}],
+                                },
+                            }
+                        ],
+                    },
+                )
+            ],
+        ),
+    )
+    assert second.results[0].status == "rejected"
+    assert second.results[0].error_code == "dependency_missing"
+    await db.rollback()
+    dep_claim = await db.scalar(
+        select(ClientMutation).where(
+            ClientMutation.user_id == user_id,
+            ClientMutation.client_mutation_id == sess_mut,
+        )
+    )
+    assert dep_claim is None
