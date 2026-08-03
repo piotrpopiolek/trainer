@@ -260,6 +260,137 @@ async def test_edit_after_history_sets_pending_until_promote(db: AsyncSession) -
 
 
 @pytest.mark.asyncio
+async def test_edit_does_not_reinterpret_existing_or_pending_old_config_logs(
+    db: AsyncSession,
+) -> None:
+    """Gate 4: goal-changing edit must not rewrite prior logs or old-version logs."""
+    from app.models.workout import SessionExerciseLog
+
+    user = await _ready(db, "edit-no-reinterpret@ex.com")
+    sat = await create_satellite(
+        db,
+        user=user,
+        body=_goal_only_body(mutation_id=new_uuid7(), reps=10),
+        commit=True,
+    )
+    old_version_id = sat.current_config_version_id
+    old_hash = sat.config_hash
+    sets_ok_for_10 = {
+        "schema_version": 1,
+        "sets": [
+            {"reps": 12, "weight_kg": "40.000", "sides": "left"},
+            {"reps": 12, "weight_kg": "40.000", "sides": "right"},
+            {"reps": 12, "weight_kg": "40.000", "sides": "left"},
+            {"reps": 12, "weight_kg": "40.000", "sides": "right"},
+            {"reps": 12, "weight_kg": "40.000", "sides": "left"},
+            {"reps": 12, "weight_kg": "40.000", "sides": "right"},
+        ],
+    }
+    first = await create_session(
+        db,
+        user=user,
+        body=SessionCreateV1(
+            schema_version=1,
+            performed_at=datetime(2026, 8, 3, 10, 0, tzinfo=UTC),
+            local_date=date(2026, 8, 3),
+            client_mutation_id=new_uuid7(),
+            client_timezone="Europe/Warsaw",
+            logs=[
+                SessionLogCreateV1(
+                    exercise_id=sat.id,
+                    exercise_kind="satellite",
+                    section="accessories",
+                    sets=sets_ok_for_10,
+                    satellite_config_version_id=old_version_id,
+                    satellite_config_hash=old_hash,
+                )
+            ],
+        ),
+        commit=True,
+    )
+    first_log = await db.get(SessionExerciseLog, first.logs[0].id)
+    assert first_log is not None
+    assert first_log.goal_met is True
+    assert first_log.satellite_config_version_id == old_version_id
+    snap_before = dict(first_log.rules_snapshot or {})
+
+    body = _edit_body_from_read(sat, revision=2, reps=15)
+    read, outcome = await edit_satellite(
+        db, user=user, exercise_id=sat.id, body=body, revision=2, commit=True
+    )
+    assert outcome.pending_applied is True
+    pending_id = read.pending_config_version_id
+    pending_hash = read.pending_config_hash
+    assert pending_id is not None
+    assert pending_hash is not None
+    assert read.current_config_version_id == old_version_id
+
+    await db.refresh(first_log)
+    assert first_log.goal_met is True
+    assert first_log.satellite_config_version_id == old_version_id
+    assert first_log.rules_snapshot == snap_before
+
+    # Pending offline-style log still referencing the pre-edit version.
+    late_old = await create_session(
+        db,
+        user=user,
+        body=SessionCreateV1(
+            schema_version=1,
+            performed_at=datetime(2026, 8, 3, 18, 0, tzinfo=UTC),
+            local_date=date(2026, 8, 3),
+            client_mutation_id=new_uuid7(),
+            client_timezone="Europe/Warsaw",
+            logs=[
+                SessionLogCreateV1(
+                    exercise_id=sat.id,
+                    exercise_kind="satellite",
+                    section="accessories",
+                    sets=sets_ok_for_10,
+                    satellite_config_version_id=old_version_id,
+                    satellite_config_hash=old_hash,
+                )
+            ],
+        ),
+        commit=True,
+    )
+    old_style = await db.get(SessionExerciseLog, late_old.logs[0].id)
+    assert old_style is not None
+    assert old_style.goal_met is True
+    assert old_style.satellite_config_version_id == old_version_id
+    assert old_style.progression_skipped is None
+
+    # Same sets against pending (min_reps=15) — not active for this day.
+    pending_log_session = await create_session(
+        db,
+        user=user,
+        body=SessionCreateV1(
+            schema_version=1,
+            performed_at=datetime(2026, 8, 3, 19, 0, tzinfo=UTC),
+            local_date=date(2026, 8, 3),
+            client_mutation_id=new_uuid7(),
+            client_timezone="Europe/Warsaw",
+            logs=[
+                SessionLogCreateV1(
+                    exercise_id=sat.id,
+                    exercise_kind="satellite",
+                    section="accessories",
+                    sets=sets_ok_for_10,
+                    satellite_config_version_id=pending_id,
+                    satellite_config_hash=pending_hash,
+                )
+            ],
+        ),
+        commit=True,
+    )
+    pending_style = await db.get(SessionExerciseLog, pending_log_session.logs[0].id)
+    assert pending_style is not None
+    assert pending_style.satellite_config_version_id == pending_id
+    assert pending_style.progression_skipped == "config_not_active_for_day"
+    # Historical goal uses pending version rules (12 < 15) — not today's current.
+    assert pending_style.goal_met is False
+
+
+@pytest.mark.asyncio
 async def test_topology_locked_after_history(db: AsyncSession) -> None:
     user = await _ready(db, "edit-topo@ex.com")
     sat = await create_satellite(

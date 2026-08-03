@@ -49,7 +49,12 @@ function SatelliteListItem({
           | "weekdays"
           | "category",
         weekdays: satellite.weekdays,
-        schedule_category: satellite.schedule_category,
+        schedule_category: satellite.schedule_category as
+          | "anytime"
+          | "post_workout"
+          | "rest_day"
+          | null
+          | undefined,
         active_metrics: satellite.active_metrics,
         equipment: satellite.equipment,
         tags: satellite.tags,

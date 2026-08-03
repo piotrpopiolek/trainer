@@ -112,6 +112,7 @@ export async function createSessionOfflineAware(
     })),
     progression_events: [],
     progress: [],
+    soft_delete_outcome_hints: [],
   };
   await putSessionCache(userId, {
     ...session,
