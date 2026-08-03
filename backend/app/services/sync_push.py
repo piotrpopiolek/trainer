@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -45,6 +45,16 @@ _TYPE_ORDER = {
 }
 _OP_ORDER = {"delete": 0, "upsert": 1}
 MAX_BATCH = 20
+
+_SUCCESS_DEP_STATUSES = frozenset({"applied", "applied_detached", "idempotent"})
+_FAILED_DEP_STATUSES = frozenset(
+    {
+        "rejected",
+        "conflict_lost",
+        "conflict_tie",
+        "session_immutable_after_evaluate",
+    }
+)
 
 
 def _item_ts(item: SyncPushItemV1) -> datetime:
@@ -139,6 +149,65 @@ def content_hash(
         separators=(",", ":"),
     )
     return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def resolve_item_dependencies(
+    item: SyncPushItemV1,
+    *,
+    fulfilled: set[UUID],
+    batch_ids: set[UUID],
+    result_by_id: dict[UUID, SyncPushItemResultV1],
+) -> SyncPushItemResultV1 | Literal["defer"] | None:
+    """Return reject result, ``\"defer\"`` (no claim), or ``None`` when ready to claim."""
+    for dep in item.depends_on:
+        if dep in fulfilled:
+            continue
+        prior = result_by_id.get(dep)
+        if prior is not None:
+            if prior.status in _SUCCESS_DEP_STATUSES:
+                fulfilled.add(dep)
+                continue
+            if prior.status in _FAILED_DEP_STATUSES:
+                return SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code="dependency_failed",
+                    dependency_failed_mutation_id=dep,
+                )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="dependency_failed",
+                dependency_failed_mutation_id=dep,
+            )
+        if dep in batch_ids:
+            # Prereq in this batch but not yet terminal (deferred upstream).
+            return "defer"
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="dependency_missing",
+            dependency_failed_mutation_id=dep,
+        )
+    return None
+
+
+async def _load_fulfilled_mutation_ids(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    mutation_ids: set[UUID],
+) -> set[UUID]:
+    if not mutation_ids:
+        return set()
+    rows = await db.scalars(
+        select(ClientMutation.client_mutation_id).where(
+            ClientMutation.user_id == user_id,
+            ClientMutation.client_mutation_id.in_(mutation_ids),
+            ClientMutation.result_status.in_(("applied", "applied_detached")),
+        )
+    )
+    return set(rows.all())
 
 
 async def _claim(
@@ -740,21 +809,49 @@ async def push_batch(
     if len(body.items) > MAX_BATCH:
         raise DomainError("batch_too_large", http_status=422)
 
+    mutation_ids = [item.client_mutation_id for item in body.items]
+    if len(mutation_ids) != len(set(mutation_ids)):
+        raise DomainError("batch_duplicate_mutation_id", http_status=422)
+
     await _touch_device(db, user_id=user.id, device_id=body.device_id)
     await db.commit()
 
     user_id = user.id
     results: list[SyncPushItemResultV1] = []
+    result_by_id: dict[UUID, SyncPushItemResultV1] = {}
+    truncated = False
+
     ordered, cycle_ids = topological_sort_push_items(body.items)
+    batch_ids = set(mutation_ids)
     for mid in cycle_ids:
-        results.append(
-            SyncPushItemResultV1(
-                client_mutation_id=mid,
-                status="rejected",
-                error_code="dependency_cycle",
-            )
+        rejected = SyncPushItemResultV1(
+            client_mutation_id=mid,
+            status="rejected",
+            error_code="dependency_cycle",
         )
+        results.append(rejected)
+        result_by_id[mid] = rejected
+
+    all_deps = {dep for item in ordered for dep in item.depends_on}
+    fulfilled = await _load_fulfilled_mutation_ids(
+        db, user_id=user_id, mutation_ids=all_deps
+    )
+
     for item in ordered:
+        decision = resolve_item_dependencies(
+            item,
+            fulfilled=fulfilled,
+            batch_ids=batch_ids,
+            result_by_id=result_by_id,
+        )
+        if decision == "defer":
+            truncated = True
+            continue
+        if decision is not None:
+            results.append(decision)
+            result_by_id[item.client_mutation_id] = decision
+            continue
+
         digest = content_hash(
             item.payload,
             op=item.op,
@@ -762,49 +859,67 @@ async def push_batch(
             depends_on=item.depends_on,
         )
         try:
+            # Rollback of a prior rejected item detaches ORM state — re-load user.
+            loaded_user = await db.get(User, user_id)
+            if loaded_user is None:
+                failed = SyncPushItemResultV1(
+                    client_mutation_id=item.client_mutation_id,
+                    status="rejected",
+                    error_code="not_found",
+                )
+                results.append(failed)
+                result_by_id[item.client_mutation_id] = failed
+                continue
             claim = await _claim(
                 db, user_id=user_id, item=item, digest=digest
             )
             if claim is not None:
                 await db.commit()
                 results.append(claim)
+                result_by_id[item.client_mutation_id] = claim
+                if claim.status in _SUCCESS_DEP_STATUSES:
+                    fulfilled.add(item.client_mutation_id)
                 continue
-            result = await apply_push_item(db, user=user, item=item)
+            result = await apply_push_item(db, user=loaded_user, item=item)
             # Rejected items must not keep the claim (FR-072b: legal_required /
             # revision_jump quarantine may retry after user fix with same id).
             if result.status == "rejected":
                 await db.rollback()
                 results.append(result)
+                result_by_id[item.client_mutation_id] = result
                 continue
             await db.commit()
             results.append(result)
+            result_by_id[item.client_mutation_id] = result
+            if result.status in _SUCCESS_DEP_STATUSES:
+                fulfilled.add(item.client_mutation_id)
         except DomainError as exc:
             await db.rollback()
-            results.append(
-                SyncPushItemResultV1(
-                    client_mutation_id=item.client_mutation_id,
-                    status="rejected",
-                    error_code=exc.error_code,
-                )
+            failed = SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code=exc.error_code,
             )
+            results.append(failed)
+            result_by_id[item.client_mutation_id] = failed
         except NotFoundError:
             await db.rollback()
-            results.append(
-                SyncPushItemResultV1(
-                    client_mutation_id=item.client_mutation_id,
-                    status="rejected",
-                    error_code="not_found",
-                )
+            failed = SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="not_found",
             )
+            results.append(failed)
+            result_by_id[item.client_mutation_id] = failed
         except Exception:
             await db.rollback()
-            results.append(
-                SyncPushItemResultV1(
-                    client_mutation_id=item.client_mutation_id,
-                    status="rejected",
-                    error_code="apply_failed",
-                )
+            failed = SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="apply_failed",
             )
+            results.append(failed)
+            result_by_id[item.client_mutation_id] = failed
 
     # Aggregate tip progression surface (FR-074)
     progress_rows = (
@@ -821,6 +936,7 @@ async def push_batch(
         )
     ).all()
     return SyncPushResponseV1(
+        truncated=truncated,
         results=results,
         progress=[progress_to_read(p).model_dump(mode="json") for p in progress_rows],
         progression_events=[

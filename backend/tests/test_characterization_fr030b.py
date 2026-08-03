@@ -875,15 +875,16 @@ async def test_sync_session_without_legal_rejected(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_same_batch_legal_then_session_applies_under_type_order(
+async def test_same_batch_legal_then_session_via_depends_on(
     db: AsyncSession,
 ) -> None:
+    """FR-072a Slice E: session waits on legal via depends_on (order independent)."""
     user = await _ready(db, "char-legal-batch@ex.com", accept_legal=False)
     cc = await _cc_push(db)
     doc, tr = await latest_health_disclaimer(db)
     legal_mut = new_uuid7()
     sess_mut = new_uuid7()
-    # Intentionally unordered: session listed before legal; sort must fix it.
+    # Intentionally unordered: session listed before legal; topo + depends_on fix it.
     out = await push_batch(
         db,
         user=user,
@@ -896,6 +897,7 @@ async def test_same_batch_legal_then_session_applies_under_type_order(
                     entity_id=new_uuid7(),
                     op="upsert",
                     revision=1,
+                    depends_on=[legal_mut],
                     payload={
                         "schema_version": 1,
                         "performed_at": datetime(2026, 7, 27, 10, 0, tzinfo=UTC).isoformat(),
