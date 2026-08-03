@@ -486,6 +486,7 @@ class SatelliteProgressionOrchestrator:
         if progress_locked is None:
             progress_locked = progress
 
+        events: list[ProgressionEvent] = []
         if not eligible or log.skipped:
             # Load existing pending day (do not create) so overdue failures still
             # finalize under the same advisory→row lock order.
@@ -511,7 +512,6 @@ class SatelliteProgressionOrchestrator:
                 fail_streak=progress_locked.fail_streak,
                 step_ladder=step_ladder,
             )
-            events: list[ProgressionEvent] = []
             if existing is not None:
                 _apply_state(existing, fold.state)
                 if (
@@ -586,7 +586,6 @@ class SatelliteProgressionOrchestrator:
         )
         _apply_state(outcome, fold.state)
 
-        events: list[ProgressionEvent] = []
         if fold.newly_finalized and fold.state.result == "success":
             await self._stale_pending_recommendations(
                 db,
