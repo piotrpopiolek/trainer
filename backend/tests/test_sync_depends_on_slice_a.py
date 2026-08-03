@@ -1,4 +1,4 @@
-"""Slice A + B: depends_on validation and content_hash (FR-072d)."""
+"""Slice A–C: depends_on validation, content_hash, topological sort (FR-072a/d)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.sync import SyncPushItemV1
-from app.services.sync_push import content_hash
+from app.services.sync_push import content_hash, topological_sort_push_items
 
 
 def test_depends_on_defaults_empty_and_sorts() -> None:
@@ -52,3 +52,40 @@ def test_content_hash_includes_canonical_depends_on() -> None:
     assert h_ab == h_ba
     h_other = content_hash(payload, op="upsert", revision=1, depends_on=[a])
     assert h_other != h_ab
+
+
+def test_topo_detects_cycle() -> None:
+    a = uuid4()
+    b = uuid4()
+    items = [
+        SyncPushItemV1(
+            client_mutation_id=a,
+            entity_type="workout_session",
+            entity_id=uuid4(),
+            depends_on=[b],
+        ),
+        SyncPushItemV1(
+            client_mutation_id=b,
+            entity_type="workout_session",
+            entity_id=uuid4(),
+            depends_on=[a],
+        ),
+    ]
+    ordered, cycle = topological_sort_push_items(items)
+    assert ordered == []
+    assert set(cycle) == {a, b}
+
+
+def test_topo_ignores_external_depends_on() -> None:
+    mid = uuid4()
+    items = [
+        SyncPushItemV1(
+            client_mutation_id=mid,
+            entity_type="workout_session",
+            entity_id=uuid4(),
+            depends_on=[uuid4()],
+        )
+    ]
+    ordered, cycle = topological_sort_push_items(items)
+    assert [i.client_mutation_id for i in ordered] == [mid]
+    assert cycle == []

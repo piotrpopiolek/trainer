@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyAck, nextBackoffMs } from "@/lib/sync/classify";
-import { sortOutboxItems, takeFlushWindow } from "@/lib/sync/sort";
+import {
+  sortOutboxItems,
+  takeFlushWindow,
+  topologicalSortOutbox,
+} from "@/lib/sync/sort";
 import type { OutboxItem } from "@/lib/db/types";
 
 function item(
@@ -27,10 +31,8 @@ function item(
   };
 }
 
-describe("outbox sort FR-072a (legacy type-order characterization)", () => {
-  // FR-030b: locks current production order until depends_on topological sort lands.
-  // Do not rewrite this to the future tie-breaker (legal → satellite/config → sessions → measurements).
-  it("orders legal → session → measurement → satellite and deletes before upserts", () => {
+describe("outbox sort FR-072a (topo + tie-breaker)", () => {
+  it("tie-breaks legal → satellite → session → measurement; deletes before upserts", () => {
     const sorted = sortOutboxItems([
       item({
         client_mutation_id: "018f0000-0000-7000-8000-000000000004",
@@ -70,13 +72,78 @@ describe("outbox sort FR-072a (legacy type-order characterization)", () => {
 
     expect(sorted.map((i) => i.entity_type)).toEqual([
       "legal_acceptance",
+      "satellite",
       "workout_session",
       "workout_session",
       "body_measurement",
-      "satellite",
     ]);
-    expect(sorted[1]?.op).toBe("delete");
-    expect(sorted[2]?.op).toBe("upsert");
+    expect(sorted[2]?.op).toBe("delete");
+    expect(sorted[3]?.op).toBe("upsert");
+  });
+
+  it("orders by depends_on even when it reverses type tie-breaker", () => {
+    const meas = "018f0000-0000-7000-8000-0000000000aa";
+    const sat = "018f0000-0000-7000-8000-0000000000bb";
+    const sorted = sortOutboxItems([
+      item({
+        client_mutation_id: sat,
+        entity_type: "satellite",
+        entity_id: "018f0000-0000-7000-8000-000000000014",
+        op: "upsert",
+        depends_on: [meas],
+      }),
+      item({
+        client_mutation_id: meas,
+        entity_type: "body_measurement",
+        entity_id: "018f0000-0000-7000-8000-000000000013",
+        op: "upsert",
+        payload: { measured_at: "2026-07-28T11:00:00.000Z" },
+      }),
+    ]);
+    expect(sorted.map((i) => i.client_mutation_id)).toEqual([meas, sat]);
+  });
+
+  it("detects cycles and excludes them from ordered", () => {
+    const a = "018f0000-0000-7000-8000-0000000000a1";
+    const b = "018f0000-0000-7000-8000-0000000000b1";
+    const legal = "018f0000-0000-7000-8000-0000000000c1";
+    const result = topologicalSortOutbox([
+      item({
+        client_mutation_id: a,
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000011",
+        op: "upsert",
+        depends_on: [b],
+      }),
+      item({
+        client_mutation_id: b,
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000012",
+        op: "upsert",
+        depends_on: [a],
+      }),
+      item({
+        client_mutation_id: legal,
+        entity_type: "legal_acceptance",
+        entity_id: "018f0000-0000-7000-8000-000000000010",
+        op: "upsert",
+      }),
+    ]);
+    expect(result.ordered.map((i) => i.client_mutation_id)).toEqual([legal]);
+    expect(result.cycleIds.sort()).toEqual([a, b].sort());
+  });
+
+  it("ignores depends_on pointing outside the queue", () => {
+    const sorted = sortOutboxItems([
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000001",
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000011",
+        op: "upsert",
+        depends_on: ["018f0000-0000-7000-8000-00000000dead"],
+      }),
+    ]);
+    expect(sorted).toHaveLength(1);
   });
 
   it("uses client_updated_at when payload times missing", () => {
@@ -113,7 +180,7 @@ describe("outbox sort FR-072a (legacy type-order characterization)", () => {
     ]);
   });
 
-  it("takeFlushWindow caps at 20", () => {
+  it("takeFlushWindow caps at 20 after topo", () => {
     const items = Array.from({ length: 25 }, (_, i) =>
       item({
         client_mutation_id: `018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`,

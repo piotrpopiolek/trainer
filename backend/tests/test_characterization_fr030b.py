@@ -7,7 +7,7 @@ Companion suite (must not be weakened during satellite refactor):
 `backend/tests/test_progression_engine.py` locks CC tip/late/advance/fail_sessions,
 override, no-rewind, session date/content immutability, and evaluate idempotency.
 This file locks satellite goal-only, mixed-session atomicity, online≡sync, legal/tombstone,
-idempotent retry, and legacy type-order sort.
+idempotent retry, and FR-072a topo sort (tie-break legal→satellite→session→measurement).
 """
 
 from __future__ import annotations
@@ -745,12 +745,12 @@ async def test_online_and_sync_same_payload_cc_and_goal_satellite(
 
 
 # ---------------------------------------------------------------------------
-# E. Legal / tombstone / legacy batch order
+# E. Legal / tombstone / FR-072a topo sort
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_sort_push_items_type_order() -> None:
-    """Current production order until depends_on lands: legal→session→meas→sat."""
+def test_sort_push_items_tie_break_and_topo() -> None:
+    """FR-072a: legal→satellite→session→measurement; depends_on overrides type order."""
     items = [
         SyncPushItemV1(
             client_mutation_id=new_uuid7(),
@@ -797,13 +797,39 @@ def test_legacy_sort_push_items_type_order() -> None:
     sorted_types = [i.entity_type for i in sort_push_items(items)]
     assert sorted_types == [
         "legal_acceptance",
+        "satellite",
         "workout_session",
         "workout_session",
         "body_measurement",
-        "satellite",
     ]
-    assert sort_push_items(items)[1].op == "delete"
-    assert sort_push_items(items)[2].op == "upsert"
+    assert sort_push_items(items)[2].op == "delete"
+    assert sort_push_items(items)[3].op == "upsert"
+
+    meas_id = new_uuid7()
+    sat_id = new_uuid7()
+    reversed_edge = [
+        SyncPushItemV1(
+            client_mutation_id=sat_id,
+            entity_type="satellite",
+            entity_id=new_uuid7(),
+            op="upsert",
+            revision=1,
+            payload={},
+            depends_on=[meas_id],
+        ),
+        SyncPushItemV1(
+            client_mutation_id=meas_id,
+            entity_type="body_measurement",
+            entity_id=new_uuid7(),
+            op="upsert",
+            revision=1,
+            payload={"measured_at": "2026-07-27T11:00:00+00:00"},
+        ),
+    ]
+    assert [i.client_mutation_id for i in sort_push_items(reversed_edge)] == [
+        meas_id,
+        sat_id,
+    ]
 
 
 @pytest.mark.asyncio

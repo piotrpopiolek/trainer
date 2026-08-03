@@ -1,6 +1,5 @@
 import { openUserDb } from "@/lib/db/open";
 import type { OutboxEntityType, OutboxItem, OutboxOp, OutboxStatus } from "@/lib/db/types";
-import { sortOutboxItems } from "@/lib/sync/sort";
 import { newClientMutationId } from "@/lib/uuid";
 
 export type EnqueueInput = {
@@ -57,10 +56,8 @@ export async function listOutboxByStatus(
 export async function listFlushableOutbox(userId: string, now = new Date()): Promise<OutboxItem[]> {
   const items = await listOutboxByStatus(userId, ["pending"]);
   const iso = now.toISOString();
-  const ready = items.filter(
-    (i) => i.next_attempt_at == null || i.next_attempt_at <= iso,
-  );
-  return sortOutboxItems(ready);
+  // Unsorted: flush runs topologicalSortOutbox (cycles must remain visible).
+  return items.filter((i) => i.next_attempt_at == null || i.next_attempt_at <= iso);
 }
 
 export async function updateOutboxItem(

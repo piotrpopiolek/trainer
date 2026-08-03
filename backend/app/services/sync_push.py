@@ -39,12 +39,83 @@ from app.services.sessions import progress_to_read
 
 _TYPE_ORDER = {
     "legal_acceptance": 0,
-    "workout_session": 1,
-    "body_measurement": 2,
-    "satellite": 3,
+    "satellite": 1,
+    "workout_session": 2,
+    "body_measurement": 3,
 }
 _OP_ORDER = {"delete": 0, "upsert": 1}
 MAX_BATCH = 20
+
+
+def _item_ts(item: SyncPushItemV1) -> datetime:
+    if item.client_updated_at is not None:
+        return item.client_updated_at
+    payload = item.payload or {}
+    for key in ("performed_at", "measured_at", "accepted_at", "client_updated_at"):
+        raw = payload.get(key)
+        if isinstance(raw, str):
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        if isinstance(raw, datetime):
+            return raw
+    return datetime.min.replace(tzinfo=UTC)
+
+
+def _tie_key(item: SyncPushItemV1) -> tuple[int, int, datetime, str, str]:
+    return (
+        _TYPE_ORDER.get(item.entity_type, 99),
+        _OP_ORDER.get(item.op, 99),
+        _item_ts(item),
+        str(item.entity_id),
+        str(item.client_mutation_id),
+    )
+
+
+def topological_sort_push_items(
+    items: list[SyncPushItemV1],
+) -> tuple[list[SyncPushItemV1], list[UUID]]:
+    """Stable Kahn sort over depends_on; returns (ordered DAG, cycle mutation IDs).
+
+    Edges to mutation IDs absent from the batch are ignored (satisfied via DB later).
+    """
+    by_id = {it.client_mutation_id: it for it in items}
+    indegree: dict[UUID, int] = {mid: 0 for mid in by_id}
+    dependents: dict[UUID, list[UUID]] = {mid: [] for mid in by_id}
+
+    for item in items:
+        for dep in item.depends_on:
+            if dep not in by_id or dep == item.client_mutation_id:
+                continue
+            indegree[item.client_mutation_id] += 1
+            dependents[dep].append(item.client_mutation_id)
+
+    ready = sorted(
+        (it for it in items if indegree[it.client_mutation_id] == 0),
+        key=_tie_key,
+    )
+    ordered: list[SyncPushItemV1] = []
+    while ready:
+        nxt = ready.pop(0)
+        ordered.append(nxt)
+        for child_id in dependents[nxt.client_mutation_id]:
+            indegree[child_id] -= 1
+            if indegree[child_id] == 0:
+                ready.append(by_id[child_id])
+                ready.sort(key=_tie_key)
+
+    cycle_ids = sorted(
+        (mid for mid, deg in indegree.items() if deg > 0),
+        key=str,
+    )
+    return ordered, cycle_ids
+
+
+def sort_push_items(items: list[SyncPushItemV1]) -> list[SyncPushItemV1]:
+    """FR-072a: topo over depends_on; tie-break legal→satellite→session→measurement."""
+    ordered, _cycle = topological_sort_push_items(items)
+    return ordered
 
 
 def content_hash(
@@ -68,35 +139,6 @@ def content_hash(
         separators=(",", ":"),
     )
     return hashlib.sha256(blob.encode()).hexdigest()
-
-
-def sort_push_items(items: list[SyncPushItemV1]) -> list[SyncPushItemV1]:
-    """FR-072a: legal → sessions → measurements → satellites; delete before upsert."""
-
-    def _ts(item: SyncPushItemV1) -> datetime:
-        if item.client_updated_at is not None:
-            return item.client_updated_at
-        payload = item.payload or {}
-        for key in ("performed_at", "measured_at", "accepted_at", "client_updated_at"):
-            raw = payload.get(key)
-            if isinstance(raw, str):
-                try:
-                    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                except ValueError:
-                    pass
-            if isinstance(raw, datetime):
-                return raw
-        return datetime.min.replace(tzinfo=UTC)
-
-    return sorted(
-        items,
-        key=lambda it: (
-            _TYPE_ORDER.get(it.entity_type, 99),
-            _OP_ORDER.get(it.op, 99),
-            _ts(it),
-            str(it.entity_id),
-        ),
-    )
 
 
 async def _claim(
@@ -703,7 +745,16 @@ async def push_batch(
 
     user_id = user.id
     results: list[SyncPushItemResultV1] = []
-    for item in sort_push_items(body.items):
+    ordered, cycle_ids = topological_sort_push_items(body.items)
+    for mid in cycle_ids:
+        results.append(
+            SyncPushItemResultV1(
+                client_mutation_id=mid,
+                status="rejected",
+                error_code="dependency_cycle",
+            )
+        )
+    for item in ordered:
         digest = content_hash(
             item.payload,
             op=item.op,

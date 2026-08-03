@@ -15,7 +15,7 @@ import {
   updateOutboxItem,
 } from "@/lib/db/outbox";
 import { classifyAck, nextAttemptAtIso, type PushItemStatus } from "@/lib/sync/classify";
-import { takeFlushWindow } from "@/lib/sync/sort";
+import { takeFlushWindow, topologicalSortOutbox } from "@/lib/sync/sort";
 import { syncPull, syncPush, type SyncPushResponse } from "@/features/sync/api";
 import { ApiError } from "@/lib/api";
 import { progressionEventSchema, type ProgressionEvent } from "@/lib/schemas";
@@ -168,7 +168,20 @@ export async function flushOutbox(userId: string): Promise<FlushResult> {
     for (let round = 0; round < 10; round += 1) {
       const ready = await listFlushableOutbox(userId);
       if (ready.length === 0) break;
-      const window = takeFlushWindow(ready, 20);
+
+      const { ordered, cycleIds } = topologicalSortOutbox(ready);
+      for (const cycleId of cycleIds) {
+        const item = ready.find((i) => i.client_mutation_id === cycleId);
+        if (!item) continue;
+        item.status = "quarantine";
+        item.last_error_code = "dependency_cycle";
+        item.blocked_by = [...(item.depends_on ?? [])];
+        await updateOutboxItem(userId, item);
+        aggregate.quarantined += 1;
+      }
+      if (ordered.length === 0) break;
+
+      const window = takeFlushWindow(ordered, 20);
 
       for (const item of window) {
         item.status = "in_flight";
