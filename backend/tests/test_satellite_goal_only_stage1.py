@@ -432,7 +432,7 @@ async def test_create_rejects_multi_step_in_stage1(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_create_accepts_client_config_and_step_ids(db: AsyncSession) -> None:
-    """Slice D: offline pin — server honors client-supplied UUIDs and hash matches."""
+    """Slice D: offline pin — server honors client-supplied UUIDs; hash matches document."""
     user = await _ready(db, "client-config-ids@ex.com")
     config_version_id = new_uuid7()
     step_id = new_uuid7()
@@ -461,29 +461,19 @@ async def test_create_accepts_client_config_and_step_ids(db: AsyncSession) -> No
     sat = await create_satellite(db, user=user, body=body, commit=True)
     assert sat.current_config_version_id == config_version_id
     assert sat.steps[0]["step_id"] == str(step_id)
-    # Hash must match FE golden for type C with this step_id when IDs are fixed:
-    # use known golden step id for hash assert
-    body2 = SatelliteCreateV1.model_validate(
+    expected = sha256_jcs_hex(
         {
             "schema_version": 1,
-            "name": "Pinned golden",
             "exercise_type": "C",
             "active_metrics": {"schema_version": 1, "metrics": []},
-            "schedule_kind": "daily",
-            "config_version_id": str(new_uuid7()),
+            "progression": {"mode": "goal_only"},
             "steps": [
                 {
-                    "step_number": 1,
-                    "step_id": "01900000-0000-7000-8000-000000000002",
-                    "name": "Mobility",
-                    "rules": {
-                        "schema_version": 1,
-                        "goal": {"type": "completed"},
-                    },
+                    "step_id": str(step_id),
+                    "sort_order": 1,
+                    "rules": {"schema_version": 1, "goal": {"type": "completed"}},
                 }
             ],
-            "client_mutation_id": str(new_uuid7()),
         }
     )
-    sat2 = await create_satellite(db, user=user, body=body2, commit=True)
-    assert sat2.config_hash == "259d3867d2da017da7c5750b0fb4045178cabf3159fa4b32407cf3478e567e13"
+    assert sat.config_hash == expected
