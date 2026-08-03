@@ -18,7 +18,6 @@ from app.models.user import User
 from app.schemas.api import SatelliteCreateV1, SessionCreateV1, SessionLogCreateV1
 from app.schemas.satellite import (
     ActiveMetricsV1,
-    SatelliteConfigDocumentV1,
     SatelliteGoalCompletedV1,
     SatelliteGoalRepsV1,
     SatelliteLogResultV1,

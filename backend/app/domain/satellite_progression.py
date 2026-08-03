@@ -60,9 +60,7 @@ def satellite_goal_met(
     _validate_active_metrics(result, active_metrics)
     goal = rules.goal
     if isinstance(goal, SatelliteGoalCompletedV1):
-        if result.completed is not True:
-            return False
-        return True
+        return result.completed is True
 
     sets = result.sets
     if isinstance(goal, SatelliteGoalRepsV1):

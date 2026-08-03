@@ -172,7 +172,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "ALTER TABLE session_exercise_logs DROP CONSTRAINT IF EXISTS ck_session_logs_satellite_config"
+        "ALTER TABLE session_exercise_logs "
+        "DROP CONSTRAINT IF EXISTS ck_session_logs_satellite_config"
     )
     op.execute(
         "ALTER TABLE session_exercise_logs DROP COLUMN IF EXISTS satellite_config_hash"

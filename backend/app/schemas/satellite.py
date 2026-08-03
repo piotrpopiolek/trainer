@@ -221,15 +221,22 @@ class SatelliteConfigDocumentV1(VersionedModel):
                 raise ValueError("active_metric_missing_reps")
             if goal.type == "duration" and "duration_sec" not in metrics:
                 raise ValueError("active_metric_missing_duration")
-            if goal.type != "completed" and getattr(goal, "require_both_sides", False):
-                if "sides" not in metrics:
-                    raise ValueError("active_metric_missing_sides")
-            if goal.type != "completed" and getattr(goal, "min_weight_kg", None) is not None:
-                if "weight_kg" not in metrics:
-                    raise ValueError("active_metric_missing_weight")
-        if self.exercise_type == "C":
-            if any(s.rules.goal.type != "completed" for s in self.steps):
-                raise ValueError("type_c_requires_completed_goal")
+            if (
+                goal.type != "completed"
+                and getattr(goal, "require_both_sides", False)
+                and "sides" not in metrics
+            ):
+                raise ValueError("active_metric_missing_sides")
+            if (
+                goal.type != "completed"
+                and getattr(goal, "min_weight_kg", None) is not None
+                and "weight_kg" not in metrics
+            ):
+                raise ValueError("active_metric_missing_weight")
+        if self.exercise_type == "C" and any(
+            s.rules.goal.type != "completed" for s in self.steps
+        ):
+            raise ValueError("type_c_requires_completed_goal")
         return self
 
 

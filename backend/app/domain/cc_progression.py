@@ -7,12 +7,17 @@ from typing import Any
 
 from app.domain.progression_types import (
     EventProposal,
-    ProgressStatePatch,
     ProgressionEvaluation,
+    ProgressStatePatch,
 )
-from app.schemas.rules import AdvanceRuleV1, ProgressionRules, ProgressionRulesV1, ProgressionRulesV2
 from app.schemas.common import parse_versioned
-from app.schemas.sets import SessionSetV1, SessionSetsV1
+from app.schemas.rules import (
+    AdvanceRuleV1,
+    ProgressionRules,
+    ProgressionRulesV1,
+    ProgressionRulesV2,
+)
+from app.schemas.sets import SessionSetsV1, SessionSetV1
 
 
 def _normalize_side(sides: str | None) -> str | None:
