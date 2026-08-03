@@ -13,6 +13,8 @@ function item(
     revision: 1,
     client_updated_at: "2026-07-28T10:00:00.000Z",
     payload: null,
+    depends_on: [],
+    blocked_by: [],
     status: "pending",
     attempts: 0,
     transport_failures: 0,

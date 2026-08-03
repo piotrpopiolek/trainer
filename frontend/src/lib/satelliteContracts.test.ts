@@ -22,7 +22,7 @@ const vectorsPath = path.join(
 );
 
 describe("satellite contracts Stage 1", () => {
-  it("matches shared JCS golden vectors", () => {
+  it("matches shared JCS golden vectors", async () => {
     const payload = JSON.parse(readFileSync(vectorsPath, "utf8")) as {
       vectors: Array<{
         document: Record<string, unknown>;
@@ -32,7 +32,7 @@ describe("satellite contracts Stage 1", () => {
     };
     for (const vector of payload.vectors) {
       expect(canonicalize(vector.document)).toBe(vector.jcs);
-      expect(sha256JcsHex(vector.document)).toBe(vector.sha256_hex);
+      expect(await sha256JcsHex(vector.document)).toBe(vector.sha256_hex);
     }
   });
 

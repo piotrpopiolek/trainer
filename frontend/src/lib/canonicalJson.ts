@@ -1,6 +1,4 @@
-/** Minimal RFC 8785 JCS + SHA-256 for shared satellite config golden vectors. */
-
-import { createHash } from "node:crypto";
+/** Minimal RFC 8785 JCS + SHA-256 (browser Web Crypto; FR-045 / Stage 1–2). */
 
 function escapeString(value: string): string {
   let out = '"';
@@ -40,7 +38,20 @@ export function canonicalize(value: unknown): string {
   throw new Error(`jcs_unsupported_type:${typeof value}`);
 }
 
-export function sha256JcsHex(document: Record<string, unknown>): string {
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) {
+    out += b.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/** SHA-256 over UTF-8 JCS (async — Web Crypto, works in PWA + Vitest/jsdom). */
+export async function sha256JcsHex(
+  document: Record<string, unknown>,
+): Promise<string> {
   const text = canonicalize(document);
-  return createHash("sha256").update(text, "utf8").digest("hex");
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(digest));
 }
