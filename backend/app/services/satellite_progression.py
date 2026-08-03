@@ -382,9 +382,10 @@ class SatelliteProgressionOrchestrator:
             q = q.where(SatelliteDailyOutcome.exercise_id == exercise_id)
         rows = (
             await db.scalars(
-                q.order_by(SatelliteDailyOutcome.exercise_id).execution_options(
-                    populate_existing=True
-                )
+                q.order_by(
+                    SatelliteDailyOutcome.exercise_id,
+                    SatelliteDailyOutcome.local_date,
+                ).execution_options(populate_existing=True)
             )
         ).all()
         finalized = 0
@@ -486,8 +487,19 @@ class SatelliteProgressionOrchestrator:
             progress_locked = progress
 
         if not eligible or log.skipped:
+            # Load existing pending day (do not create) so overdue failures still
+            # finalize under the same advisory→row lock order.
+            existing = await db.scalar(
+                select(SatelliteDailyOutcome)
+                .where(
+                    SatelliteDailyOutcome.user_id == log.user_id,
+                    SatelliteDailyOutcome.exercise_id == log.exercise_id,
+                    SatelliteDailyOutcome.local_date == log.local_date,
+                )
+                .with_for_update()
+            )
             fold = fold_daily_outcome(
-                None,
+                _outcome_to_state(existing) if existing is not None else None,
                 goal_met=evaluation.goal_met,
                 skipped=log.skipped,
                 eligible=eligible,
@@ -499,6 +511,33 @@ class SatelliteProgressionOrchestrator:
                 fail_streak=progress_locked.fail_streak,
                 step_ladder=step_ladder,
             )
+            events: list[ProgressionEvent] = []
+            if existing is not None:
+                _apply_state(existing, fold.state)
+                if (
+                    fold.newly_finalized
+                    and fold.state.result == "failure"
+                    and fold.fail_streak is not None
+                ):
+                    progress_locked.fail_streak = fold.fail_streak
+                    existing.applied_progress_revision = self._bump_revision(
+                        progress_locked
+                    )
+                    suggested = await self._maybe_create_suggestion(
+                        db,
+                        user_id=log.user_id,
+                        exercise_id=log.exercise_id,
+                        progress=progress_locked,
+                        outcome=existing,
+                        config_version_id=config.id,
+                        threshold=threshold,
+                        step_ladder=step_ladder,
+                        rules_snapshot=evaluation.rules_snapshot,
+                        schema_version=evaluation.progression_schema_version,
+                        session_id=session.id,
+                    )
+                    if suggested is not None:
+                        events.append(suggested)
             return (
                 ProgressionEvaluation(
                     goal_met=evaluation.goal_met,
@@ -508,8 +547,19 @@ class SatelliteProgressionOrchestrator:
                     rules_snapshot=evaluation.rules_snapshot,
                     progression_schema_version=evaluation.progression_schema_version,
                     step_number=evaluation.step_number,
+                    events=tuple(
+                        EventProposal(
+                            event_type=e.event_type,
+                            from_step=e.from_step,
+                            to_step=e.to_step,
+                            reason=e.reason,
+                            rules_snapshot=e.rules_snapshot,
+                            progression_schema_version=e.progression_schema_version,
+                        )
+                        for e in events
+                    ),
                 ),
-                [],
+                events,
             )
 
         outcome = await self._get_or_create_outcome(

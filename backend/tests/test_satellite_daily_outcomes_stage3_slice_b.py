@@ -268,6 +268,37 @@ def test_fold_after_deadline_marks_daily_finalized() -> None:
     assert fold.fail_streak == 1
 
 
+def test_fold_ineligible_still_finalizes_overdue_pending() -> None:
+    pending = DailyOutcomeState(
+        status="pending",
+        has_attempt=True,
+        has_success=False,
+        result=None,
+        finalize_after=datetime(2026, 8, 1, 0, 0, tzinfo=UTC),
+        finalized_at=None,
+        representative_log_id="log-1",
+        result_snapshot=None,
+    )
+    fold = fold_daily_outcome(
+        pending,
+        goal_met=False,
+        skipped=False,
+        eligible=False,
+        already_evaluated=False,
+        log_id="log-detached",
+        now=datetime(2026, 8, 5, 0, 0, tzinfo=UTC),
+        finalize_after=datetime(2026, 8, 10, 0, 0, tzinfo=UTC),
+        step_number=2,
+        fail_streak=0,
+    )
+    assert fold.state.status == "finalized"
+    assert fold.state.result == "failure"
+    assert fold.newly_finalized is True
+    assert fold.fail_streak == 1
+    assert fold.progression_skipped == "config_not_active_for_day"
+    assert fold.counts_for_progression is False
+
+
 @pytest.mark.asyncio
 async def test_fail_then_success_same_day_finalizes_success(db: AsyncSession) -> None:
     user = await _ready(db, "outcome-fail-success@ex.com")

@@ -97,6 +97,8 @@
     "regressBody": "{{name}}: krok {{from}} → {{to}} (dwie kolejne nieudane próby)",
     "satelliteRegressConfirmedTitle": "Regres satelity",
     "satelliteRegressConfirmedBody": "{{name}}: krok {{from}} → {{to}} (zaakceptowano sugestię)",
+    "eventTitle": "Zmiana kroku",
+    "eventBody": "{{name}}: krok {{from}} → {{to}}",
     "ack": "OK",
     "unknownExercise": "Ćwiczenie"
   },

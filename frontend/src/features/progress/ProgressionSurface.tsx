@@ -12,7 +12,10 @@ function titleKey(eventType: string): string {
   if (eventType === "satellite_regress_confirmed") {
     return "progress.satelliteRegressConfirmedTitle";
   }
-  return "progress.regressTitle";
+  if (eventType === "regress") {
+    return "progress.regressTitle";
+  }
+  return "progress.eventTitle";
 }
 
 function bodyKey(eventType: string): string {
@@ -22,7 +25,10 @@ function bodyKey(eventType: string): string {
   if (eventType === "satellite_regress_confirmed") {
     return "progress.satelliteRegressConfirmedBody";
   }
-  return "progress.regressBody";
+  if (eventType === "regress") {
+    return "progress.regressBody";
+  }
+  return "progress.eventBody";
 }
 
 export function ProgressionSurface({

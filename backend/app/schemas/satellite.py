@@ -143,6 +143,8 @@ class SatelliteProgressionPolicyStepsV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["steps"] = "steps"
+    # Required since Stage 3; pre-Stage-3 configs were goal_only only — no
+    # steps documents exist that would need a data backfill.
     regression: SatelliteRegressionPolicyV1
 
 

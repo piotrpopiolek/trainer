@@ -336,6 +336,8 @@ export async function decideSatelliteRegressionOfflineAware(
 
   const mutationId = newClientMutationId();
   const now = new Date().toISOString();
+  // depends_on intentionally empty: decision targets a server recommendation
+  // id; server CAS on expected_progress_revision rejects stale decisions.
   await enqueueOutbox(userId, {
     client_mutation_id: mutationId,
     entity_type: "satellite_regression_decision",

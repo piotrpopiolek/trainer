@@ -244,28 +244,12 @@ def fold_daily_outcome(
     ladder = sorted(step_ladder or [], key=lambda t: t[0])
     max_step = ladder[-1][0] if ladder else step_number
 
-    if skipped:
-        return DailyOutcomeFoldResult(
-            state=current or empty,
-            counts_for_progression=False,
-            progression_skipped="skipped",
-            fail_streak=None,
-            newly_finalized=False,
-        )
-    if not eligible:
-        return DailyOutcomeFoldResult(
-            state=current or empty,
-            counts_for_progression=False,
-            progression_skipped="config_not_active_for_day",
-            fail_streak=None,
-            newly_finalized=False,
-        )
-
     state = current
     streak: int | None = None
     newly_finalized = False
 
-    # Lazy finalize only after a real attempt waited past the deadline.
+    # Lazy finalize prior pending attempt even when this log is skipped /
+    # ineligible (still must close the day once finalize_after has passed).
     if (
         state is not None
         and state.status == "pending"
@@ -276,6 +260,23 @@ def fold_daily_outcome(
     ):
         state, streak, newly_finalized = _finalize_failure(
             state, now=now, step_number=step_number, fail_streak=fail_streak
+        )
+
+    if skipped:
+        return DailyOutcomeFoldResult(
+            state=state or empty,
+            counts_for_progression=False,
+            progression_skipped="skipped",
+            fail_streak=streak,
+            newly_finalized=newly_finalized,
+        )
+    if not eligible:
+        return DailyOutcomeFoldResult(
+            state=state or empty,
+            counts_for_progression=False,
+            progression_skipped="config_not_active_for_day",
+            fail_streak=streak,
+            newly_finalized=newly_finalized,
         )
 
     if state is not None and state.status == "finalized":

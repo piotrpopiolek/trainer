@@ -22,7 +22,6 @@ from app.services.satellite_progression import SatelliteProgressionOrchestrator
 from app.services.sessions import event_to_read, progress_to_read
 
 router = APIRouter(prefix="/satellites", tags=["satellites"])
-_orch = SatelliteProgressionOrchestrator()
 
 
 class SatelliteListResponse(BaseModel):
@@ -68,7 +67,7 @@ async def accept_regression_recommendation(
     _csrf: None = Depends(require_csrf),
 ) -> SatelliteRegressionDecisionResponse:
     try:
-        rec, progress, event = await _orch.decide_recommendation(
+        rec, progress, event = await SatelliteProgressionOrchestrator().decide_recommendation(
             db,
             user_id=ctx.user.id,
             exercise_id=exercise_id,
@@ -99,7 +98,7 @@ async def decline_regression_recommendation(
     _csrf: None = Depends(require_csrf),
 ) -> SatelliteRegressionDecisionResponse:
     try:
-        rec, progress, event = await _orch.decide_recommendation(
+        rec, progress, event = await SatelliteProgressionOrchestrator().decide_recommendation(
             db,
             user_id=ctx.user.id,
             exercise_id=exercise_id,
