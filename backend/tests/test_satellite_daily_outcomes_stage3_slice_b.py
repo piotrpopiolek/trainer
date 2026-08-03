@@ -337,13 +337,15 @@ async def test_lazy_finalize_failure_step1_no_streak(db: AsyncSession) -> None:
     sat = await create_satellite(
         db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
     )
+    # local_date near "now" so deadline is still in the future → pending attempt.
+    day = date(2026, 8, 3)
     await create_session(
         db,
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 1, 10, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 1),
+            performed_at=datetime(2026, 8, 3, 10, 0, tzinfo=UTC),
+            local_date=day,
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -366,7 +368,8 @@ async def test_lazy_finalize_failure_step1_no_streak(db: AsyncSession) -> None:
         )
     )
     assert outcome is not None
-    # Force deadline into the past.
+    assert outcome.status == "pending"
+    assert outcome.has_attempt is True
     await db.execute(
         update(SatelliteDailyOutcome)
         .where(SatelliteDailyOutcome.id == outcome.id)
@@ -375,7 +378,7 @@ async def test_lazy_finalize_failure_step1_no_streak(db: AsyncSession) -> None:
     await db.commit()
 
     n = await SatelliteProgressionOrchestrator().finalize_due_outcomes(
-        db, user_id=user.id, now=datetime(2026, 8, 3, 0, 0, tzinfo=UTC)
+        db, user_id=user.id, now=datetime(2026, 8, 4, 0, 0, tzinfo=UTC)
     )
     await db.commit()
     assert n == 1
@@ -407,7 +410,6 @@ async def test_lazy_finalize_failure_step2_increments_streak(db: AsyncSession) -
         )
     )
     assert progress is not None
-    # Move to step 2 without Slice C advance API.
     steps = sat.steps
     progress.current_step_number = 2
     progress.current_step_id = __import__("uuid").UUID(steps[1]["step_id"])
@@ -418,8 +420,8 @@ async def test_lazy_finalize_failure_step2_increments_streak(db: AsyncSession) -
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 1, 10, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 1),
+            performed_at=datetime(2026, 8, 3, 10, 0, tzinfo=UTC),
+            local_date=date(2026, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -442,6 +444,7 @@ async def test_lazy_finalize_failure_step2_increments_streak(db: AsyncSession) -
         )
     )
     assert outcome is not None
+    assert outcome.status == "pending"
     await db.execute(
         update(SatelliteDailyOutcome)
         .where(SatelliteDailyOutcome.id == outcome.id)
@@ -450,7 +453,7 @@ async def test_lazy_finalize_failure_step2_increments_streak(db: AsyncSession) -
     await db.commit()
 
     n = await SatelliteProgressionOrchestrator().finalize_due_outcomes(
-        db, user_id=user.id, now=datetime(2026, 8, 3, 0, 0, tzinfo=UTC)
+        db, user_id=user.id, now=datetime(2026, 8, 4, 0, 0, tzinfo=UTC)
     )
     await db.commit()
     assert n == 1

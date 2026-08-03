@@ -220,10 +220,11 @@ def fold_daily_outcome(
     streak: int | None = None
     newly_finalized = False
 
-    # Lazy failure finalize before applying this log.
+    # Lazy finalize only after a real attempt waited past the deadline.
     if (
         state is not None
         and state.status == "pending"
+        and state.has_attempt
         and not state.has_success
         and state.finalize_after is not None
         and now >= state.finalize_after
@@ -270,7 +271,7 @@ def fold_daily_outcome(
             newly_finalized=True,
         )
 
-    # Failed attempt before deadline — keep pending.
+    # Failed attempt — keep pending unless deadline already passed.
     base = state or empty
     state = DailyOutcomeState(
         status="pending",
@@ -282,6 +283,17 @@ def fold_daily_outcome(
         representative_log_id=base.representative_log_id or log_id,
         result_snapshot=None,
     )
+    if state.finalize_after is not None and now >= state.finalize_after:
+        state, streak, newly_finalized = _finalize_failure(
+            state, now=now, step_number=step_number, fail_streak=fail_streak
+        )
+        return DailyOutcomeFoldResult(
+            state=state,
+            counts_for_progression=True,
+            progression_skipped=None,
+            fail_streak=streak,
+            newly_finalized=newly_finalized,
+        )
     return DailyOutcomeFoldResult(
         state=state,
         counts_for_progression=True,
@@ -299,7 +311,7 @@ def finalize_pending_failure(
     fail_streak: int,
 ) -> tuple[DailyOutcomeState, int | None, bool]:
     """Finalize a pending no-success outcome after deadline (idempotent)."""
-    if state.status != "pending" or state.has_success:
+    if state.status != "pending" or state.has_success or not state.has_attempt:
         return state, None, False
     if state.finalize_after is None or now < state.finalize_after:
         return state, None, False

@@ -142,7 +142,7 @@ class SatelliteProgressionOrchestrator:
         if existing is not None:
             return existing
 
-        values: dict = {
+        values: dict[str, object] = {
             "id": new_uuid7(),
             "user_id": user_id,
             "exercise_id": exercise_id,
@@ -201,7 +201,7 @@ class SatelliteProgressionOrchestrator:
         ).all()
         finalized = 0
         for row in rows:
-            if row.has_success:
+            if row.has_success or not row.has_attempt:
                 continue
             if row.finalize_after is None or row.finalize_after > moment:
                 continue
