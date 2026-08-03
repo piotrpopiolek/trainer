@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseWeightInputToKgString,
+  satelliteConfigDocumentSchema,
   satelliteLogResultSchema,
   satelliteRulesSchema,
   satelliteSetSchema,
@@ -105,5 +106,34 @@ describe("satellite contracts Stage 1", () => {
     expect(parseWeightInputToKgString("20.25")).toBe("20.250");
     expect(() => weightKgFromGrams(0)).toThrow();
     expect(() => parseWeightInputToKgString("-1")).toThrow();
+  });
+
+  it("rejects steps/goal_only step-count mismatches", () => {
+    expect(() =>
+      satelliteConfigDocumentSchema.parse({
+        schema_version: 1,
+        exercise_type: "B",
+        active_metrics: { schema_version: 1, metrics: ["duration_sec", "sides"] },
+        progression: {
+          mode: "steps",
+          regression: { mode: "suggest_after_failed_days", threshold: 2 },
+        },
+        steps: [
+          {
+            step_id: "01900000-0000-7000-8000-000000000011",
+            sort_order: 1,
+            rules: {
+              schema_version: 1,
+              goal: {
+                type: "duration",
+                sets: 3,
+                min_duration_sec: 20,
+                require_both_sides: true,
+              },
+            },
+          },
+        ],
+      }),
+    ).toThrow(/steps_mode_requires_2_to_5/);
   });
 });

@@ -54,6 +54,70 @@
       },
       "jcs": "{\"active_metrics\":{\"metrics\":[],\"schema_version\":1},\"exercise_type\":\"C\",\"progression\":{\"mode\":\"goal_only\"},\"schema_version\":1,\"steps\":[{\"rules\":{\"goal\":{\"type\":\"completed\"},\"schema_version\":1},\"sort_order\":1,\"step_id\":\"01900000-0000-7000-8000-000000000002\"}]}",
       "sha256_hex": "259d3867d2da017da7c5750b0fb4045178cabf3159fa4b32407cf3478e567e13"
+    },
+    {
+      "id": "steps_copenhagen_plank_duration_sides",
+      "document": {
+        "schema_version": 1,
+        "exercise_type": "B",
+        "active_metrics": {
+          "schema_version": 1,
+          "metrics": ["duration_sec", "sides"]
+        },
+        "progression": {
+          "mode": "steps",
+          "regression": {
+            "mode": "suggest_after_failed_days",
+            "threshold": 2
+          }
+        },
+        "steps": [
+          {
+            "step_id": "01900000-0000-7000-8000-000000000011",
+            "sort_order": 1,
+            "rules": {
+              "schema_version": 1,
+              "goal": {
+                "type": "duration",
+                "sets": 3,
+                "min_duration_sec": 20,
+                "min_weight_kg": null,
+                "require_both_sides": true
+              }
+            }
+          },
+          {
+            "step_id": "01900000-0000-7000-8000-000000000012",
+            "sort_order": 2,
+            "rules": {
+              "schema_version": 1,
+              "goal": {
+                "type": "duration",
+                "sets": 3,
+                "min_duration_sec": 20,
+                "min_weight_kg": null,
+                "require_both_sides": true
+              }
+            }
+          },
+          {
+            "step_id": "01900000-0000-7000-8000-000000000013",
+            "sort_order": 3,
+            "rules": {
+              "schema_version": 1,
+              "goal": {
+                "type": "duration",
+                "sets": 3,
+                "min_duration_sec": 15,
+                "min_weight_kg": null,
+                "require_both_sides": true
+              }
+            }
+          }
+        ]
+      },
+      "jcs": "{\"active_metrics\":{\"metrics\":[\"duration_sec\",\"sides\"],\"schema_version\":1},\"exercise_type\":\"B\",\"progression\":{\"mode\":\"steps\",\"regression\":{\"mode\":\"suggest_after_failed_days\",\"threshold\":2}},\"schema_version\":1,\"steps\":[{\"rules\":{\"goal\":{\"min_duration_sec\":20,\"min_weight_kg\":null,\"require_both_sides\":true,\"sets\":3,\"type\":\"duration\"},\"schema_version\":1},\"sort_order\":1,\"step_id\":\"01900000-0000-7000-8000-000000000011\"},{\"rules\":{\"goal\":{\"min_duration_sec\":20,\"min_weight_kg\":null,\"require_both_sides\":true,\"sets\":3,\"type\":\"duration\"},\"schema_version\":1},\"sort_order\":2,\"step_id\":\"01900000-0000-7000-8000-000000000012\"},{\"rules\":{\"goal\":{\"min_duration_sec\":15,\"min_weight_kg\":null,\"require_both_sides\":true,\"sets\":3,\"type\":\"duration\"},\"schema_version\":1},\"sort_order\":3,\"step_id\":\"01900000-0000-7000-8000-000000000013\"}]}",
+      "sha256_hex": "1ee79f4670ef0aa87275554ae230c3e66bb14004bd1fbd15cf8ab2b2af2e2b85"
     }
   ]
 }

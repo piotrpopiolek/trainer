@@ -116,6 +116,10 @@ class UserExerciseProgress(Base):
         nullable=False,
     )
     current_step_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    current_step_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("exercise_steps.id", ondelete="RESTRICT"),
+    )
     fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_session_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
@@ -131,7 +135,11 @@ class ProgressionEvent(Base):
     __tablename__ = "progression_events"
     __table_args__ = (
         CheckConstraint(
-            "event_type IN ('advance','regress','manual_override','initial')",
+            "event_type IN ("
+            "'advance','regress','manual_override','initial',"
+            "'satellite_advance','satellite_regress_suggested',"
+            "'satellite_regress_confirmed','satellite_config_reset'"
+            ")",
             name="ck_progression_events_type",
         ),
         CheckConstraint(

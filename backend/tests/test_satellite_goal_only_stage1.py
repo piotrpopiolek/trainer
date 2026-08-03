@@ -427,7 +427,7 @@ async def test_create_rejects_multi_step_in_stage1(db: AsyncSession) -> None:
     )
     with pytest.raises(DomainError) as exc:
         await create_satellite(db, user=user, body=body, commit=False)
-    assert exc.value.error_code == "stage1_goal_only_one_step"
+    assert exc.value.error_code == "goal_only_requires_one_step"
 
 
 @pytest.mark.asyncio

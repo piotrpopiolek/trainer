@@ -132,13 +132,18 @@ class SatelliteProgressionPolicyGoalOnlyV1(BaseModel):
     mode: Literal["goal_only"] = "goal_only"
 
 
-class SatelliteProgressionPolicyStepsV1(BaseModel):
-    """Reserved for Stage 3 — accepted in document shape but unused in Stage 1 engine."""
+class SatelliteRegressionPolicyV1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
+    mode: Literal["suggest_after_failed_days"] = "suggest_after_failed_days"
+    threshold: int = Field(..., ge=1)
+
+
+class SatelliteProgressionPolicyStepsV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["steps"] = "steps"
-    regression: dict[str, Any] | None = None
+    regression: SatelliteRegressionPolicyV1
 
 
 SatelliteProgressionPolicyV1 = (

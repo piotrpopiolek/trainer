@@ -21,6 +21,10 @@ from app.models.progression import (
     UserExerciseProgress,
     UserProgramEnrollment,
 )
+from app.models.satellite_progress import (
+    SatelliteDailyOutcome,
+    SatelliteRegressionRecommendation,
+)
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 
@@ -36,8 +40,22 @@ async def hard_purge_user(db: AsyncSession, *, user_id: UUID) -> None:
     await db.execute(
         delete(SessionExerciseLog).where(SessionExerciseLog.user_id == user_id)
     )
+    await db.execute(
+        delete(SatelliteRegressionRecommendation).where(
+            SatelliteRegressionRecommendation.user_id == user_id
+        )
+    )
+    await db.execute(
+        delete(SatelliteDailyOutcome).where(SatelliteDailyOutcome.user_id == user_id)
+    )
     await db.execute(delete(ProgressionEvent).where(ProgressionEvent.user_id == user_id))
     await db.execute(delete(WorkoutSession).where(WorkoutSession.user_id == user_id))
+    # Null step pointer before deleting exercise_steps (RESTRICT FK).
+    await db.execute(
+        update(UserExerciseProgress)
+        .where(UserExerciseProgress.user_id == user_id)
+        .values(current_step_id=None)
+    )
     await db.execute(
         delete(UserExerciseProgress).where(UserExerciseProgress.user_id == user_id)
     )

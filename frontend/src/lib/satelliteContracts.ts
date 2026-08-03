@@ -94,8 +94,64 @@ export const satelliteLogResultSchema = z
   })
   .strict();
 
+export const satelliteRegressionPolicySchema = z
+  .object({
+    mode: z.literal("suggest_after_failed_days"),
+    threshold: z.number().int().gte(1),
+  })
+  .strict();
+
+export const satelliteProgressionPolicySchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("goal_only") }).strict(),
+  z
+    .object({
+      mode: z.literal("steps"),
+      regression: satelliteRegressionPolicySchema,
+    })
+    .strict(),
+]);
+
+export const satelliteConfigStepSchema = z
+  .object({
+    step_id: z.string().uuid(),
+    sort_order: z.number().int().gte(1),
+    rules: satelliteRulesSchema,
+  })
+  .strict();
+
+export const satelliteConfigDocumentSchema = z
+  .object({
+    schema_version: schemaVersion,
+    exercise_type: z.enum(["B", "C"]),
+    active_metrics: activeMetricsSchema,
+    progression: satelliteProgressionPolicySchema,
+    steps: z.array(satelliteConfigStepSchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine((doc, ctx) => {
+    if (doc.progression.mode === "goal_only" && doc.steps.length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "goal_only_requires_one_step",
+      });
+    }
+    if (
+      doc.progression.mode === "steps" &&
+      (doc.steps.length < 2 || doc.steps.length > 5)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "steps_mode_requires_2_to_5",
+      });
+    }
+  });
+
 export type SatelliteLogResult = z.infer<typeof satelliteLogResultSchema>;
 export type SatelliteRules = z.infer<typeof satelliteRulesSchema>;
+export type SatelliteProgressionPolicy = z.infer<
+  typeof satelliteProgressionPolicySchema
+>;
+export type SatelliteConfigDocument = z.infer<typeof satelliteConfigDocumentSchema>;
 
 /** Canonical weight string via integer grams (avoids float drift). */
 export function weightKgFromGrams(grams: number): string {

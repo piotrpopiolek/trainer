@@ -26,13 +26,28 @@ from app.schemas.satellite import (
     ActiveMetricsV1,
     SatelliteConfigDocumentV1,
     SatelliteConfigStepV1,
-    SatelliteProgressionPolicyGoalOnlyV1,
+    SatelliteProgressionPolicyV1,
     SatelliteRulesV1,
     parse_satellite_rules,
 )
 from app.services.errors import DomainError
 
 MAX_SATELLITES = 10
+
+
+def _resolve_progression(body: SatelliteCreateV1) -> SatelliteProgressionPolicyV1:
+    return body.progression
+
+
+def _ensure_step_count_matches_policy(
+    *,
+    progression: SatelliteProgressionPolicyV1,
+    step_count: int,
+) -> None:
+    if progression.mode == "goal_only" and step_count != 1:
+        raise DomainError("goal_only_requires_one_step", http_status=422)
+    if progression.mode == "steps" and not (2 <= step_count <= 5):
+        raise DomainError("steps_mode_requires_2_to_5", http_status=422)
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,8 +168,10 @@ async def register_satellite_config_version(
         raise DomainError("satellite_not_found", http_status=404)
     if not body.steps:
         raise DomainError("steps_required", http_status=422)
-    if len(body.steps) != 1:
-        raise DomainError("stage1_goal_only_one_step", http_status=422)
+    progression = _resolve_progression(body)
+    _ensure_step_count_matches_policy(
+        progression=progression, step_count=len(body.steps)
+    )
 
     try:
         active_metrics = ActiveMetricsV1.model_validate(body.active_metrics)
@@ -167,7 +184,7 @@ async def register_satellite_config_version(
             schema_version=1,
             exercise_type=body.exercise_type,
             active_metrics=active_metrics,
-            progression=SatelliteProgressionPolicyGoalOnlyV1(mode="goal_only"),
+            progression=progression,
             steps=config_steps,
         )
     except Exception as exc:
@@ -297,16 +314,15 @@ async def create_satellite(
 ) -> SatelliteReadV1:
     if not body.steps:
         raise DomainError("steps_required", http_status=422)
-    # Stage 1: goal-only only — multi-step / mode=steps deferred to Stage 3.
-    if len(body.steps) != 1:
-        raise DomainError("stage1_goal_only_one_step", http_status=422)
+    progression = _resolve_progression(body)
+    _ensure_step_count_matches_policy(
+        progression=progression, step_count=len(body.steps)
+    )
 
     try:
         active_metrics = ActiveMetricsV1.model_validate(body.active_metrics)
     except Exception as exc:
         raise DomainError("invalid_active_metrics", http_status=422) from exc
-
-    progression = SatelliteProgressionPolicyGoalOnlyV1(mode="goal_only")
 
     # Serialize create vs concurrent (FR-050).
     await db.execute(select(User).where(User.id == user.id).with_for_update())
@@ -408,12 +424,14 @@ async def create_satellite(
         )
     )
 
+    first_step_id = step_rows[0][0]
     db.add(
         UserExerciseProgress(
             id=new_uuid7(),
             user_id=user.id,
             exercise_id=ex.id,
             current_step_number=1,
+            current_step_id=first_step_id,
             fail_streak=0,
             is_active=True,
         )

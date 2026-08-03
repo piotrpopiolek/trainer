@@ -9,6 +9,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import VersionedModel
+from app.schemas.satellite import (
+    SatelliteProgressionPolicyGoalOnlyV1,
+    SatelliteProgressionPolicyStepsV1,
+)
 from app.schemas.sets import SessionSetsV1
 
 
@@ -249,6 +253,12 @@ class SatelliteCreateV1(BaseModel):
     weekdays: list[int] | None = None
     schedule_category: Literal["anytime", "post_workout", "rest_day"] | None = None
     steps: list[SatelliteStepCreateV1] = Field(..., min_length=1, max_length=5)
+    progression: (
+        SatelliteProgressionPolicyGoalOnlyV1 | SatelliteProgressionPolicyStepsV1
+    ) = Field(
+        default_factory=SatelliteProgressionPolicyGoalOnlyV1,
+        discriminator="mode",
+    )
     client_mutation_id: UUID
     client_updated_at: datetime | None = None
     config_version_id: UUID | None = None

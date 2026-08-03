@@ -191,6 +191,8 @@
     "invalidStepCount": "Nieprawidłowa liczba kroków satelity.",
     "stepsRequired": "Satelita wymaga co najmniej jednego kroku.",
     "stage1GoalOnlyOneStep": "Na razie satelity goal-only mają dokładnie jeden krok.",
+    "goalOnlyRequiresOneStep": "Tryb goal-only wymaga dokładnie jednego kroku.",
+    "stepsModeRequires2To5": "Mini-progresja wymaga od 2 do 5 kroków.",
     "bilateralNotAllowed": "Przy wymaganych stronach L/P nie używaj wariantu bilateralnego."
   }
 }

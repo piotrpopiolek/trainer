@@ -10,6 +10,8 @@ describe("errorCodeToI18nKey Stage 1 satellite codes", () => {
     ["invalid_weight_kg", "errors.invalidWeightKg"],
     ["empty_set", "errors.emptySet"],
     ["stage1_goal_only_one_step", "errors.stage1GoalOnlyOneStep"],
+    ["goal_only_requires_one_step", "errors.goalOnlyRequiresOneStep"],
+    ["steps_mode_requires_2_to_5", "errors.stepsModeRequires2To5"],
     ["bilateral_not_allowed_when_require_both_sides", "errors.bilateralNotAllowed"],
     ["unknown_code_xyz", "errors.generic"],
   ] as const)("%s → %s", (code, key) => {

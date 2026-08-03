@@ -23,6 +23,10 @@ from app.models.progression import (
     UserExerciseProgress,
     UserProgramEnrollment,
 )
+from app.models.satellite_progress import (
+    SatelliteDailyOutcome,
+    SatelliteRegressionRecommendation,
+)
 from app.models.sync import ClientMutation, RateLimitBucket, SyncConflictLog, SyncDevice
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
@@ -48,6 +52,8 @@ __all__ = [
     "RateLimitBucket",
     "SatelliteConfigActivation",
     "SatelliteConfigVersion",
+    "SatelliteDailyOutcome",
+    "SatelliteRegressionRecommendation",
     "SessionExerciseLog",
     "SyncConflictLog",
     "SyncDevice",
