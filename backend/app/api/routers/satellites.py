@@ -97,6 +97,27 @@ async def patch_satellite(
     return read
 
 
+@router.post("/{exercise_id}/clone", response_model=SatelliteReadV1)
+async def clone_satellite(
+    exercise_id: UUID,
+    body: SatelliteCloneV1,
+    ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
+) -> SatelliteReadV1:
+    try:
+        return await satellite_service.clone_satellite(
+            db,
+            user=ctx.user,
+            source_exercise_id=exercise_id,
+            body=body,
+            commit=True,
+        )
+    except DomainError as exc:
+        if exc.error_code == "not_found":
+            raise NotFoundError() from exc
+        raise
+
+
 @router.post(
     "/{exercise_id}/regression-recommendations/{recommendation_id}/accept",
     response_model=SatelliteRegressionDecisionResponse,

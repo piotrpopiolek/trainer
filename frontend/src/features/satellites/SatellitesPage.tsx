@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button, Input, Page, Select } from "@/components/ui";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import { createSatelliteOfflineAware } from "@/features/sync/writes";
-import { listSatellites, updateSatellite } from "@/features/training/api";
+import { cloneSatellite, listSatellites, updateSatellite } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import type { Satellite } from "@/lib/schemas";
@@ -29,10 +29,10 @@ function scheduleKindLabel(
 
 function SatelliteListItem({
   satellite,
-  onRenamed,
+  onChanged,
 }: {
   satellite: Satellite;
-  onRenamed: () => Promise<void>;
+  onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -58,7 +58,16 @@ function SatelliteListItem({
       }),
     onSuccess: async () => {
       setEditing(false);
-      await onRenamed();
+      await onChanged();
+    },
+  });
+  const cloneMut = useMutation({
+    mutationFn: () =>
+      cloneSatellite(satellite.id, {
+        name: t("satellites.cloneName", { name: satellite.name }),
+      }),
+    onSuccess: async () => {
+      await onChanged();
     },
   });
 
@@ -106,9 +115,19 @@ function SatelliteListItem({
         <>
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium">{satellite.name}</p>
-            <Button type="button" variant="ghost" onClick={() => setEditing(true)}>
-              {t("satellites.edit")}
-            </Button>
+            <div className="flex gap-1">
+              <Button type="button" variant="ghost" onClick={() => setEditing(true)}>
+                {t("satellites.edit")}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={cloneMut.isPending}
+                onClick={() => cloneMut.mutate()}
+              >
+                {t("satellites.clone")}
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-slate-500">
             {scheduleKindLabel(satellite.schedule_kind, t)} ·{" "}
@@ -120,6 +139,13 @@ function SatelliteListItem({
               {t("satellites.pendingFrom", {
                 date: satellite.config_effective_on,
               })}
+            </p>
+          ) : null}
+          {cloneMut.isError ? (
+            <p className="mt-1 text-sm text-rose-700">
+              {cloneMut.error instanceof ApiError
+                ? t(errorCodeToI18nKey(cloneMut.error.errorCode))
+                : t("errors.generic")}
             </p>
           ) : null}
         </>
@@ -189,7 +215,7 @@ export function SatellitesPage() {
             <SatelliteListItem
               key={s.id}
               satellite={s}
-              onRenamed={async () => {
+              onChanged={async () => {
                 await qc.invalidateQueries({ queryKey: ["satellites"] });
                 await qc.invalidateQueries({ queryKey: ["today"] });
               }}

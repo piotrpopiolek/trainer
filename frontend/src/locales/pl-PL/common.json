@@ -119,6 +119,8 @@
     "edit": "Edytuj",
     "saveEdit": "Zapisz",
     "cancelEdit": "Anuluj",
+    "clone": "Klonuj",
+    "cloneName": "{{name}} (kopia)",
     "pendingFrom": "Nowa konfiguracja od {{date}}",
     "steps": "{{n}} kroków",
     "defaultStepName": "Cel",

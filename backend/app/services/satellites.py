@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -577,6 +577,14 @@ async def clone_satellite(
         )
 
     clone_name = body.name or f"{source.name or 'Satellite'} (kopia)"
+    schedule_kind = cast(
+        Literal["daily", "weekdays", "category"],
+        source.schedule_kind or "daily",
+    )
+    schedule_category = cast(
+        Literal["anytime", "post_workout", "rest_day"] | None,
+        source.schedule_category,
+    )
     create_body = SatelliteCreateV1(
         schema_version=1,
         name=clone_name,
@@ -584,9 +592,9 @@ async def clone_satellite(
         active_metrics=document.active_metrics.model_dump(mode="json"),
         equipment=list(source.equipment or []),
         tags=list(source.tags or []),
-        schedule_kind=source.schedule_kind or "daily",
+        schedule_kind=schedule_kind,
         weekdays=source.weekdays,
-        schedule_category=source.schedule_category,
+        schedule_category=schedule_category,
         progression=document.progression,
         steps=new_steps,
         client_mutation_id=body.client_mutation_id,

@@ -175,6 +175,21 @@ export async function updateSatellite(input: {
   return satelliteSchema.parse(raw);
 }
 
+export async function cloneSatellite(
+  exerciseId: string,
+  input?: { name?: string },
+): Promise<Satellite> {
+  const raw = await apiJson<unknown>(`/api/satellites/${exerciseId}/clone`, {
+    method: "POST",
+    body: JSON.stringify({
+      schema_version: 1,
+      client_mutation_id: newClientMutationId(),
+      name: input?.name,
+    }),
+  });
+  return satelliteSchema.parse(raw);
+}
+
 export async function listMeasurements(): Promise<Measurement[]> {
   const raw = await apiJson<{ items: unknown[] }>("/api/measurements");
   return z.array(measurementSchema).parse(raw.items);

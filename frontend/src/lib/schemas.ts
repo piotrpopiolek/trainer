@@ -173,6 +173,7 @@ export const satelliteSchema = z.object({
   pending_config_hash: z.string().nullable().optional(),
   config_effective_on: z.string().nullable().optional(),
   config_status: z.enum(["current", "pending"]).optional(),
+  cloned_from_exercise_id: z.string().uuid().nullable().optional(),
   steps: z.array(z.record(z.unknown())),
 });
 
