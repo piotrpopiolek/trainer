@@ -24,7 +24,6 @@ from app.services.satellite_finalize import (
     list_due_finalize_pairs,
     run_satellite_finalize_batch,
 )
-from app.services.satellite_progression import SatelliteProgressionOrchestrator
 from app.services.satellites import create_satellite
 from app.services.sessions import create_session
 from app.services.today import build_today
@@ -292,6 +291,15 @@ async def test_today_lazy_finalizes_overdue(db: AsyncSession) -> None:
     )
     assert progress is not None
     assert progress.fail_streak == 1
+
+    # Durability: reopen a fresh session — finalize must survive GET /today commit.
+    engine = create_async_engine(settings.resolved_database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as fresh:
+        row = await fresh.get(SatelliteDailyOutcome, outcome.id)
+        assert row is not None
+        assert row.status == "finalized"
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

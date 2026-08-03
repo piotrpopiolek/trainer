@@ -289,3 +289,122 @@ async def test_sync_push_accepts_regression_decision(db: AsyncSession) -> None:
     )
     assert progress is not None
     assert progress.current_step_number == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_push_stale_decision_is_applied_detached(db: AsyncSession) -> None:
+    user = await _ready(db, "slice-f-stale@ex.com")
+    sat = await create_satellite(
+        db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
+    )
+    rec_id = await _seed_pending_rec(db, user=user, sat=sat)
+    progress = await db.scalar(
+        select(UserExerciseProgress).where(
+            UserExerciseProgress.user_id == user.id,
+            UserExerciseProgress.exercise_id == sat.id,
+        )
+    )
+    assert progress is not None
+    # Break CAS so accept marks recommendation stale.
+    progress.progress_revision = (progress.progress_revision or 0) + 99
+    await db.commit()
+
+    mut = new_uuid7()
+    out = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            device_id="dev-slice-f-stale",
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=mut,
+                    entity_type="satellite_regression_decision",
+                    entity_id=sat.id,
+                    op="upsert",
+                    revision=1,
+                    payload={
+                        "schema_version": 1,
+                        "recommendation_id": str(rec_id),
+                        "decision": "accept",
+                        "client_mutation_id": str(mut),
+                    },
+                )
+            ],
+        ),
+    )
+    assert out.results[0].status == "applied_detached"
+    assert out.results[0].error_code == "recommendation_stale"
+
+    # Same mutation id must converge (claim kept) — no infinite retry loop.
+    again = await push_batch(
+        db,
+        user=user,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            device_id="dev-slice-f-stale",
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=mut,
+                    entity_type="satellite_regression_decision",
+                    entity_id=sat.id,
+                    op="upsert",
+                    revision=1,
+                    payload={
+                        "schema_version": 1,
+                        "recommendation_id": str(rec_id),
+                        "decision": "accept",
+                        "client_mutation_id": str(mut),
+                    },
+                )
+            ],
+        ),
+    )
+    assert again.results[0].status in ("idempotent", "applied_detached")
+
+
+@pytest.mark.idor
+@pytest.mark.asyncio
+async def test_sync_push_regression_decision_idor(db: AsyncSession) -> None:
+    owner = await _ready(db, "slice-f-idor-owner@ex.com")
+    other = await _ready(db, "slice-f-idor-other@ex.com")
+    sat = await create_satellite(
+        db, user=owner, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
+    )
+    owner_id = owner.id
+    sat_id = sat.id
+    rec_id = await _seed_pending_rec(db, user=owner, sat=sat)
+    mut = new_uuid7()
+    out = await push_batch(
+        db,
+        user=other,
+        body=SyncPushRequestV1(
+            schema_version=1,
+            device_id="dev-slice-f-idor",
+            items=[
+                SyncPushItemV1(
+                    client_mutation_id=mut,
+                    entity_type="satellite_regression_decision",
+                    entity_id=sat_id,
+                    op="upsert",
+                    revision=1,
+                    payload={
+                        "schema_version": 1,
+                        "recommendation_id": str(rec_id),
+                        "decision": "accept",
+                        "client_mutation_id": str(mut),
+                    },
+                )
+            ],
+        ),
+    )
+    assert out.results[0].status == "rejected"
+    assert out.results[0].error_code == "not_found"
+    progress = await db.scalar(
+        select(UserExerciseProgress).where(
+            UserExerciseProgress.user_id == owner_id,
+            UserExerciseProgress.exercise_id == sat_id,
+        )
+    )
+    assert progress is not None
+    assert progress.current_step_number == 2

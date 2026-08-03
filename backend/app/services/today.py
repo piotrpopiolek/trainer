@@ -22,10 +22,10 @@ from app.models.satellite_progress import SatelliteRegressionRecommendation
 from app.models.user import User
 from app.models.workout import WorkoutSession
 from app.schemas.api import (
+    SatellitePendingRegressionV1,
     TodayCcExerciseV1,
     TodaySatelliteV1,
     TodaySessionDto,
-    SatellitePendingRegressionV1,
 )
 from app.services.cc_day import get_active_enrollment, resolve_cc_day_for_user
 from app.services.errors import DomainError
@@ -67,9 +67,11 @@ async def build_today(
 ) -> TodaySessionDto:
     day = local_date or _local_today(user.timezone)
     # Slice E: finalize overdue failed days before surfacing progress (FR-053).
+    # Commit immediately so GET /today side-effects survive later read errors.
     await SatelliteProgressionOrchestrator().finalize_due_outcomes(
         db, user_id=user.id
     )
+    await db.commit()
     requested, resolved = resolve_locale(requested=locale, user_locale=user.locale)
     cc = await resolve_cc_day_for_user(db, user, local_date=day)
     enrollment = await get_active_enrollment(db, user.id)

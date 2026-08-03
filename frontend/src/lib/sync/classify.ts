@@ -31,6 +31,8 @@ const QUARANTINE_CODES = new Set([
   "dependency_missing",
   "dependency_failed",
   "dependency_cycle",
+  "recommendation_stale",
+  "recommendation_not_pending",
 ]);
 
 export function classifyAck(

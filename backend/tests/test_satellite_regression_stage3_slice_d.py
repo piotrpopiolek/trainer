@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
@@ -377,6 +378,112 @@ async def test_accept_regresses_one_step(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_concurrent_session_create_and_decide_no_deadlock(
+    db: AsyncSession,
+) -> None:
+    """Advisory→row lock order must hold across evaluate_log and decide (P1)."""
+    user = await _ready(db, "suggest-concurrent@ex.com")
+    sat = await create_satellite(
+        db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
+    )
+    progress = await db.scalar(
+        select(UserExerciseProgress).where(
+            UserExerciseProgress.user_id == user.id,
+            UserExerciseProgress.exercise_id == sat.id,
+        )
+    )
+    assert progress is not None
+    progress.current_step_number = 2
+    progress.current_step_id = UUID(sat.steps[1]["step_id"])
+    await db.commit()
+    await _fail_and_finalize(db, user=user, sat=sat, local_date=date(2026, 8, 3))
+    await _fail_and_finalize(db, user=user, sat=sat, local_date=date(2026, 8, 4))
+
+    rec = await db.scalar(
+        select(SatelliteRegressionRecommendation).where(
+            SatelliteRegressionRecommendation.user_id == user.id,
+            SatelliteRegressionRecommendation.status == "pending",
+        )
+    )
+    assert rec is not None
+    rec_id = rec.id
+    user_id = user.id
+    exercise_id = sat.id
+    config_version_id = sat.current_config_version_id
+    config_hash = sat.config_hash
+    await db.commit()
+
+    engine = create_async_engine(
+        settings.resolved_database_url,
+        pool_pre_ping=True,
+        pool_size=4,
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async def _create() -> None:
+        async with factory() as session:
+            u = await session.get(User, user_id)
+            assert u is not None
+            await create_session(
+                session,
+                user=u,
+                body=SessionCreateV1(
+                    schema_version=1,
+                    performed_at=datetime(2026, 8, 5, 12, 0, tzinfo=UTC),
+                    local_date=date(2026, 8, 5),
+                    client_mutation_id=new_uuid7(),
+                    client_timezone="Europe/Warsaw",
+                    logs=[
+                        SessionLogCreateV1(
+                            exercise_id=exercise_id,
+                            exercise_kind="satellite",
+                            section="accessories",
+                            sets=_fail_sets(),
+                            satellite_config_version_id=config_version_id,
+                            satellite_config_hash=config_hash,
+                        )
+                    ],
+                ),
+                commit=True,
+            )
+
+    async def _decide() -> None:
+        async with factory() as session:
+            try:
+                await SatelliteProgressionOrchestrator().decide_recommendation(
+                    session,
+                    user_id=user_id,
+                    exercise_id=exercise_id,
+                    recommendation_id=rec_id,
+                    decision="accept",
+                    commit=True,
+                )
+            except DomainError as exc:
+                # Session may bump progress_revision first → CAS stale (ok).
+                if exc.error_code != "recommendation_stale":
+                    raise
+
+    try:
+        await asyncio.wait_for(asyncio.gather(_create(), _decide()), timeout=15)
+    finally:
+        await engine.dispose()
+
+    db.expire_all()
+    rec_after = await db.get(SatelliteRegressionRecommendation, rec_id)
+    assert rec_after is not None
+    assert rec_after.status in ("accepted", "stale")
+    progress_after = await db.scalar(
+        select(UserExerciseProgress).where(
+            UserExerciseProgress.user_id == user_id,
+            UserExerciseProgress.exercise_id == exercise_id,
+        )
+    )
+    assert progress_after is not None
+    if rec_after.status == "accepted":
+        assert progress_after.current_step_number == 1
+
+
+@pytest.mark.asyncio
 async def test_decline_keeps_step_resets_streak(db: AsyncSession) -> None:
     user = await _ready(db, "suggest-decline@ex.com")
     sat = await create_satellite(
@@ -519,6 +626,48 @@ async def test_recommendation_accept_idor_404(
     csrf = me.json()["csrf_token"]
     res = await api_client.post(
         f"/api/satellites/{sat.id}/regression-recommendations/{rec.id}/accept",
+        cookies={settings.csrf_cookie_name: csrf},
+        headers={settings.csrf_header_name: csrf},
+    )
+    assert res.status_code == 404
+
+
+@pytest.mark.idor
+@pytest.mark.asyncio
+async def test_recommendation_decline_idor_404(
+    api_client: AsyncClient, db: AsyncSession
+) -> None:
+    owner = await _ready(db, "rec-decline-owner@ex.com")
+    other = await _ready(db, "rec-decline-other@ex.com")
+    sat = await create_satellite(
+        db, user=owner, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
+    )
+    progress = await db.scalar(
+        select(UserExerciseProgress).where(
+            UserExerciseProgress.user_id == owner.id,
+            UserExerciseProgress.exercise_id == sat.id,
+        )
+    )
+    assert progress is not None
+    progress.current_step_number = 2
+    progress.current_step_id = UUID(sat.steps[1]["step_id"])
+    await db.commit()
+    await _fail_and_finalize(db, user=owner, sat=sat, local_date=date(2026, 8, 3))
+    await _fail_and_finalize(db, user=owner, sat=sat, local_date=date(2026, 8, 4))
+    rec = await db.scalar(
+        select(SatelliteRegressionRecommendation).where(
+            SatelliteRegressionRecommendation.user_id == owner.id
+        )
+    )
+    assert rec is not None
+
+    raw = await AuthSessionService().create_session(db, user=other, user_agent="t")
+    api_client.cookies.set(settings.session_cookie_name, raw)
+    me = await api_client.get("/api/auth/me")
+    assert me.status_code == 200
+    csrf = me.json()["csrf_token"]
+    res = await api_client.post(
+        f"/api/satellites/{sat.id}/regression-recommendations/{rec.id}/decline",
         cookies={settings.csrf_cookie_name: csrf},
         headers={settings.csrf_header_name: csrf},
     )

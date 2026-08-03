@@ -907,10 +907,6 @@ async def _apply_satellite_regression_decision(
             status="rejected",
             error_code="invalid_payload",
         )
-    from typing import Literal
-
-    from app.services.satellite_progression import SatelliteProgressionOrchestrator
-
     decision: Literal["accept", "decline"] = raw_decision
     try:
         await SatelliteProgressionOrchestrator().decide_recommendation(
@@ -922,6 +918,14 @@ async def _apply_satellite_regression_decision(
             commit=False,
         )
     except DomainError as exc:
+        # Terminal for this mutation — keep claim via applied_detached so the
+        # client flush converges (stale / already decided cannot succeed).
+        if exc.error_code in ("recommendation_stale", "recommendation_not_pending"):
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="applied_detached",
+                error_code=exc.error_code,
+            )
         return SyncPushItemResultV1(
             client_mutation_id=item.client_mutation_id,
             status="rejected",

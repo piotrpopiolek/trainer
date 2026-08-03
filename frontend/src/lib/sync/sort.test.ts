@@ -317,6 +317,18 @@ describe("ACK classify FR-072b", () => {
     expect(classifyAck("rejected", "dependency_cycle").kind).toBe("quarantine");
   });
 
+  it("treats stale recommendation ACK as done (applied_detached)", () => {
+    expect(
+      classifyAck("applied_detached", "recommendation_stale"),
+    ).toEqual({ kind: "done" });
+    expect(
+      classifyAck("applied_detached", "recommendation_not_pending"),
+    ).toEqual({ kind: "done" });
+    expect(classifyAck("rejected", "recommendation_stale").kind).toBe(
+      "quarantine",
+    );
+  });
+
   it("routes conflicts to conflict action", () => {
     expect(classifyAck("conflict_lost", null).kind).toBe("conflict");
     expect(classifyAck("conflict_tie", null).kind).toBe("conflict");

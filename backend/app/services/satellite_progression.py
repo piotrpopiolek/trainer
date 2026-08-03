@@ -636,6 +636,11 @@ class SatelliteProgressionOrchestrator:
             config_hash=log.satellite_config_hash,
         )
         document = parse_satellite_config_document(config.document)
+        # Advisory lock before row lock — same order as decide_recommendation /
+        # finalize_due_outcomes (avoids ABBA deadlock with concurrent decide).
+        await self._advisory_lock(
+            db, user_id=log.user_id, exercise_id=log.exercise_id
+        )
         progress = await db.scalar(
             select(UserExerciseProgress)
             .where(
