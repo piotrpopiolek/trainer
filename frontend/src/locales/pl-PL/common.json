@@ -69,8 +69,10 @@
     "saved": "Sesja zapisana.",
     "deleteSession": "Usuń",
     "noRewindTitle": "Usunięcie nie cofa progresji",
-    "noRewindBody": "Usunięcie usuwa tylko wpis sesji. Awans, regres i streak satelitów / CC zostają bez zmian. Korekta kroku: Progres → Dostosuj krok.",
+    "noRewindBody": "Usunięcie usuwa tylko wpis sesji. Awans, regres i streak satelitów / CC zostają bez zmian.",
     "confirmDelete": "Usuń tylko wpis",
+    "confirmDeleteAndAdjust": "Usuń i dostosuj krok",
+    "adjustRequiresOnline": "Dostosowanie kroku wymaga połączenia. Wpis usunięto — dostosuj krok w Progres, gdy będziesz online.",
     "standardBeginner": "Początkowy",
     "standardIntermediate": "Średni",
     "standardProgression": "Przejście",
@@ -86,11 +88,14 @@
     "regressPendingSync": "Decyzja w kolejce synchronizacji."
   },
   "progress": {
-    "title": "Mój progres CC",
+    "title": "Mój progres",
     "hint": "Krok pochodzi z serwera. Dostosuj tylko gdy świadomie zmieniasz poziom.",
+    "adjustAfterDeleteHint": "Po usunięciu sesji ustaw poprawny krok dla: {{name}}.",
     "stepFail": "krok {{step}} · fail streak {{fail}}",
     "toStep": "Docelowy krok",
     "override": "Dostosuj krok",
+    "overrideTitle": "Krok skorygowany",
+    "overrideBody": "{{name}}: krok {{from}} → {{to}} (ręczna korekta)",
     "advanceTitle": "Awans!",
     "regressTitle": "Regres",
     "advanceBody": "{{name}}: krok {{from}} → {{to}}",
@@ -214,6 +219,11 @@
     "revisionJump": "Pominięto rewizję — odśwież i zapisz ponownie.",
     "bilateralNotAllowed": "Przy wymaganych stronach L/P nie używaj wariantu bilateralnego.",
     "recommendationStale": "Sugestia regresu jest nieaktualna — odśwież ekran.",
-    "recommendationNotPending": "Ta sugestia regresu została już rozstrzygnięta."
+    "recommendationNotPending": "Ta sugestia regresu została już rozstrzygnięta.",
+    "overrideRateLimited": "Limit ręcznych korekt kroku na dziś wyczerpany.",
+    "invalidStep": "Nieprawidłowy numer kroku.",
+    "relatedOutcomeNotFound": "Nie znaleziono powiązanego wyniku dnia.",
+    "relatedOutcomeNotAdjustable": "Ten wynik dnia nie pozwala na korektę.",
+    "relatedOutcomeCcUnsupported": "Powiązanie wyniku dnia dotyczy tylko satelitów."
   }
 }

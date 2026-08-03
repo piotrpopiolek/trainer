@@ -35,6 +35,11 @@ const KNOWN: Record<string, string> = {
   bilateral_not_allowed_when_require_both_sides: "errors.bilateralNotAllowed",
   recommendation_stale: "errors.recommendationStale",
   recommendation_not_pending: "errors.recommendationNotPending",
+  override_rate_limited: "errors.overrideRateLimited",
+  invalid_step: "errors.invalidStep",
+  related_outcome_not_found: "errors.relatedOutcomeNotFound",
+  related_outcome_not_adjustable: "errors.relatedOutcomeNotAdjustable",
+  related_outcome_cc_unsupported: "errors.relatedOutcomeCcUnsupported",
 };
 
 export function errorCodeToI18nKey(errorCode: string): string {

@@ -84,6 +84,7 @@ export const progressionEventSchema = z.object({
   id: z.string().uuid(),
   exercise_id: z.string().uuid(),
   session_id: z.string().uuid().nullable().optional(),
+  related_outcome_id: z.string().uuid().nullable().optional(),
   event_type: z.string(),
   from_step: z.number(),
   to_step: z.number(),
@@ -92,6 +93,15 @@ export const progressionEventSchema = z.object({
 });
 
 export type ProgressionEvent = z.infer<typeof progressionEventSchema>;
+
+export const softDeleteOutcomeHintSchema = z.object({
+  schema_version: schemaVersion,
+  exercise_id: z.string().uuid(),
+  related_outcome_id: z.string().uuid(),
+  status: z.string(),
+});
+
+export type SoftDeleteOutcomeHint = z.infer<typeof softDeleteOutcomeHintSchema>;
 
 export const progressItemSchema = z.object({
   schema_version: schemaVersion,
@@ -134,6 +144,7 @@ export const sessionSchema = z.object({
   logs: z.array(sessionLogSchema).default([]),
   progression_events: z.array(progressionEventSchema).default([]),
   progress: z.array(progressItemSchema).default([]),
+  soft_delete_outcome_hints: z.array(softDeleteOutcomeHintSchema).default([]),
 });
 
 export type Session = z.infer<typeof sessionSchema>;

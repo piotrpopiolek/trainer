@@ -258,7 +258,7 @@ export async function fetchCatalogCc(): Promise<{
 export async function overrideProgress(
   exerciseId: string,
   toStep: number,
-  reason?: string,
+  options?: { reason?: string; relatedOutcomeId?: string },
 ): Promise<{ progress: ProgressItem; event: ProgressionEvent }> {
   const raw = await apiJson<{ progress: unknown; event: unknown }>(
     `/api/progress/${exerciseId}/override`,
@@ -267,7 +267,8 @@ export async function overrideProgress(
       body: JSON.stringify({
         schema_version: 1,
         to_step: toStep,
-        reason,
+        reason: options?.reason,
+        related_outcome_id: options?.relatedOutcomeId ?? null,
       }),
     },
   );

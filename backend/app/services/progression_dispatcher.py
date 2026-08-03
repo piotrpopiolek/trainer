@@ -6,13 +6,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.catalog import Exercise
 from app.models.progression import ProgressionEvent
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.services.cc_progression import CcProgressionOrchestrator
 from app.services.errors import DomainError
-from app.services.satellite_progression import SatelliteProgressionOrchestrator
+from app.services.satellite_progression import (
+    SatelliteProgressionOrchestrator,
+    SoftDeleteOutcomeHint,
+)
 
 
 @dataclass(slots=True)
@@ -33,6 +38,10 @@ class ProgressionDispatcher:
     @property
     def cc(self) -> CcProgressionOrchestrator:
         return self._cc
+
+    @property
+    def satellite(self) -> SatelliteProgressionOrchestrator:
+        return self._satellite
 
     async def evaluate_log(
         self,
@@ -70,14 +79,32 @@ class ProgressionDispatcher:
         exercise_id: UUID,
         to_step: int,
         reason: str | None = None,
+        related_outcome_id: UUID | None = None,
     ) -> ProgressionEvent:
-        return await self._cc.manual_override(
-            db,
-            user_id=user_id,
-            exercise_id=exercise_id,
-            to_step=to_step,
-            reason=reason,
-        )
+        exercise = await db.scalar(select(Exercise).where(Exercise.id == exercise_id))
+        if exercise is None or exercise.deleted_at is not None:
+            raise DomainError("not_found", http_status=404)
+        if exercise.kind == "cc":
+            if related_outcome_id is not None:
+                raise DomainError("related_outcome_cc_unsupported", http_status=422)
+            return await self._cc.manual_override(
+                db,
+                user_id=user_id,
+                exercise_id=exercise_id,
+                to_step=to_step,
+                reason=reason,
+            )
+        if exercise.kind == "satellite":
+            return await self._satellite.manual_override(
+                db,
+                user_id=user_id,
+                exercise_id=exercise_id,
+                to_step=to_step,
+                reason=reason,
+                related_outcome_id=related_outcome_id,
+                commit=False,
+            )
+        raise DomainError("exercise_kind_mismatch", http_status=422)
 
     async def on_logs_soft_deleted(
         self,
@@ -85,9 +112,9 @@ class ProgressionDispatcher:
         *,
         logs: list[SessionExerciseLog],
         deleted_at: datetime,
-    ) -> None:
-        """Route soft-delete side-effects by exercise_kind (Stage 4 Slice C)."""
-        await self._satellite.handle_logs_soft_deleted(
+    ) -> list[SoftDeleteOutcomeHint]:
+        """Route soft-delete side-effects by exercise_kind (Stage 4 Slice C/D)."""
+        return await self._satellite.handle_logs_soft_deleted(
             db, logs=logs, deleted_at=deleted_at
         )
 
@@ -116,6 +143,7 @@ class ProgressionEngine:
         exercise_id: UUID,
         to_step: int,
         reason: str | None = None,
+        related_outcome_id: UUID | None = None,
     ) -> ProgressionEvent:
         return await _dispatcher.manual_override(
             db,
@@ -123,6 +151,7 @@ class ProgressionEngine:
             exercise_id=exercise_id,
             to_step=to_step,
             reason=reason,
+            related_outcome_id=related_outcome_id,
         )
 
     async def is_tip_log(self, db: AsyncSession, log: SessionExerciseLog) -> bool:
@@ -134,5 +163,7 @@ class ProgressionEngine:
         *,
         logs: list[SessionExerciseLog],
         deleted_at: datetime,
-    ) -> None:
-        await _dispatcher.on_logs_soft_deleted(db, logs=logs, deleted_at=deleted_at)
+    ) -> list[SoftDeleteOutcomeHint]:
+        return await _dispatcher.on_logs_soft_deleted(
+            db, logs=logs, deleted_at=deleted_at
+        )

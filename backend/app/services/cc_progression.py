@@ -150,7 +150,9 @@ class CcProgressionOrchestrator:
             .select_from(ProgressionEvent)
             .where(
                 ProgressionEvent.user_id == user_id,
-                ProgressionEvent.event_type == "manual_override",
+                ProgressionEvent.event_type.in_(
+                    ("manual_override", "satellite_manual_override")
+                ),
                 ProgressionEvent.created_at >= start_local.astimezone(UTC),
                 ProgressionEvent.created_at < end_local.astimezone(UTC),
             )

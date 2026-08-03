@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hmac
-from datetime import UTC, date, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +25,7 @@ from app.domain.satellite_progression import (
     fold_daily_outcome,
     propose_regression_suggestion,
 )
-from app.models.catalog import SatelliteConfigVersion
+from app.models.catalog import Exercise, ExerciseStep, SatelliteConfigVersion
 from app.models.progression import ProgressionEvent, UserExerciseProgress
 from app.models.satellite_progress import (
     SatelliteDailyOutcome,
@@ -33,6 +35,16 @@ from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.schemas.satellite import SatelliteConfigStepV1, parse_satellite_config_document
 from app.services.errors import DomainError
+
+OVERRIDE_DAILY_LIMIT = 10
+
+
+@dataclass(frozen=True, slots=True)
+class SoftDeleteOutcomeHint:
+    exercise_id: UUID
+    related_outcome_id: UUID
+    status: str
+
 
 
 def _outcome_to_state(row: SatelliteDailyOutcome) -> DailyOutcomeState:
@@ -364,29 +376,220 @@ class SatelliteProgressionOrchestrator:
                 await db.refresh(event)
         return rec, progress, event
 
+    async def _count_overrides_today(self, db: AsyncSession, user_id: UUID) -> int:
+        user = await db.get(User, user_id)
+        tz_name = user.timezone if user is not None else "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            tz = ZoneInfo("UTC")
+        now_local = datetime.now(UTC).astimezone(tz)
+        start_local = datetime.combine(now_local.date(), time.min, tzinfo=tz)
+        end_local = start_local + timedelta(days=1)
+        count = await db.scalar(
+            select(func.count())
+            .select_from(ProgressionEvent)
+            .where(
+                ProgressionEvent.user_id == user_id,
+                ProgressionEvent.event_type.in_(
+                    ("manual_override", "satellite_manual_override")
+                ),
+                ProgressionEvent.created_at >= start_local.astimezone(UTC),
+                ProgressionEvent.created_at < end_local.astimezone(UTC),
+            )
+        )
+        return int(count or 0)
+
+    async def manual_override(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        to_step: int,
+        reason: str | None = None,
+        related_outcome_id: UUID | None = None,
+        commit: bool = True,
+    ) -> ProgressionEvent:
+        """Append-only satellite step correction (Stage 4 Slice D / US-016b)."""
+        await self._advisory_lock(db, user_id=user_id, exercise_id=exercise_id)
+        if await self._count_overrides_today(db, user_id) >= OVERRIDE_DAILY_LIMIT:
+            raise DomainError("override_rate_limited", http_status=429)
+
+        exercise = await db.scalar(
+            select(Exercise).where(
+                Exercise.id == exercise_id,
+                Exercise.user_id == user_id,
+                Exercise.kind == "satellite",
+                Exercise.deleted_at.is_(None),
+            )
+        )
+        if exercise is None:
+            raise DomainError("not_found", http_status=404)
+
+        step = await db.scalar(
+            select(ExerciseStep).where(
+                ExerciseStep.exercise_id == exercise_id,
+                ExerciseStep.step_number == to_step,
+            )
+        )
+        if step is None:
+            raise DomainError("invalid_step", http_status=422)
+
+        related: SatelliteDailyOutcome | None = None
+        if related_outcome_id is not None:
+            related = await db.scalar(
+                select(SatelliteDailyOutcome).where(
+                    SatelliteDailyOutcome.id == related_outcome_id,
+                    SatelliteDailyOutcome.user_id == user_id,
+                    SatelliteDailyOutcome.exercise_id == exercise_id,
+                )
+            )
+            if related is None:
+                raise DomainError("related_outcome_not_found", http_status=404)
+            if related.status not in ("finalized", "cancelled"):
+                raise DomainError("related_outcome_not_adjustable", http_status=409)
+
+        progress = await db.scalar(
+            select(UserExerciseProgress)
+            .where(
+                UserExerciseProgress.user_id == user_id,
+                UserExerciseProgress.exercise_id == exercise_id,
+            )
+            .with_for_update()
+        )
+        if progress is None:
+            raise DomainError("not_found", http_status=404)
+
+        from_step = progress.current_step_number
+        progress.current_step_number = to_step
+        progress.current_step_id = step.id
+        progress.fail_streak = 0
+        self._bump_revision(progress)
+
+        ev = ProgressionEvent(
+            id=new_uuid7(),
+            user_id=user_id,
+            exercise_id=exercise_id,
+            session_id=None,
+            related_outcome_id=related_outcome_id,
+            event_type="satellite_manual_override",
+            from_step=from_step,
+            to_step=to_step,
+            reason=reason or "satellite_manual_override",
+            rules_snapshot={"schema_version": 1},
+            progression_schema_version=1,
+        )
+        db.add(ev)
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(ev)
+            await db.refresh(progress)
+        return ev
+
+    async def rebuild_satellite_progress(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        apply: bool = False,
+    ) -> tuple[int, UUID | None, int]:
+        """Rebuild step/streak cache from append-only satellite events.
+
+        Returns ``(step_number, step_id, fail_streak)`` derived from the ledger.
+        When ``apply`` is True, writes the values into ``user_exercise_progress``.
+        """
+        await self._advisory_lock(db, user_id=user_id, exercise_id=exercise_id)
+        steps = (
+            await db.scalars(
+                select(ExerciseStep)
+                .where(ExerciseStep.exercise_id == exercise_id)
+                .order_by(ExerciseStep.step_number.asc())
+            )
+        ).all()
+        if not steps:
+            raise DomainError("not_found", http_status=404)
+        by_number = {s.step_number: s for s in steps}
+        step_number = 1
+        fail_streak = 0
+        events = (
+            await db.scalars(
+                select(ProgressionEvent)
+                .where(
+                    ProgressionEvent.user_id == user_id,
+                    ProgressionEvent.exercise_id == exercise_id,
+                    ProgressionEvent.event_type.in_(
+                        (
+                            "satellite_advance",
+                            "satellite_regress_confirmed",
+                            "satellite_manual_override",
+                            "satellite_config_reset",
+                        )
+                    ),
+                )
+                .order_by(
+                    ProgressionEvent.created_at.asc(),
+                    ProgressionEvent.id.asc(),
+                )
+            )
+        ).all()
+        for ev in events:
+            if ev.to_step not in by_number:
+                raise DomainError("rebuild_step_missing", http_status=409)
+            step_number = ev.to_step
+            if ev.event_type in (
+                "satellite_advance",
+                "satellite_regress_confirmed",
+                "satellite_manual_override",
+                "satellite_config_reset",
+            ):
+                fail_streak = 0
+        step_id = by_number[step_number].id
+        if apply:
+            progress = await db.scalar(
+                select(UserExerciseProgress)
+                .where(
+                    UserExerciseProgress.user_id == user_id,
+                    UserExerciseProgress.exercise_id == exercise_id,
+                )
+                .with_for_update()
+            )
+            if progress is None:
+                raise DomainError("not_found", http_status=404)
+            progress.current_step_number = step_number
+            progress.current_step_id = step_id
+            progress.fail_streak = fail_streak
+            progress.updated_at = datetime.now(UTC)
+            await db.flush()
+        return step_number, step_id, fail_streak
+
     async def handle_logs_soft_deleted(
         self,
         db: AsyncSession,
         *,
         logs: list[SessionExerciseLog],
         deleted_at: datetime,
-    ) -> None:
+    ) -> list[SoftDeleteOutcomeHint]:
         """Reconcile daily outcomes after session soft-delete (Stage 4 Slice C).
 
         Pending: re-aggregate active attempts; no attempts → cancelled.
         Finalized: mark ``source_log_deleted_at`` when representative source is gone;
         never rewind step / events / streak.
+        Returns hints for Stage 4 Slice D adjust CTA.
         """
         sat_logs = [log for log in logs if log.exercise_kind == "satellite"]
         if not sat_logs:
-            return
+            return []
         deleted_ids = {log.id for log in sat_logs}
         keys = sorted(
             {(log.user_id, log.exercise_id, log.local_date) for log in sat_logs},
             key=lambda t: (str(t[0]), str(t[1]), t[2].isoformat()),
         )
+        hints: list[SoftDeleteOutcomeHint] = []
         for user_id, exercise_id, local_date in keys:
-            await self._reconcile_outcome_after_delete(
+            hint = await self._reconcile_outcome_after_delete(
                 db,
                 user_id=user_id,
                 exercise_id=exercise_id,
@@ -394,6 +597,9 @@ class SatelliteProgressionOrchestrator:
                 deleted_log_ids=deleted_ids,
                 deleted_at=deleted_at,
             )
+            if hint is not None:
+                hints.append(hint)
+        return hints
 
     async def _reconcile_outcome_after_delete(
         self,
@@ -404,7 +610,7 @@ class SatelliteProgressionOrchestrator:
         local_date: date,
         deleted_log_ids: set[UUID],
         deleted_at: datetime,
-    ) -> None:
+    ) -> SoftDeleteOutcomeHint | None:
         await self._advisory_lock(db, user_id=user_id, exercise_id=exercise_id)
         outcome = await db.scalar(
             select(SatelliteDailyOutcome)
@@ -416,7 +622,7 @@ class SatelliteProgressionOrchestrator:
             .with_for_update()
         )
         if outcome is None:
-            return
+            return None
 
         if outcome.status == "finalized":
             if (
@@ -425,10 +631,15 @@ class SatelliteProgressionOrchestrator:
             ):
                 outcome.source_log_deleted_at = deleted_at
                 outcome.updated_at = deleted_at
-            return
+                return SoftDeleteOutcomeHint(
+                    exercise_id=exercise_id,
+                    related_outcome_id=outcome.id,
+                    status=outcome.status,
+                )
+            return None
 
         if outcome.status != "pending":
-            return
+            return None
 
         active = (
             await db.scalars(
@@ -468,7 +679,11 @@ class SatelliteProgressionOrchestrator:
             outcome.result_snapshot = None
             outcome.source_log_deleted_at = deleted_at
             outcome.updated_at = deleted_at
-            return
+            return SoftDeleteOutcomeHint(
+                exercise_id=exercise_id,
+                related_outcome_id=outcome.id,
+                status=outcome.status,
+            )
 
         # Remaining attempts keep the day pending; refresh representative.
         outcome.has_attempt = True
@@ -479,6 +694,7 @@ class SatelliteProgressionOrchestrator:
         ):
             outcome.representative_log_id = active[0].id
         outcome.updated_at = deleted_at
+        return None
 
     async def finalize_due_outcomes(
         self,

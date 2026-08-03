@@ -22,6 +22,7 @@ from app.schemas.api import (
     SessionCreateV1,
     SessionLogReadV1,
     SessionReadV1,
+    SoftDeleteOutcomeHintV1,
 )
 from app.schemas.common import parse_versioned
 from app.schemas.sets import SessionSetsV1
@@ -102,6 +103,7 @@ def event_to_read(ev: ProgressionEvent) -> ProgressionEventReadV1:
         id=ev.id,
         exercise_id=ev.exercise_id,
         session_id=ev.session_id,
+        related_outcome_id=ev.related_outcome_id,
         event_type=ev.event_type,
         from_step=ev.from_step,
         to_step=ev.to_step,
@@ -181,6 +183,7 @@ async def session_to_read(
     *,
     include_events: bool = False,
     include_progress_for: set[UUID] | None = None,
+    soft_delete_outcome_hints: list[SoftDeleteOutcomeHintV1] | None = None,
 ) -> SessionReadV1:
     logs = (
         await db.scalars(
@@ -218,6 +221,7 @@ async def session_to_read(
         logs=[log_to_read(log) for log in logs],
         progression_events=events,
         progress=progress,
+        soft_delete_outcome_hints=list(soft_delete_outcome_hints or []),
     )
 
 
@@ -382,15 +386,26 @@ async def soft_delete_user_session(
         db, WorkoutSession, user_id=user_id, entity_id=session_id
     )
     superseded = await soft_delete_session(db, session, revision=revision)
+    hints: list[SoftDeleteOutcomeHintV1] = []
     if superseded:
         deleted_at = session.deleted_at
         assert deleted_at is not None
-        await _engine.on_logs_soft_deleted(
+        raw_hints = await _engine.on_logs_soft_deleted(
             db, logs=superseded, deleted_at=deleted_at
         )
+        hints = [
+            SoftDeleteOutcomeHintV1(
+                exercise_id=h.exercise_id,
+                related_outcome_id=h.related_outcome_id,
+                status=h.status,
+            )
+            for h in raw_hints
+        ]
     if commit:
         await db.commit()
         await db.refresh(session)
     else:
         await db.flush()
-    return await session_to_read(db, session)
+    return await session_to_read(
+        db, session, soft_delete_outcome_hints=hints
+    )

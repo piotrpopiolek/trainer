@@ -141,7 +141,8 @@ class ProgressionEvent(Base):
             "event_type IN ("
             "'advance','regress','manual_override','initial',"
             "'satellite_advance','satellite_regress_suggested',"
-            "'satellite_regress_confirmed','satellite_config_reset'"
+            "'satellite_regress_confirmed','satellite_config_reset',"
+            "'satellite_manual_override'"
             ")",
             name="ck_progression_events_type",
         ),
@@ -172,6 +173,10 @@ class ProgressionEvent(Base):
     session_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("workout_sessions.id", ondelete="SET NULL"),
+    )
+    related_outcome_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("satellite_daily_outcomes.id", ondelete="SET NULL"),
     )
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     from_step: Mapped[int] = mapped_column(SmallInteger, nullable=False)

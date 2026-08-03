@@ -12,6 +12,9 @@ function titleKey(eventType: string): string {
   if (eventType === "satellite_regress_confirmed") {
     return "progress.satelliteRegressConfirmedTitle";
   }
+  if (eventType === "satellite_manual_override" || eventType === "manual_override") {
+    return "progress.overrideTitle";
+  }
   if (eventType === "regress") {
     return "progress.regressTitle";
   }
@@ -24,6 +27,9 @@ function bodyKey(eventType: string): string {
   }
   if (eventType === "satellite_regress_confirmed") {
     return "progress.satelliteRegressConfirmedBody";
+  }
+  if (eventType === "satellite_manual_override" || eventType === "manual_override") {
+    return "progress.overrideBody";
   }
   if (eventType === "regress") {
     return "progress.regressBody";

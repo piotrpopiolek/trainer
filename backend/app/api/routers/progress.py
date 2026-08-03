@@ -79,6 +79,7 @@ async def override_progress(
             exercise_id=exercise_id,
             to_step=body.to_step,
             reason=body.reason,
+            related_outcome_id=body.related_outcome_id,
         )
     except DomainError:
         raise

@@ -126,12 +126,20 @@ export async function softDeleteSessionOfflineAware(
   userId: string,
   sessionId: string,
   revision: number,
-): Promise<{ pendingSync: boolean; clientMutationId: string }> {
+): Promise<{
+  pendingSync: boolean;
+  clientMutationId: string;
+  softDeleteOutcomeHints: import("@/lib/schemas").SoftDeleteOutcomeHint[];
+}> {
   if (navigator.onLine) {
     try {
-      await online.softDeleteSession(sessionId);
+      const deleted = await online.softDeleteSession(sessionId);
       await deleteSessionCache(userId, sessionId);
-      return { pendingSync: false, clientMutationId: "" };
+      return {
+        pendingSync: false,
+        clientMutationId: "",
+        softDeleteOutcomeHints: deleted.soft_delete_outcome_hints ?? [],
+      };
     } catch (err) {
       if (!isOfflineOrNetwork(err)) throw err;
     }
@@ -159,7 +167,11 @@ export async function softDeleteSessionOfflineAware(
   });
   await deleteSessionCache(userId, sessionId);
   await afterEnqueue(userId);
-  return { pendingSync: true, clientMutationId: mutationId };
+  return {
+    pendingSync: true,
+    clientMutationId: mutationId,
+    softDeleteOutcomeHints: [],
+  };
 }
 
 export async function createMeasurementOfflineAware(

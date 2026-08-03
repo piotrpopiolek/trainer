@@ -106,11 +106,19 @@ class ProgressionEventReadV1(BaseModel):
     id: UUID
     exercise_id: UUID
     session_id: UUID | None
+    related_outcome_id: UUID | None = None
     event_type: str
     from_step: int
     to_step: int
     reason: str | None
     created_at: datetime
+
+
+class SoftDeleteOutcomeHintV1(BaseModel):
+    schema_version: int = 1
+    exercise_id: UUID
+    related_outcome_id: UUID
+    status: str
 
 
 class ProgressItemV1(BaseModel):
@@ -133,6 +141,9 @@ class SessionReadV1(BaseModel):
     logs: list[SessionLogReadV1]
     progression_events: list[ProgressionEventReadV1] = Field(default_factory=list)
     progress: list[ProgressItemV1] = Field(default_factory=list)
+    soft_delete_outcome_hints: list[SoftDeleteOutcomeHintV1] = Field(
+        default_factory=list
+    )
 
 
 class ProgressOverrideRequestV1(BaseModel):
@@ -141,6 +152,7 @@ class ProgressOverrideRequestV1(BaseModel):
     schema_version: int = Field(1, ge=1)
     to_step: int = Field(..., ge=1)
     reason: str | None = Field(default=None, max_length=500)
+    related_outcome_id: UUID | None = None
 
 
 class TodayCcExerciseV1(BaseModel):
@@ -346,6 +358,7 @@ __all__ = [
     "SessionReadV1",
     "TodaySessionDto",
     "ProgressOverrideRequestV1",
+    "SoftDeleteOutcomeHintV1",
     "CatalogCcResponseV1",
     "SatelliteCreateV1",
     "SatelliteReadV1",

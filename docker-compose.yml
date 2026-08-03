@@ -38,6 +38,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Host :8000 for Vite (`npm run dev` proxies /api → 127.0.0.1:8000).
+    # Same-origin stack still uses Caddy → api:8000 on the Compose network.
+    ports:
+      - "8000:8000"
     expose:
       - "8000"
     volumes:

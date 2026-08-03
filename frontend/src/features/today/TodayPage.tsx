@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import { Button, Input, Modal, Page } from "@/components/ui";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
@@ -105,6 +106,7 @@ function formatWeightKg(raw: string): string {
 
 export function TodayPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.me);
   const syncEvents = useSyncStore((s) => s.recentEvents);
@@ -149,20 +151,37 @@ export function TodayPage() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (target: { id: string; revision: number }) => {
+    mutationFn: async (input: {
+      target: { id: string; revision: number };
+      adjust: boolean;
+    }) => {
       if (!me?.id) throw new ApiError(401, "unauthorized");
-      return softDeleteSessionOfflineAware(me.id, target.id, target.revision);
+      const result = await softDeleteSessionOfflineAware(
+        me.id,
+        input.target.id,
+        input.target.revision,
+      );
+      return { ...result, adjust: input.adjust, target: input.target };
     },
-    onSuccess: async (_result, target) => {
+    onSuccess: async (result) => {
       setPendingDelete(null);
       qc.setQueryData<Today>(["today", override ?? null], (old) => {
         if (!old) return old;
         return {
           ...old,
-          sessions: old.sessions.filter((s) => s.id !== target.id),
+          sessions: old.sessions.filter((s) => s.id !== result.target.id),
         };
       });
       await qc.invalidateQueries({ queryKey: ["today"] });
+      if (!result.adjust) return;
+      const hint = result.softDeleteOutcomeHints[0];
+      if (result.pendingSync || !hint) {
+        setFlash(t("today.adjustRequiresOnline"));
+        return;
+      }
+      navigate(
+        `/progress?adjust=${encodeURIComponent(hint.exercise_id)}&relatedOutcome=${encodeURIComponent(hint.related_outcome_id)}`,
+      );
     },
   });
 
@@ -574,9 +593,21 @@ export function TodayPage() {
               <Button
                 variant="danger"
                 disabled={deleteMut.isPending || !pendingDelete}
-                onClick={() => pendingDelete && deleteMut.mutate(pendingDelete)}
+                onClick={() =>
+                  pendingDelete &&
+                  deleteMut.mutate({ target: pendingDelete, adjust: false })
+                }
               >
                 {t("today.confirmDelete")}
+              </Button>
+              <Button
+                disabled={deleteMut.isPending || !pendingDelete}
+                onClick={() =>
+                  pendingDelete &&
+                  deleteMut.mutate({ target: pendingDelete, adjust: true })
+                }
+              >
+                {t("today.confirmDeleteAndAdjust")}
               </Button>
             </>
           }
