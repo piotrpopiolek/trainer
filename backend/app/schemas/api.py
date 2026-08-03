@@ -252,6 +252,8 @@ class SatelliteCreateV1(BaseModel):
     client_mutation_id: UUID
     client_updated_at: datetime | None = None
     config_version_id: UUID | None = None
+    # Slice F: CAS base for activating a newly registered version on an existing exercise.
+    expected_current_config_version_id: UUID | None = None
 
 
 class SatelliteReadV1(BaseModel):

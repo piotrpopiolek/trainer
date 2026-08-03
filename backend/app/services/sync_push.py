@@ -705,6 +705,24 @@ async def _apply_measurement_delete(
     )
 
 
+async def _set_claim_result_status(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    client_mutation_id: UUID,
+    result_status: str,
+) -> None:
+    row = await db.scalar(
+        select(ClientMutation).where(
+            ClientMutation.user_id == user_id,
+            ClientMutation.client_mutation_id == client_mutation_id,
+        )
+    )
+    if row is not None:
+        row.result_status = result_status
+        await db.flush()
+
+
 async def _apply_satellite_upsert(
     db: AsyncSession,
     *,
@@ -719,10 +737,46 @@ async def _apply_satellite_upsert(
         )
     )
     if existing is not None:
+        # Slice F: register a new immutable config version on an existing satellite.
+        if not item.payload or item.payload.get("config_version_id") is None:
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code="satellite_update_unsupported",
+            )
+        body = SatelliteCreateV1.model_validate(
+            {**item.payload, "client_mutation_id": str(item.client_mutation_id)}
+        )
+        body = body.model_copy(update={"client_mutation_id": item.client_mutation_id})
+        outcome = await satellite_service.register_satellite_config_version(
+            db, user=user, exercise=existing, body=body
+        )
+        if not outcome.activation_applied:
+            conflict_id = await _log_conflict(
+                db,
+                user_id=user.id,
+                item=item,
+                kind="satellite_config_activation_lost",
+                winning_revision=outcome.exercise_revision,
+                winning_updated_at=datetime.now(UTC),
+                device_id=None,
+            )
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="applied_detached",
+                registered_config_version_id=outcome.config_version_id,
+                activation_applied=False,
+                conflict_id=conflict_id,
+                winning_revision=outcome.exercise_revision,
+                winning_updated_at=datetime.now(UTC),
+            )
         return SyncPushItemResultV1(
             client_mutation_id=item.client_mutation_id,
-            status="rejected",
-            error_code="satellite_update_unsupported",
+            status="applied",
+            registered_config_version_id=outcome.config_version_id,
+            activation_applied=True,
+            winning_revision=outcome.exercise_revision,
+            winning_updated_at=datetime.now(UTC),
         )
     if item.revision != 1 or not item.payload:
         return SyncPushItemResultV1(
@@ -740,6 +794,8 @@ async def _apply_satellite_upsert(
     return SyncPushItemResultV1(
         client_mutation_id=item.client_mutation_id,
         status="applied",
+        registered_config_version_id=created.current_config_version_id,
+        activation_applied=True,
         winning_revision=created.revision,
         winning_updated_at=datetime.now(UTC),
     )
@@ -888,6 +944,13 @@ async def push_batch(
                 results.append(result)
                 result_by_id[item.client_mutation_id] = result
                 continue
+            if result.status == "applied_detached":
+                await _set_claim_result_status(
+                    db,
+                    user_id=user_id,
+                    client_mutation_id=item.client_mutation_id,
+                    result_status="applied_detached",
+                )
             await db.commit()
             results.append(result)
             result_by_id[item.client_mutation_id] = result
