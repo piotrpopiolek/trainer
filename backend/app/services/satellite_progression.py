@@ -1,4 +1,4 @@
-"""Transactional satellite progression orchestrator (Stage 1: goal-only)."""
+"""Transactional satellite progression orchestrator (goal-only + daily outcomes Stage 3B)."""
 
 from __future__ import annotations
 
@@ -6,19 +6,56 @@ import hmac
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import new_uuid7
 from app.domain.progression_types import ProgressionEvaluation
 from app.domain.satellite_progression import (
+    DailyOutcomeState,
     SatelliteEvaluationInput,
     SatelliteProgressionEvaluator,
+    compute_finalize_after,
+    finalize_pending_failure,
+    fold_daily_outcome,
 )
 from app.models.catalog import SatelliteConfigVersion
 from app.models.progression import UserExerciseProgress
+from app.models.satellite_progress import SatelliteDailyOutcome
+from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.schemas.satellite import SatelliteConfigStepV1, parse_satellite_config_document
 from app.services.errors import DomainError
+
+
+def _outcome_to_state(row: SatelliteDailyOutcome) -> DailyOutcomeState:
+    return DailyOutcomeState(
+        status=row.status,  # type: ignore[arg-type]
+        has_attempt=row.has_attempt,
+        has_success=row.has_success,
+        result=row.result,  # type: ignore[arg-type]
+        finalize_after=row.finalize_after,
+        finalized_at=row.finalized_at,
+        representative_log_id=(
+            str(row.representative_log_id) if row.representative_log_id else None
+        ),
+        result_snapshot=row.result_snapshot,
+    )
+
+
+def _apply_state(row: SatelliteDailyOutcome, state: DailyOutcomeState) -> None:
+    row.status = state.status
+    row.has_attempt = state.has_attempt
+    row.has_success = state.has_success
+    row.result = state.result
+    row.finalize_after = state.finalize_after
+    row.finalized_at = state.finalized_at
+    row.representative_log_id = (
+        UUID(state.representative_log_id) if state.representative_log_id else None
+    )
+    row.result_snapshot = state.result_snapshot
+    row.updated_at = datetime.now(UTC)
 
 
 class SatelliteProgressionOrchestrator:
@@ -74,6 +111,224 @@ class SatelliteProgressionOrchestrator:
         )
         return row is not None
 
+    async def _advisory_lock(
+        self, db: AsyncSession, *, user_id: UUID, exercise_id: UUID
+    ) -> None:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+            {"k": f"{user_id}:{exercise_id}"},
+        )
+
+    async def _get_or_create_outcome(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        local_date: date,
+        step_id: UUID,
+        config_version_id: UUID,
+        finalize_after: datetime,
+    ) -> SatelliteDailyOutcome:
+        existing = await db.scalar(
+            select(SatelliteDailyOutcome)
+            .where(
+                SatelliteDailyOutcome.user_id == user_id,
+                SatelliteDailyOutcome.exercise_id == exercise_id,
+                SatelliteDailyOutcome.local_date == local_date,
+            )
+            .with_for_update()
+        )
+        if existing is not None:
+            return existing
+
+        values: dict = {
+            "id": new_uuid7(),
+            "user_id": user_id,
+            "exercise_id": exercise_id,
+            "local_date": local_date,
+            "step_id": step_id,
+            "config_version_id": config_version_id,
+            "has_attempt": False,
+            "has_success": False,
+            "status": "pending",
+            # finalize_after filled by fold on first attempt — avoids empty-row
+            # premature finalization when ``now`` is already past the deadline.
+        }
+        stmt = (
+            insert(SatelliteDailyOutcome)
+            .values(**values)
+            .on_conflict_do_nothing(
+                constraint="uq_satellite_daily_outcomes_user_ex_date"
+            )
+        )
+        await db.execute(stmt)
+        row = await db.scalar(
+            select(SatelliteDailyOutcome)
+            .where(
+                SatelliteDailyOutcome.user_id == user_id,
+                SatelliteDailyOutcome.exercise_id == exercise_id,
+                SatelliteDailyOutcome.local_date == local_date,
+            )
+            .with_for_update()
+        )
+        if row is None:
+            raise DomainError("satellite_outcome_create_failed", http_status=500)
+        return row
+
+    async def finalize_due_outcomes(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID | None = None,
+        now: datetime | None = None,
+    ) -> int:
+        """Lazy finalizer for pending failed days (also used by future Today/cron)."""
+        moment = now or datetime.now(UTC)
+        q = select(SatelliteDailyOutcome).where(
+            SatelliteDailyOutcome.user_id == user_id,
+            SatelliteDailyOutcome.status == "pending",
+        )
+        if exercise_id is not None:
+            q = q.where(SatelliteDailyOutcome.exercise_id == exercise_id)
+        rows = (
+            await db.scalars(
+                q.order_by(SatelliteDailyOutcome.exercise_id).execution_options(
+                    populate_existing=True
+                )
+            )
+        ).all()
+        finalized = 0
+        for row in rows:
+            if row.has_success:
+                continue
+            if row.finalize_after is None or row.finalize_after > moment:
+                continue
+            await self._advisory_lock(
+                db, user_id=user_id, exercise_id=row.exercise_id
+            )
+            locked = await db.scalar(
+                select(SatelliteDailyOutcome)
+                .where(SatelliteDailyOutcome.id == row.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if locked is None:
+                continue
+            progress = await db.scalar(
+                select(UserExerciseProgress)
+                .where(
+                    UserExerciseProgress.user_id == user_id,
+                    UserExerciseProgress.exercise_id == locked.exercise_id,
+                )
+                .with_for_update()
+            )
+            step_number = progress.current_step_number if progress is not None else 1
+            fail_streak = progress.fail_streak if progress is not None else 0
+            new_state, streak, did = finalize_pending_failure(
+                _outcome_to_state(locked),
+                now=moment,
+                step_number=step_number,
+                fail_streak=fail_streak,
+            )
+            if not did:
+                continue
+            _apply_state(locked, new_state)
+            if progress is not None and streak is not None:
+                progress.fail_streak = streak
+            finalized += 1
+        await db.flush()
+        return finalized
+
+    async def _fold_steps_outcome(
+        self,
+        db: AsyncSession,
+        *,
+        log: SessionExerciseLog,
+        progress: UserExerciseProgress,
+        config: SatelliteConfigVersion,
+        cfg_step: SatelliteConfigStepV1,
+        evaluation: ProgressionEvaluation,
+        eligible: bool,
+        already_evaluated: bool,
+    ) -> ProgressionEvaluation:
+        user = await db.get(User, log.user_id)
+        tz_name = user.timezone if user is not None else "UTC"
+        now = datetime.now(UTC)
+        deadline = compute_finalize_after(log.local_date, timezone_name=tz_name)
+
+        await self._advisory_lock(
+            db, user_id=log.user_id, exercise_id=log.exercise_id
+        )
+        # Re-lock progress after advisory (stable order: advisory → progress → outcome).
+        progress_locked = await db.scalar(
+            select(UserExerciseProgress)
+            .where(
+                UserExerciseProgress.user_id == log.user_id,
+                UserExerciseProgress.exercise_id == log.exercise_id,
+            )
+            .with_for_update()
+        )
+        if progress_locked is None:
+            progress_locked = progress
+
+        if not eligible or log.skipped:
+            fold = fold_daily_outcome(
+                None,
+                goal_met=evaluation.goal_met,
+                skipped=log.skipped,
+                eligible=eligible,
+                already_evaluated=already_evaluated,
+                log_id=str(log.id),
+                now=now,
+                finalize_after=deadline,
+                step_number=progress_locked.current_step_number,
+                fail_streak=progress_locked.fail_streak,
+            )
+            return ProgressionEvaluation(
+                goal_met=evaluation.goal_met,
+                counts_for_progression=fold.counts_for_progression,
+                progression_skipped=fold.progression_skipped
+                or evaluation.progression_skipped,
+                rules_snapshot=evaluation.rules_snapshot,
+                progression_schema_version=evaluation.progression_schema_version,
+                step_number=evaluation.step_number,
+            )
+
+        outcome = await self._get_or_create_outcome(
+            db,
+            user_id=log.user_id,
+            exercise_id=log.exercise_id,
+            local_date=log.local_date,
+            step_id=cfg_step.step_id,
+            config_version_id=config.id,
+            finalize_after=deadline,
+        )
+        fold = fold_daily_outcome(
+            _outcome_to_state(outcome),
+            goal_met=evaluation.goal_met,
+            skipped=False,
+            eligible=True,
+            already_evaluated=already_evaluated,
+            log_id=str(log.id),
+            now=now,
+            finalize_after=deadline,
+            step_number=progress_locked.current_step_number,
+            fail_streak=progress_locked.fail_streak,
+        )
+        _apply_state(outcome, fold.state)
+        if fold.fail_streak is not None:
+            progress_locked.fail_streak = fold.fail_streak
+        return ProgressionEvaluation(
+            goal_met=evaluation.goal_met,
+            counts_for_progression=fold.counts_for_progression,
+            progression_skipped=fold.progression_skipped,
+            rules_snapshot=evaluation.rules_snapshot,
+            progression_schema_version=evaluation.progression_schema_version,
+            step_number=evaluation.step_number,
+        )
+
     async def evaluate_log(
         self,
         db: AsyncSession,
@@ -88,6 +343,7 @@ class SatelliteProgressionOrchestrator:
         if log.exercise_kind != "satellite":
             raise DomainError("exercise_kind_mismatch", http_status=422)
 
+        already_evaluated = log.goal_evaluated_at is not None
         config = await self._load_config_version(
             db,
             user_id=log.user_id,
@@ -106,12 +362,17 @@ class SatelliteProgressionOrchestrator:
         )
         step_number = progress.current_step_number if progress is not None else 1
 
-        # Evaluate exclusively against the immutable hashed document — never
-        # ExerciseStep.rules (those may diverge after edit/bug; hash would be inert).
         ordered = sorted(document.steps, key=lambda s: (s.sort_order, str(s.step_id)))
         cfg_step: SatelliteConfigStepV1
         if document.progression.mode == "goal_only":
             cfg_step = ordered[0]
+        elif progress is not None and progress.current_step_id is not None:
+            matched = next(
+                (s for s in ordered if s.step_id == progress.current_step_id), None
+            )
+            if matched is None:
+                raise DomainError("satellite_step_not_in_config", http_status=422)
+            cfg_step = matched
         else:
             matched = next((s for s in ordered if s.sort_order == step_number), None)
             if matched is None:
@@ -132,7 +393,7 @@ class SatelliteProgressionOrchestrator:
                     active_metrics=document.active_metrics,
                     log_payload=log.sets,
                     skipped=log.skipped,
-                    already_evaluated=log.goal_evaluated_at is not None,
+                    already_evaluated=already_evaluated,
                     persisted_goal_met=bool(log.goal_met),
                     progression_eligible=eligible,
                     step_number=step_number,
@@ -143,13 +404,29 @@ class SatelliteProgressionOrchestrator:
             code = str(exc).split(":", 1)[0]
             raise DomainError(code, http_status=422) from exc
 
+        if document.progression.mode == "steps" and progress is not None:
+            evaluation = await self._fold_steps_outcome(
+                db,
+                log=log,
+                progress=progress,
+                config=config,
+                cfg_step=cfg_step,
+                evaluation=evaluation,
+                eligible=eligible,
+                already_evaluated=already_evaluated,
+            )
+
         log.step_number = evaluation.step_number
         log.rules_snapshot = evaluation.rules_snapshot
         log.progression_schema_version = evaluation.progression_schema_version
         log.goal_met = evaluation.goal_met
         if log.goal_evaluated_at is None:
             log.goal_evaluated_at = datetime.now(UTC)
-        log.counts_for_progression = False
+        log.counts_for_progression = (
+            False
+            if document.progression.mode == "goal_only"
+            else evaluation.counts_for_progression
+        )
         log.progression_skipped = evaluation.progression_skipped
         if progress is not None:
             progress.last_session_at = log.performed_at

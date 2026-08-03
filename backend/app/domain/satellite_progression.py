@@ -1,12 +1,14 @@
-"""Pure satellite goal-only evaluator — no ORM, clock, UUID, or commit."""
+"""Pure satellite progression — goal_met + daily-outcome fold helpers (no ORM/clock/UUID)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.domain.progression_types import ProgressionEvaluation
+from app.domain.progression_types import ProgressionEvaluation, ProgressStatePatch
 from app.schemas.satellite import (
     ActiveMetricsV1,
     SatelliteGoalCompletedV1,
@@ -17,6 +19,8 @@ from app.schemas.satellite import (
     parse_satellite_log_result,
     parse_satellite_rules,
 )
+
+FAILED_DAY_GRACE = timedelta(hours=36)
 
 
 def _weight_ok(logged: str | None, minimum: str | None) -> bool:
@@ -98,6 +102,212 @@ def satellite_goal_met(
     return False
 
 
+def compute_finalize_after(local_date: date, *, timezone_name: str) -> datetime:
+    """End of ``local_date`` in user TZ + 36 h (FR-053), as UTC-aware datetime."""
+    try:
+        tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+    end_of_day = datetime.combine(local_date, time(23, 59, 59, 999999), tzinfo=tz)
+    return (end_of_day + FAILED_DAY_GRACE).astimezone(UTC)
+
+
+OutcomeStatus = Literal["pending", "finalized", "cancelled"]
+OutcomeResult = Literal["success", "failure"]
+
+
+@dataclass(frozen=True, slots=True)
+class DailyOutcomeState:
+    status: OutcomeStatus
+    has_attempt: bool
+    has_success: bool
+    result: OutcomeResult | None
+    finalize_after: datetime | None
+    finalized_at: datetime | None
+    representative_log_id: str | None
+    result_snapshot: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class DailyOutcomeFoldResult:
+    state: DailyOutcomeState
+    counts_for_progression: bool
+    progression_skipped: str | None
+    """Streak cache patch; None = leave unchanged."""
+    fail_streak: int | None
+    newly_finalized: bool
+
+
+def _snapshot(*, result: OutcomeResult, has_attempt: bool, has_success: bool) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "result": result,
+        "has_attempt": has_attempt,
+        "has_success": has_success,
+    }
+
+
+def _finalize_failure(
+    state: DailyOutcomeState,
+    *,
+    now: datetime,
+    step_number: int,
+    fail_streak: int,
+) -> tuple[DailyOutcomeState, int | None, bool]:
+    new_state = DailyOutcomeState(
+        status="finalized",
+        has_attempt=True,
+        has_success=False,
+        result="failure",
+        finalize_after=state.finalize_after,
+        finalized_at=now,
+        representative_log_id=state.representative_log_id,
+        result_snapshot=_snapshot(
+            result="failure",
+            has_attempt=True,
+            has_success=False,
+        ),
+    )
+    # Step 1 does not accumulate failed-day streak (FR-053).
+    streak: int | None = None
+    if step_number > 1:
+        streak = fail_streak + 1
+    return new_state, streak, True
+
+
+def fold_daily_outcome(
+    current: DailyOutcomeState | None,
+    *,
+    goal_met: bool,
+    skipped: bool,
+    eligible: bool,
+    already_evaluated: bool,
+    log_id: str,
+    now: datetime,
+    finalize_after: datetime,
+    step_number: int,
+    fail_streak: int,
+) -> DailyOutcomeFoldResult:
+    """Pure daily-outcome fold for mini-progression (advance/recommendations = later slices)."""
+    empty = DailyOutcomeState(
+        status="pending",
+        has_attempt=False,
+        has_success=False,
+        result=None,
+        finalize_after=None,
+        finalized_at=None,
+        representative_log_id=None,
+        result_snapshot=None,
+    )
+    if skipped:
+        return DailyOutcomeFoldResult(
+            state=current or empty,
+            counts_for_progression=False,
+            progression_skipped="skipped",
+            fail_streak=None,
+            newly_finalized=False,
+        )
+    if not eligible:
+        return DailyOutcomeFoldResult(
+            state=current or empty,
+            counts_for_progression=False,
+            progression_skipped="config_not_active_for_day",
+            fail_streak=None,
+            newly_finalized=False,
+        )
+
+    state = current
+    streak: int | None = None
+    newly_finalized = False
+
+    # Lazy failure finalize before applying this log.
+    if (
+        state is not None
+        and state.status == "pending"
+        and not state.has_success
+        and state.finalize_after is not None
+        and now >= state.finalize_after
+    ):
+        state, streak, newly_finalized = _finalize_failure(
+            state, now=now, step_number=step_number, fail_streak=fail_streak
+        )
+
+    if state is not None and state.status == "finalized":
+        return DailyOutcomeFoldResult(
+            state=state,
+            counts_for_progression=False,
+            progression_skipped="daily_finalized",
+            fail_streak=streak,
+            newly_finalized=newly_finalized,
+        )
+
+    if already_evaluated:
+        return DailyOutcomeFoldResult(
+            state=state or empty,
+            counts_for_progression=False,
+            progression_skipped=None,
+            fail_streak=streak,
+            newly_finalized=newly_finalized,
+        )
+
+    if goal_met:
+        base = state or empty
+        state = DailyOutcomeState(
+            status="finalized",
+            has_attempt=True,
+            has_success=True,
+            result="success",
+            finalize_after=base.finalize_after or finalize_after,
+            finalized_at=now,
+            representative_log_id=log_id,
+            result_snapshot=_snapshot(result="success", has_attempt=True, has_success=True),
+        )
+        return DailyOutcomeFoldResult(
+            state=state,
+            counts_for_progression=True,
+            progression_skipped=None,
+            fail_streak=0,
+            newly_finalized=True,
+        )
+
+    # Failed attempt before deadline — keep pending.
+    base = state or empty
+    state = DailyOutcomeState(
+        status="pending",
+        has_attempt=True,
+        has_success=False,
+        result=None,
+        finalize_after=base.finalize_after or finalize_after,
+        finalized_at=None,
+        representative_log_id=base.representative_log_id or log_id,
+        result_snapshot=None,
+    )
+    return DailyOutcomeFoldResult(
+        state=state,
+        counts_for_progression=True,
+        progression_skipped=None,
+        fail_streak=streak,
+        newly_finalized=False,
+    )
+
+
+def finalize_pending_failure(
+    state: DailyOutcomeState,
+    *,
+    now: datetime,
+    step_number: int,
+    fail_streak: int,
+) -> tuple[DailyOutcomeState, int | None, bool]:
+    """Finalize a pending no-success outcome after deadline (idempotent)."""
+    if state.status != "pending" or state.has_success:
+        return state, None, False
+    if state.finalize_after is None or now < state.finalize_after:
+        return state, None, False
+    return _finalize_failure(
+        state, now=now, step_number=step_number, fail_streak=fail_streak
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SatelliteEvaluationInput:
     rules: SatelliteRulesV1
@@ -112,7 +322,7 @@ class SatelliteEvaluationInput:
 
 
 class SatelliteProgressionEvaluator:
-    """Stage 1: goal-only — never mutates step / emits events."""
+    """Per-log goal_met; daily-outcome / advance applied by orchestrator."""
 
     def evaluate(self, inp: SatelliteEvaluationInput) -> ProgressionEvaluation:
         if inp.already_evaluated:
@@ -138,7 +348,6 @@ class SatelliteProgressionEvaluator:
             )
 
         result = parse_satellite_log_result(inp.log_payload)
-        # Empty sets ⇒ goal not met for reps/duration; type C uses completed=true.
         met = satellite_goal_met(inp.rules, result, active_metrics=inp.active_metrics)
         skipped = None if inp.progression_eligible else "config_not_active_for_day"
         return ProgressionEvaluation(
@@ -148,6 +357,7 @@ class SatelliteProgressionEvaluator:
             rules_snapshot=snapshot,
             progression_schema_version=inp.schema_version,
             step_number=inp.step_number,
+            progress_patch=ProgressStatePatch(),
         )
 
 

@@ -352,10 +352,10 @@ async def test_create_rejects_goal_only_with_multiple_steps(db: AsyncSession) ->
 
 
 @pytest.mark.asyncio
-async def test_log_on_steps_satellite_does_not_write_outcomes_yet(
+async def test_log_on_steps_satellite_writes_success_outcome_no_advance(
     db: AsyncSession,
 ) -> None:
-    """Slice A boundary: create/hash/progress only — engine still goal_met-only."""
+    """Slice B: success finalizes daily outcome; Slice C advance still deferred."""
     user = await _ready(db, "copenhagen-log@ex.com")
     sat = await create_satellite(
         db,
@@ -410,15 +410,27 @@ async def test_log_on_steps_satellite_does_not_write_outcomes_yet(
     )
     log = read.logs[0]
     assert log.goal_met is True
-    # Slice A: still no daily-outcome fold — progress step unchanged, no ledger rows.
+    assert log.counts_for_progression is True
+    assert log.progression_skipped is None
 
     await db.refresh(progress_before)
     assert progress_before.current_step_id == step_id_before
     assert progress_before.current_step_number == step_num_before
+    assert progress_before.fail_streak == 0
 
-    outcomes = await db.scalar(select(func.count()).select_from(SatelliteDailyOutcome))
+    outcome = await db.scalar(
+        select(SatelliteDailyOutcome).where(
+            SatelliteDailyOutcome.user_id == user.id,
+            SatelliteDailyOutcome.exercise_id == sat.id,
+            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+        )
+    )
+    assert outcome is not None
+    assert outcome.status == "finalized"
+    assert outcome.result == "success"
+    assert outcome.has_success is True
+
     recs = await db.scalar(
         select(func.count()).select_from(SatelliteRegressionRecommendation)
     )
-    assert int(outcomes or 0) == 0
     assert int(recs or 0) == 0
