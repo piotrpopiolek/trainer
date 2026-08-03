@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hmac
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import or_, select
@@ -17,7 +17,7 @@ from app.domain.satellite_progression import (
 from app.models.catalog import SatelliteConfigVersion
 from app.models.progression import UserExerciseProgress
 from app.models.workout import SessionExerciseLog, WorkoutSession
-from app.schemas.satellite import parse_satellite_config_document
+from app.schemas.satellite import SatelliteConfigStepV1, parse_satellite_config_document
 from app.services.errors import DomainError
 
 
@@ -56,7 +56,7 @@ class SatelliteProgressionOrchestrator:
         user_id: UUID,
         exercise_id: UUID,
         config_version_id: UUID,
-        local_date,
+        local_date: date,
     ) -> bool:
         from app.models.catalog import SatelliteConfigActivation
 
@@ -109,12 +109,14 @@ class SatelliteProgressionOrchestrator:
         # Evaluate exclusively against the immutable hashed document — never
         # ExerciseStep.rules (those may diverge after edit/bug; hash would be inert).
         ordered = sorted(document.steps, key=lambda s: (s.sort_order, str(s.step_id)))
+        cfg_step: SatelliteConfigStepV1
         if document.progression.mode == "goal_only":
             cfg_step = ordered[0]
         else:
-            cfg_step = next((s for s in ordered if s.sort_order == step_number), None)
-            if cfg_step is None:
+            matched = next((s for s in ordered if s.sort_order == step_number), None)
+            if matched is None:
                 raise DomainError("satellite_step_not_in_config", http_status=422)
+            cfg_step = matched
 
         eligible = await self._is_active_for_day(
             db,

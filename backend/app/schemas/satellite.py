@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from pydantic import (
@@ -61,7 +61,7 @@ class ActiveMetricsV1(VersionedModel):
     def unique_sorted_metrics(cls, value: list[MetricName]) -> list[MetricName]:
         if len(value) != len(set(value)):
             raise ValueError("duplicate_metrics")
-        return sorted(value)  # type: ignore[return-value]
+        return cast(list[MetricName], sorted(value))
 
 
 class SatelliteGoalRepsV1(BaseModel):

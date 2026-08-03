@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.progression_types import ProgressionEvaluation  # noqa: F401 — typing/docs
+from app.models.progression import ProgressionEvent
 from app.models.workout import SessionExerciseLog, WorkoutSession
 from app.services.cc_progression import CcProgressionOrchestrator
 from app.services.errors import DomainError
@@ -20,11 +21,7 @@ class EvaluateResult:
     is_tip: bool
     progression_skipped: str | None
     goal_met: bool
-    events: list = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.events is None:
-            self.events = []
+    events: list[ProgressionEvent] = field(default_factory=list)
 
 
 class ProgressionDispatcher:
@@ -62,8 +59,22 @@ class ProgressionDispatcher:
             )
         raise DomainError("exercise_kind_mismatch", http_status=422)
 
-    async def manual_override(self, db: AsyncSession, **kwargs):
-        return await self._cc.manual_override(db, **kwargs)
+    async def manual_override(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        to_step: int,
+        reason: str | None = None,
+    ) -> ProgressionEvent:
+        return await self._cc.manual_override(
+            db,
+            user_id=user_id,
+            exercise_id=exercise_id,
+            to_step=to_step,
+            reason=reason,
+        )
 
 
 # Composition root used by SessionService / progress router.
@@ -73,11 +84,31 @@ _dispatcher = ProgressionDispatcher()
 class ProgressionEngine:
     """Thin facade preserving existing call sites during Stage 1 split."""
 
-    async def evaluate_log(self, db, log, *, session):
+    async def evaluate_log(
+        self,
+        db: AsyncSession,
+        log: SessionExerciseLog,
+        *,
+        session: WorkoutSession,
+    ) -> EvaluateResult:
         return await _dispatcher.evaluate_log(db, log, session=session)
 
-    async def manual_override(self, db, **kwargs):
-        return await _dispatcher.manual_override(db, **kwargs)
+    async def manual_override(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        to_step: int,
+        reason: str | None = None,
+    ) -> ProgressionEvent:
+        return await _dispatcher.manual_override(
+            db,
+            user_id=user_id,
+            exercise_id=exercise_id,
+            to_step=to_step,
+            reason=reason,
+        )
 
-    async def is_tip_log(self, db, log):
+    async def is_tip_log(self, db: AsyncSession, log: SessionExerciseLog) -> bool:
         return await _dispatcher.cc.is_tip_log(db, log)

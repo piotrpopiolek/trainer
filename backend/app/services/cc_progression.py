@@ -17,7 +17,7 @@ from app.models.catalog import ExerciseStep
 from app.models.progression import ProgressionEvent, ProgressionSchema, UserExerciseProgress
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
-from app.schemas.rules import parse_progression_rules
+from app.schemas.rules import ProgressionRules, parse_progression_rules
 from app.services.errors import DomainError
 
 OVERRIDE_DAILY_LIMIT = 10
@@ -68,7 +68,7 @@ class CcProgressionOrchestrator:
         *,
         exercise_id: UUID,
         step_number: int,
-    ) -> tuple[ExerciseStep, object, int]:
+    ) -> tuple[ExerciseStep, ProgressionRules, int]:
         step = await db.scalar(
             select(ExerciseStep).where(
                 ExerciseStep.exercise_id == exercise_id,
@@ -225,7 +225,7 @@ class CcProgressionOrchestrator:
 
         evaluation = self._evaluator.evaluate(
             CcEvaluationInput(
-                rules=rules,  # type: ignore[arg-type]
+                rules=rules,
                 sets_payload=log.sets,
                 skipped=log.skipped,
                 already_evaluated=log.goal_evaluated_at is not None,
@@ -282,7 +282,7 @@ class CcProgressionOrchestrator:
             from_step=from_step,
             to_step=to_step,
             reason=reason or "manual_override",
-            rules_snapshot=rules.model_dump(mode="json"),  # type: ignore[union-attr]
+            rules_snapshot=rules.model_dump(mode="json"),
             progression_schema_version=schema_version,
         )
         db.add(ev)
