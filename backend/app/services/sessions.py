@@ -381,7 +381,13 @@ async def soft_delete_user_session(
     session = await get_for_user(
         db, WorkoutSession, user_id=user_id, entity_id=session_id
     )
-    await soft_delete_session(db, session, revision=revision)
+    superseded = await soft_delete_session(db, session, revision=revision)
+    if superseded:
+        deleted_at = session.deleted_at
+        assert deleted_at is not None
+        await _engine.on_logs_soft_deleted(
+            db, logs=superseded, deleted_at=deleted_at
+        )
     if commit:
         await db.commit()
         await db.refresh(session)

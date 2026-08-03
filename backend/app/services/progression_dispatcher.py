@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +79,18 @@ class ProgressionDispatcher:
             reason=reason,
         )
 
+    async def on_logs_soft_deleted(
+        self,
+        db: AsyncSession,
+        *,
+        logs: list[SessionExerciseLog],
+        deleted_at: datetime,
+    ) -> None:
+        """Route soft-delete side-effects by exercise_kind (Stage 4 Slice C)."""
+        await self._satellite.handle_logs_soft_deleted(
+            db, logs=logs, deleted_at=deleted_at
+        )
+
 
 # Composition root used by SessionService / progress router.
 _dispatcher = ProgressionDispatcher()
@@ -114,3 +127,12 @@ class ProgressionEngine:
 
     async def is_tip_log(self, db: AsyncSession, log: SessionExerciseLog) -> bool:
         return await _dispatcher.cc.is_tip_log(db, log)
+
+    async def on_logs_soft_deleted(
+        self,
+        db: AsyncSession,
+        *,
+        logs: list[SessionExerciseLog],
+        deleted_at: datetime,
+    ) -> None:
+        await _dispatcher.on_logs_soft_deleted(db, logs=logs, deleted_at=deleted_at)

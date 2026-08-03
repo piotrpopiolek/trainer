@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -363,6 +363,122 @@ class SatelliteProgressionOrchestrator:
             if event is not None:
                 await db.refresh(event)
         return rec, progress, event
+
+    async def handle_logs_soft_deleted(
+        self,
+        db: AsyncSession,
+        *,
+        logs: list[SessionExerciseLog],
+        deleted_at: datetime,
+    ) -> None:
+        """Reconcile daily outcomes after session soft-delete (Stage 4 Slice C).
+
+        Pending: re-aggregate active attempts; no attempts → cancelled.
+        Finalized: mark ``source_log_deleted_at`` when representative source is gone;
+        never rewind step / events / streak.
+        """
+        sat_logs = [log for log in logs if log.exercise_kind == "satellite"]
+        if not sat_logs:
+            return
+        deleted_ids = {log.id for log in sat_logs}
+        keys = sorted(
+            {(log.user_id, log.exercise_id, log.local_date) for log in sat_logs},
+            key=lambda t: (str(t[0]), str(t[1]), t[2].isoformat()),
+        )
+        for user_id, exercise_id, local_date in keys:
+            await self._reconcile_outcome_after_delete(
+                db,
+                user_id=user_id,
+                exercise_id=exercise_id,
+                local_date=local_date,
+                deleted_log_ids=deleted_ids,
+                deleted_at=deleted_at,
+            )
+
+    async def _reconcile_outcome_after_delete(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        exercise_id: UUID,
+        local_date: date,
+        deleted_log_ids: set[UUID],
+        deleted_at: datetime,
+    ) -> None:
+        await self._advisory_lock(db, user_id=user_id, exercise_id=exercise_id)
+        outcome = await db.scalar(
+            select(SatelliteDailyOutcome)
+            .where(
+                SatelliteDailyOutcome.user_id == user_id,
+                SatelliteDailyOutcome.exercise_id == exercise_id,
+                SatelliteDailyOutcome.local_date == local_date,
+            )
+            .with_for_update()
+        )
+        if outcome is None:
+            return
+
+        if outcome.status == "finalized":
+            if (
+                outcome.representative_log_id is not None
+                and outcome.representative_log_id in deleted_log_ids
+            ):
+                outcome.source_log_deleted_at = deleted_at
+                outcome.updated_at = deleted_at
+            return
+
+        if outcome.status != "pending":
+            return
+
+        active = (
+            await db.scalars(
+                select(SessionExerciseLog)
+                .join(
+                    WorkoutSession,
+                    and_(
+                        WorkoutSession.id == SessionExerciseLog.session_id,
+                        WorkoutSession.user_id == SessionExerciseLog.user_id,
+                    ),
+                )
+                .where(
+                    SessionExerciseLog.user_id == user_id,
+                    SessionExerciseLog.exercise_id == exercise_id,
+                    SessionExerciseLog.local_date == local_date,
+                    SessionExerciseLog.exercise_kind == "satellite",
+                    SessionExerciseLog.skipped.is_(False),
+                    SessionExerciseLog.goal_evaluated_at.is_not(None),
+                    SessionExerciseLog.superseded_at.is_(None),
+                    WorkoutSession.deleted_at.is_(None),
+                )
+                .order_by(
+                    SessionExerciseLog.created_at.asc(),
+                    SessionExerciseLog.id.asc(),
+                )
+            )
+        ).all()
+
+        if not active:
+            outcome.status = "cancelled"
+            outcome.has_attempt = False
+            outcome.has_success = False
+            outcome.result = None
+            outcome.representative_log_id = None
+            outcome.finalize_after = None
+            outcome.finalized_at = None
+            outcome.result_snapshot = None
+            outcome.source_log_deleted_at = deleted_at
+            outcome.updated_at = deleted_at
+            return
+
+        # Remaining attempts keep the day pending; refresh representative.
+        outcome.has_attempt = True
+        outcome.has_success = any(bool(log.goal_met) for log in active)
+        if outcome.representative_log_id in deleted_log_ids or (
+            outcome.representative_log_id is not None
+            and all(log.id != outcome.representative_log_id for log in active)
+        ):
+            outcome.representative_log_id = active[0].id
+        outcome.updated_at = deleted_at
 
     async def finalize_due_outcomes(
         self,

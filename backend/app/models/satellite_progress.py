@@ -100,6 +100,9 @@ class SatelliteDailyOutcome(Base):
     applied_progress_revision: Mapped[int | None] = mapped_column(Integer)
     finalize_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_log_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
