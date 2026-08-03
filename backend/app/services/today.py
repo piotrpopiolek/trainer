@@ -31,6 +31,7 @@ from app.services.cc_day import get_active_enrollment, resolve_cc_day_for_user
 from app.services.errors import DomainError
 from app.services.locale import resolve_locale
 from app.services.satellite_progression import SatelliteProgressionOrchestrator
+from app.services.satellites import promote_pending_satellite_configs
 from app.services.sessions import progress_to_read, session_to_read
 
 
@@ -71,6 +72,7 @@ async def build_today(
     await SatelliteProgressionOrchestrator().finalize_due_outcomes(
         db, user_id=user.id
     )
+    await promote_pending_satellite_configs(db, user=user, local_date=day)
     await db.commit()
     requested, resolved = resolve_locale(requested=locale, user_locale=user.locale)
     cc = await resolve_cc_day_for_user(db, user, local_date=day)

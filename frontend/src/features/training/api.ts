@@ -136,6 +136,45 @@ export async function createSatellite(input: {
   return satelliteSchema.parse(raw);
 }
 
+export async function updateSatellite(input: {
+  id: string;
+  revision: number;
+  name: string;
+  exercise_type: "B" | "C";
+  schedule_kind: "daily" | "weekdays" | "category";
+  weekdays?: number[] | null;
+  schedule_category?: "anytime" | "post_workout" | "rest_day" | null;
+  active_metrics: unknown;
+  equipment?: string[];
+  tags?: string[];
+  steps: Array<Record<string, unknown>>;
+  progression?: { mode: "goal_only" } | { mode: "steps"; regression: unknown };
+  expected_current_config_version_id?: string | null;
+}): Promise<Satellite> {
+  const raw = await apiJson<unknown>(`/api/satellites/${input.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      schema_version: 1,
+      revision: input.revision,
+      name: input.name,
+      exercise_type: input.exercise_type,
+      active_metrics: input.active_metrics,
+      equipment: input.equipment ?? [],
+      tags: input.tags ?? [],
+      schedule_kind: input.schedule_kind,
+      weekdays: input.weekdays ?? null,
+      schedule_category: input.schedule_category ?? null,
+      progression: input.progression ?? { mode: "goal_only" },
+      steps: input.steps,
+      client_mutation_id: newClientMutationId(),
+      config_version_id: newClientMutationId(),
+      expected_current_config_version_id:
+        input.expected_current_config_version_id ?? null,
+    }),
+  });
+  return satelliteSchema.parse(raw);
+}
+
 export async function listMeasurements(): Promise<Measurement[]> {
   const raw = await apiJson<{ items: unknown[] }>("/api/measurements");
   return z.array(measurementSchema).parse(raw.items);

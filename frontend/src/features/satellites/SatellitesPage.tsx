@@ -5,12 +5,16 @@ import { useTranslation } from "react-i18next";
 import { Button, Input, Page, Select } from "@/components/ui";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import { createSatelliteOfflineAware } from "@/features/sync/writes";
-import { listSatellites } from "@/features/training/api";
+import { listSatellites, updateSatellite } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
+import type { Satellite } from "@/lib/schemas";
 import { useAuthStore } from "@/stores/authStore";
 
-function scheduleKindLabel(kind: string, t: (key: string) => string): string {
+function scheduleKindLabel(
+  kind: string | null | undefined,
+  t: (key: string) => string,
+): string {
   switch (kind) {
     case "daily":
       return t("satellites.scheduleDaily");
@@ -21,6 +25,107 @@ function scheduleKindLabel(kind: string, t: (key: string) => string): string {
     default:
       return t("satellites.scheduleUnknown");
   }
+}
+
+function SatelliteListItem({
+  satellite,
+  onRenamed,
+}: {
+  satellite: Satellite;
+  onRenamed: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(satellite.name);
+  const renameMut = useMutation({
+    mutationFn: () =>
+      updateSatellite({
+        id: satellite.id,
+        revision: satellite.revision + 1,
+        name: name.trim(),
+        exercise_type: satellite.exercise_type as "B" | "C",
+        schedule_kind: (satellite.schedule_kind ?? "daily") as
+          | "daily"
+          | "weekdays"
+          | "category",
+        weekdays: satellite.weekdays,
+        schedule_category: satellite.schedule_category,
+        active_metrics: satellite.active_metrics,
+        equipment: satellite.equipment,
+        tags: satellite.tags,
+        steps: satellite.steps,
+        expected_current_config_version_id: satellite.current_config_version_id,
+      }),
+    onSuccess: async () => {
+      setEditing(false);
+      await onRenamed();
+    },
+  });
+
+  return (
+    <li className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+      {editing ? (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            renameMut.mutate();
+          }}
+        >
+          <Input
+            label={t("satellites.name")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          {renameMut.isError ? (
+            <p className="text-sm text-rose-700">
+              {renameMut.error instanceof ApiError
+                ? t(errorCodeToI18nKey(renameMut.error.errorCode))
+                : t("errors.generic")}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
+            <Button type="submit" disabled={renameMut.isPending || !name.trim()}>
+              {t("satellites.saveEdit")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setName(satellite.name);
+                setEditing(false);
+              }}
+            >
+              {t("satellites.cancelEdit")}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium">{satellite.name}</p>
+            <Button type="button" variant="ghost" onClick={() => setEditing(true)}>
+              {t("satellites.edit")}
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500">
+            {scheduleKindLabel(satellite.schedule_kind, t)} ·{" "}
+            {t("satellites.steps", { n: satellite.steps.length })} ·{" "}
+            {satellite.exercise_type}
+          </p>
+          {satellite.config_status === "pending" && satellite.config_effective_on ? (
+            <p className="mt-1 text-xs text-amber-800">
+              {t("satellites.pendingFrom", {
+                date: satellite.config_effective_on,
+              })}
+            </p>
+          ) : null}
+        </>
+      )}
+    </li>
+  );
 }
 
 export function SatellitesPage() {
@@ -81,16 +186,14 @@ export function SatellitesPage() {
 
         <ul className="flex flex-col gap-2">
           {(listQ.data ?? []).map((s) => (
-            <li
+            <SatelliteListItem
               key={s.id}
-              className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm"
-            >
-              <p className="font-medium">{s.name}</p>
-              <p className="text-xs text-slate-500">
-                {scheduleKindLabel(s.schedule_kind, t)} ·{" "}
-                {t("satellites.steps", { n: s.steps.length })} · {s.exercise_type}
-              </p>
-            </li>
+              satellite={s}
+              onRenamed={async () => {
+                await qc.invalidateQueries({ queryKey: ["satellites"] });
+                await qc.invalidateQueries({ queryKey: ["today"] });
+              }}
+            />
           ))}
         </ul>
 

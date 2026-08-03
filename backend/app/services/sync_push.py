@@ -757,7 +757,7 @@ async def _apply_satellite_upsert(
         )
     )
     if existing is not None:
-        # Slice F: register a new immutable config version on an existing satellite.
+        # Stage 4 Slice A: edit existing satellite (pending after history).
         if not item.payload or item.payload.get("config_version_id") is None:
             return SyncPushItemResultV1(
                 client_mutation_id=item.client_mutation_id,
@@ -768,10 +768,22 @@ async def _apply_satellite_upsert(
             {**item.payload, "client_mutation_id": str(item.client_mutation_id)}
         )
         body = body.model_copy(update={"client_mutation_id": item.client_mutation_id})
-        outcome = await satellite_service.register_satellite_config_version(
-            db, user=user, exercise=existing, body=body
-        )
-        if not outcome.activation_applied:
+        try:
+            _read, outcome = await satellite_service.edit_satellite(
+                db,
+                user=user,
+                exercise_id=existing.id,
+                body=body,
+                revision=item.revision,
+                commit=False,
+            )
+        except DomainError as exc:
+            return SyncPushItemResultV1(
+                client_mutation_id=item.client_mutation_id,
+                status="rejected",
+                error_code=exc.error_code,
+            )
+        if not outcome.activation_applied and not outcome.pending_applied:
             conflict_id = await _log_conflict(
                 db,
                 user_id=user.id,
@@ -794,7 +806,7 @@ async def _apply_satellite_upsert(
             client_mutation_id=item.client_mutation_id,
             status="applied",
             registered_config_version_id=outcome.config_version_id,
-            activation_applied=True,
+            activation_applied=outcome.activation_applied,
             winning_revision=outcome.exercise_revision,
             winning_updated_at=datetime.now(UTC),
         )

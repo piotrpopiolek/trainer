@@ -205,6 +205,7 @@ class Exercise(Base):
             name="fk_exercises_pending_config_version",
         ),
     )
+    config_effective_on: Mapped[date | None] = mapped_column(Date)
 
 
 class SatelliteConfigVersion(Base):

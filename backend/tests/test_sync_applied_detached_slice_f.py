@@ -204,6 +204,8 @@ async def test_sync_applied_detached_claim_and_conflict(db: AsyncSession) -> Non
     )
     await db.commit()
 
+    await db.refresh(ex)
+    next_rev = ex.revision + 1
     v3 = new_uuid7()
     mut = new_uuid7()
     body = _type_c_body(
@@ -223,7 +225,7 @@ async def test_sync_applied_detached_claim_and_conflict(db: AsyncSession) -> Non
                     entity_type="satellite",
                     entity_id=sat.id,
                     op="upsert",
-                    revision=2,
+                    revision=next_rev,
                     payload=body.model_dump(mode="json"),
                 )
             ],
@@ -280,6 +282,8 @@ async def test_applied_detached_fulfills_session_depends_on(db: AsyncSession) ->
     )
     await db.commit()
 
+    await db.refresh(ex)
+    next_rev = ex.revision + 1
     v3 = new_uuid7()
     sat_mut = new_uuid7()
     body = _type_c_body(
@@ -299,7 +303,7 @@ async def test_applied_detached_fulfills_session_depends_on(db: AsyncSession) ->
                     entity_type="satellite",
                     entity_id=sat_id,
                     op="upsert",
-                    revision=2,
+                    revision=next_rev,
                     payload=body.model_dump(mode="json"),
                 )
             ],

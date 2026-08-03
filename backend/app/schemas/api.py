@@ -275,18 +275,30 @@ class SatelliteCreateV1(BaseModel):
     expected_current_config_version_id: UUID | None = None
 
 
+class SatelliteUpdateV1(SatelliteCreateV1):
+    """Stage 4 Slice A — edit existing satellite (revision LWW + config CAS)."""
+
+    revision: int = Field(..., ge=2)
+
+
 class SatelliteReadV1(BaseModel):
     schema_version: int = 1
     id: UUID
     name: str
     exercise_type: str
     active_metrics: dict[str, Any]
+    equipment: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     schedule_kind: str | None
     weekdays: list[int] | None
     schedule_category: str | None
     revision: int
     current_config_version_id: UUID | None = None
     config_hash: str | None = None
+    pending_config_version_id: UUID | None = None
+    pending_config_hash: str | None = None
+    config_effective_on: date | None = None
+    config_status: Literal["current", "pending"] = "current"
     steps: list[dict[str, Any]]
 
 

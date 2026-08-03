@@ -15,6 +15,7 @@ from app.schemas.api import (
     ProgressItemV1,
     SatelliteCreateV1,
     SatelliteReadV1,
+    SatelliteUpdateV1,
 )
 from app.services import satellites as satellite_service
 from app.services.errors import DomainError, NotFoundError
@@ -46,6 +47,22 @@ async def list_satellites(
     return SatelliteListResponse(items=items)
 
 
+@router.get("/{exercise_id}", response_model=SatelliteReadV1)
+async def get_satellite(
+    exercise_id: UUID,
+    ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
+) -> SatelliteReadV1:
+    try:
+        return await satellite_service.get_satellite(
+            db, user_id=ctx.user.id, exercise_id=exercise_id
+        )
+    except DomainError as exc:
+        if exc.error_code == "not_found":
+            raise NotFoundError() from exc
+        raise
+
+
 @router.post("", response_model=SatelliteReadV1)
 async def create_satellite(
     body: SatelliteCreateV1,
@@ -53,6 +70,30 @@ async def create_satellite(
     db: AsyncSession = Depends(get_session),
 ) -> SatelliteReadV1:
     return await satellite_service.create_satellite(db, user=ctx.user, body=body)
+
+
+@router.patch("/{exercise_id}", response_model=SatelliteReadV1)
+async def patch_satellite(
+    exercise_id: UUID,
+    body: SatelliteUpdateV1,
+    ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
+    _csrf: None = Depends(require_csrf),
+) -> SatelliteReadV1:
+    try:
+        read, _outcome = await satellite_service.edit_satellite(
+            db,
+            user=ctx.user,
+            exercise_id=exercise_id,
+            body=body,
+            revision=body.revision,
+            commit=True,
+        )
+    except DomainError as exc:
+        if exc.error_code == "not_found":
+            raise NotFoundError() from exc
+        raise
+    return read
 
 
 @router.post(
