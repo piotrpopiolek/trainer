@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import new_uuid7
-from app.domain.progression_types import ProgressionEvaluation
+from app.domain.progression_types import EventProposal, ProgressionEvaluation
 from app.domain.satellite_progression import (
     DailyOutcomeState,
     SatelliteEvaluationInput,
@@ -21,7 +21,7 @@ from app.domain.satellite_progression import (
     fold_daily_outcome,
 )
 from app.models.catalog import SatelliteConfigVersion
-from app.models.progression import UserExerciseProgress
+from app.models.progression import ProgressionEvent, UserExerciseProgress
 from app.models.satellite_progress import SatelliteDailyOutcome
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
@@ -252,7 +252,9 @@ class SatelliteProgressionOrchestrator:
         evaluation: ProgressionEvaluation,
         eligible: bool,
         already_evaluated: bool,
-    ) -> ProgressionEvaluation:
+        step_ladder: list[tuple[int, str]],
+        session: WorkoutSession,
+    ) -> tuple[ProgressionEvaluation, list[ProgressionEvent]]:
         user = await db.get(User, log.user_id)
         tz_name = user.timezone if user is not None else "UTC"
         now = datetime.now(UTC)
@@ -285,15 +287,19 @@ class SatelliteProgressionOrchestrator:
                 finalize_after=deadline,
                 step_number=progress_locked.current_step_number,
                 fail_streak=progress_locked.fail_streak,
+                step_ladder=step_ladder,
             )
-            return ProgressionEvaluation(
-                goal_met=evaluation.goal_met,
-                counts_for_progression=fold.counts_for_progression,
-                progression_skipped=fold.progression_skipped
-                or evaluation.progression_skipped,
-                rules_snapshot=evaluation.rules_snapshot,
-                progression_schema_version=evaluation.progression_schema_version,
-                step_number=evaluation.step_number,
+            return (
+                ProgressionEvaluation(
+                    goal_met=evaluation.goal_met,
+                    counts_for_progression=fold.counts_for_progression,
+                    progression_skipped=fold.progression_skipped
+                    or evaluation.progression_skipped,
+                    rules_snapshot=evaluation.rules_snapshot,
+                    progression_schema_version=evaluation.progression_schema_version,
+                    step_number=evaluation.step_number,
+                ),
+                [],
             )
 
         outcome = await self._get_or_create_outcome(
@@ -316,17 +322,66 @@ class SatelliteProgressionOrchestrator:
             finalize_after=deadline,
             step_number=progress_locked.current_step_number,
             fail_streak=progress_locked.fail_streak,
+            step_ladder=step_ladder,
         )
         _apply_state(outcome, fold.state)
         if fold.fail_streak is not None:
             progress_locked.fail_streak = fold.fail_streak
-        return ProgressionEvaluation(
-            goal_met=evaluation.goal_met,
-            counts_for_progression=fold.counts_for_progression,
-            progression_skipped=fold.progression_skipped,
-            rules_snapshot=evaluation.rules_snapshot,
-            progression_schema_version=evaluation.progression_schema_version,
-            step_number=evaluation.step_number,
+
+        events: list[ProgressionEvent] = []
+        if (
+            fold.newly_finalized
+            and fold.state.result == "success"
+            and fold.advance_to is not None
+            and fold.advance_to_step_id is not None
+            and fold.advance_from is not None
+        ):
+            progress_locked.current_step_number = fold.advance_to
+            progress_locked.current_step_id = UUID(fold.advance_to_step_id)
+            proposal = EventProposal(
+                event_type="satellite_advance",
+                from_step=fold.advance_from,
+                to_step=fold.advance_to,
+                reason="daily_outcome_success",
+                rules_snapshot=evaluation.rules_snapshot,
+                progression_schema_version=evaluation.progression_schema_version,
+            )
+            ev = ProgressionEvent(
+                id=new_uuid7(),
+                user_id=log.user_id,
+                exercise_id=log.exercise_id,
+                session_id=session.id,
+                event_type=proposal.event_type,
+                from_step=proposal.from_step,
+                to_step=proposal.to_step,
+                reason=proposal.reason,
+                rules_snapshot=proposal.rules_snapshot,
+                progression_schema_version=proposal.progression_schema_version,
+            )
+            db.add(ev)
+            events.append(ev)
+
+        return (
+            ProgressionEvaluation(
+                goal_met=evaluation.goal_met,
+                counts_for_progression=fold.counts_for_progression,
+                progression_skipped=fold.progression_skipped,
+                rules_snapshot=evaluation.rules_snapshot,
+                progression_schema_version=evaluation.progression_schema_version,
+                step_number=evaluation.step_number,
+                events=tuple(
+                    EventProposal(
+                        event_type=e.event_type,
+                        from_step=e.from_step,
+                        to_step=e.to_step,
+                        reason=e.reason,
+                        rules_snapshot=e.rules_snapshot,
+                        progression_schema_version=e.progression_schema_version,
+                    )
+                    for e in events
+                ),
+            ),
+            events,
         )
 
     async def evaluate_log(
@@ -335,7 +390,7 @@ class SatelliteProgressionOrchestrator:
         log: SessionExerciseLog,
         *,
         session: WorkoutSession,
-    ) -> ProgressionEvaluation:
+    ) -> tuple[ProgressionEvaluation, list[ProgressionEvent]]:
         if log.session_id != session.id or log.user_id != session.user_id:
             raise DomainError("session_log_mismatch", http_status=422)
         if session.deleted_at is not None or log.superseded_at is not None:
@@ -363,6 +418,7 @@ class SatelliteProgressionOrchestrator:
         step_number = progress.current_step_number if progress is not None else 1
 
         ordered = sorted(document.steps, key=lambda s: (s.sort_order, str(s.step_id)))
+        step_ladder = [(s.sort_order, str(s.step_id)) for s in ordered]
         cfg_step: SatelliteConfigStepV1
         if document.progression.mode == "goal_only":
             cfg_step = ordered[0]
@@ -404,8 +460,9 @@ class SatelliteProgressionOrchestrator:
             code = str(exc).split(":", 1)[0]
             raise DomainError(code, http_status=422) from exc
 
+        events: list[ProgressionEvent] = []
         if document.progression.mode == "steps" and progress is not None:
-            evaluation = await self._fold_steps_outcome(
+            evaluation, events = await self._fold_steps_outcome(
                 db,
                 log=log,
                 progress=progress,
@@ -414,6 +471,8 @@ class SatelliteProgressionOrchestrator:
                 evaluation=evaluation,
                 eligible=eligible,
                 already_evaluated=already_evaluated,
+                step_ladder=step_ladder,
+                session=session,
             )
 
         log.step_number = evaluation.step_number
@@ -431,4 +490,4 @@ class SatelliteProgressionOrchestrator:
         if progress is not None:
             progress.last_session_at = log.performed_at
         await db.flush()
-        return evaluation
+        return evaluation, events

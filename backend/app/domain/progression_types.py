@@ -19,6 +19,7 @@ class EventProposal:
 @dataclass(frozen=True, slots=True)
 class ProgressStatePatch:
     current_step_number: int | None = None
+    current_step_id: str | None = None
     fail_streak: int | None = None
     last_session_at_iso: str | None = None
 

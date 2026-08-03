@@ -185,11 +185,14 @@ def test_fold_success_resets_streak_and_finalizes() -> None:
         finalize_after=deadline,
         step_number=2,
         fail_streak=3,
+        step_ladder=[(1, "a"), (2, "b"), (3, "c")],
     )
     assert fold.state.status == "finalized"
     assert fold.state.result == "success"
     assert fold.fail_streak == 0
     assert fold.counts_for_progression is True
+    assert fold.advance_to == 3
+    assert fold.advance_to_step_id == "c"
 
 
 def test_fold_fail_attempt_stays_pending() -> None:

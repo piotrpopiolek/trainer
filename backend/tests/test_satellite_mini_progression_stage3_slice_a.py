@@ -352,10 +352,12 @@ async def test_create_rejects_goal_only_with_multiple_steps(db: AsyncSession) ->
 
 
 @pytest.mark.asyncio
-async def test_log_on_steps_satellite_writes_success_outcome_no_advance(
+async def test_log_on_steps_satellite_advances_on_success(
     db: AsyncSession,
 ) -> None:
-    """Slice B: success finalizes daily outcome; Slice C advance still deferred."""
+    """Slice C: success finalizes daily outcome and advances +1."""
+    from app.models.progression import ProgressionEvent
+
     user = await _ready(db, "copenhagen-log@ex.com")
     sat = await create_satellite(
         db,
@@ -373,8 +375,7 @@ async def test_log_on_steps_satellite_writes_success_outcome_no_advance(
         )
     )
     assert progress_before is not None
-    step_id_before = progress_before.current_step_id
-    step_num_before = progress_before.current_step_number
+    step2_id = __import__("uuid").UUID(sat.steps[1]["step_id"])
 
     read = await create_session(
         db,
@@ -414,8 +415,8 @@ async def test_log_on_steps_satellite_writes_success_outcome_no_advance(
     assert log.progression_skipped is None
 
     await db.refresh(progress_before)
-    assert progress_before.current_step_id == step_id_before
-    assert progress_before.current_step_number == step_num_before
+    assert progress_before.current_step_number == 2
+    assert progress_before.current_step_id == step2_id
     assert progress_before.fail_streak == 0
 
     outcome = await db.scalar(
@@ -428,7 +429,18 @@ async def test_log_on_steps_satellite_writes_success_outcome_no_advance(
     assert outcome is not None
     assert outcome.status == "finalized"
     assert outcome.result == "success"
-    assert outcome.has_success is True
+
+    ev = await db.scalar(
+        select(ProgressionEvent).where(
+            ProgressionEvent.user_id == user.id,
+            ProgressionEvent.exercise_id == sat.id,
+            ProgressionEvent.event_type == "satellite_advance",
+        )
+    )
+    assert ev is not None
+    assert ev.from_step == 1
+    assert ev.to_step == 2
+    assert any(e.event_type == "satellite_advance" for e in read.progression_events)
 
     recs = await db.scalar(
         select(func.count()).select_from(SatelliteRegressionRecommendation)

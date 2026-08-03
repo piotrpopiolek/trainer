@@ -149,7 +149,10 @@ async def test_dispatcher_routes_only_by_exercise_kind() -> None:
 
     async def sat_eval(db, log, *, session):
         sat_calls.append(log.exercise_kind)
-        return SimpleNamespace(is_tip=False, progression_skipped=None, goal_met=True)
+        return (
+            SimpleNamespace(is_tip=False, progression_skipped=None, goal_met=True),
+            [],
+        )
 
     dispatcher._cc.evaluate_log = AsyncMock(side_effect=cc_eval)  # type: ignore[method-assign]
     dispatcher._satellite.evaluate_log = AsyncMock(side_effect=sat_eval)  # type: ignore[method-assign]

@@ -136,6 +136,10 @@ class DailyOutcomeFoldResult:
     """Streak cache patch; None = leave unchanged."""
     fail_streak: int | None
     newly_finalized: bool
+    """Advance at most +1 on newly finalized success; None = stay (last step / no success)."""
+    advance_from: int | None = None
+    advance_to: int | None = None
+    advance_to_step_id: str | None = None
 
 
 def _snapshot(*, result: OutcomeResult, has_attempt: bool, has_success: bool) -> dict[str, Any]:
@@ -187,8 +191,9 @@ def fold_daily_outcome(
     finalize_after: datetime,
     step_number: int,
     fail_streak: int,
+    step_ladder: list[tuple[int, str]] | None = None,
 ) -> DailyOutcomeFoldResult:
-    """Pure daily-outcome fold for mini-progression (advance/recommendations = later slices)."""
+    """Pure daily-outcome fold; success may propose +1 advance (FR-053)."""
     empty = DailyOutcomeState(
         status="pending",
         has_attempt=False,
@@ -199,6 +204,9 @@ def fold_daily_outcome(
         representative_log_id=None,
         result_snapshot=None,
     )
+    ladder = sorted(step_ladder or [], key=lambda t: t[0])
+    max_step = ladder[-1][0] if ladder else step_number
+
     if skipped:
         return DailyOutcomeFoldResult(
             state=current or empty,
@@ -263,12 +271,25 @@ def fold_daily_outcome(
             representative_log_id=log_id,
             result_snapshot=_snapshot(result="success", has_attempt=True, has_success=True),
         )
+        advance_from: int | None = None
+        advance_to: int | None = None
+        advance_to_step_id: str | None = None
+        if step_number < max_step:
+            nxt = step_number + 1
+            match = next((sid for num, sid in ladder if num == nxt), None)
+            if match is not None:
+                advance_from = step_number
+                advance_to = nxt
+                advance_to_step_id = match
         return DailyOutcomeFoldResult(
             state=state,
             counts_for_progression=True,
             progression_skipped=None,
             fail_streak=0,
             newly_finalized=True,
+            advance_from=advance_from,
+            advance_to=advance_to,
+            advance_to_step_id=advance_to_step_id,
         )
 
     # Failed attempt — keep pending unless deadline already passed.

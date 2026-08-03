@@ -50,12 +50,14 @@ class ProgressionDispatcher:
                 events=events,
             )
         if kind == "satellite":
-            result = await self._satellite.evaluate_log(db, log, session=session)
+            result, events = await self._satellite.evaluate_log(
+                db, log, session=session
+            )
             return EvaluateResult(
                 is_tip=result.is_tip,
                 progression_skipped=result.progression_skipped,
                 goal_met=result.goal_met,
-                events=[],
+                events=events,
             )
         raise DomainError("exercise_kind_mismatch", http_status=422)
 
