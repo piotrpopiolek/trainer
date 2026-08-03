@@ -28,6 +28,9 @@ const QUARANTINE_CODES = new Set([
   "payload_required",
   "not_found",
   "unsupported_entity_type",
+  "dependency_missing",
+  "dependency_failed",
+  "dependency_cycle",
 ]);
 
 export function classifyAck(

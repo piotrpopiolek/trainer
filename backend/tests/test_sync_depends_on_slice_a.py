@@ -1,4 +1,4 @@
-"""Slice A contract smoke: SyncPushItemV1 depends_on defaults + validation."""
+"""Slice A + B: depends_on validation and content_hash (FR-072d)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.sync import SyncPushItemV1
+from app.services.sync_push import content_hash
 
 
 def test_depends_on_defaults_empty_and_sorts() -> None:
@@ -38,3 +39,16 @@ def test_depends_on_rejects_duplicate_and_self() -> None:
             entity_id=uuid4(),
             depends_on=[mid, mid],
         )
+
+
+def test_content_hash_includes_canonical_depends_on() -> None:
+    a = uuid4()
+    b = uuid4()
+    payload = {"schema_version": 1, "x": 1}
+    h_empty = content_hash(payload, op="upsert", revision=1, depends_on=[])
+    h_ab = content_hash(payload, op="upsert", revision=1, depends_on=[a, b])
+    h_ba = content_hash(payload, op="upsert", revision=1, depends_on=[b, a])
+    assert h_empty != h_ab
+    assert h_ab == h_ba
+    h_other = content_hash(payload, op="upsert", revision=1, depends_on=[a])
+    assert h_other != h_ab

@@ -125,9 +125,10 @@ describe("outbox sort FR-072a (legacy type-order characterization)", () => {
 });
 
 describe("ACK classify FR-072b", () => {
-  it("marks applied/idempotent as done", () => {
+  it("marks applied/idempotent/applied_detached as done", () => {
     expect(classifyAck("applied", null)).toEqual({ kind: "done" });
     expect(classifyAck("idempotent", null)).toEqual({ kind: "done" });
+    expect(classifyAck("applied_detached", null)).toEqual({ kind: "done" });
   });
 
   it("quarantines revision_jump and legal_required", () => {
@@ -139,6 +140,12 @@ describe("ACK classify FR-072b", () => {
       kind: "quarantine",
       errorCode: "legal_required",
     });
+  });
+
+  it("quarantines dependency error codes", () => {
+    expect(classifyAck("rejected", "dependency_missing").kind).toBe("quarantine");
+    expect(classifyAck("rejected", "dependency_failed").kind).toBe("quarantine");
+    expect(classifyAck("rejected", "dependency_cycle").kind).toBe("quarantine");
   });
 
   it("routes conflicts to conflict action", () => {

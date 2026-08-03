@@ -47,9 +47,22 @@ _OP_ORDER = {"delete": 0, "upsert": 1}
 MAX_BATCH = 20
 
 
-def content_hash(payload: dict[str, Any] | None, *, op: str, revision: int) -> str:
+def content_hash(
+    payload: dict[str, Any] | None,
+    *,
+    op: str,
+    revision: int,
+    depends_on: list[UUID] | None = None,
+) -> str:
+    """Hash op+revision+payload+canonical depends_on (FR-072d)."""
+    deps = sorted(str(u) for u in (depends_on or []))
     blob = json.dumps(
-        {"op": op, "revision": revision, "payload": payload or {}},
+        {
+            "depends_on": deps,
+            "op": op,
+            "payload": payload or {},
+            "revision": revision,
+        },
         sort_keys=True,
         default=str,
         separators=(",", ":"),
@@ -691,7 +704,12 @@ async def push_batch(
     user_id = user.id
     results: list[SyncPushItemResultV1] = []
     for item in sort_push_items(body.items):
-        digest = content_hash(item.payload, op=item.op, revision=item.revision)
+        digest = content_hash(
+            item.payload,
+            op=item.op,
+            revision=item.revision,
+            depends_on=item.depends_on,
+        )
         try:
             claim = await _claim(
                 db, user_id=user_id, item=item, digest=digest

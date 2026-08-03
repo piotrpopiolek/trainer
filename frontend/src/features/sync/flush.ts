@@ -20,7 +20,12 @@ import { syncPull, syncPush, type SyncPushResponse } from "@/features/sync/api";
 import { ApiError } from "@/lib/api";
 import { progressionEventSchema, type ProgressionEvent } from "@/lib/schemas";
 
-let flushMutex: Promise<FlushResult> | null = null;
+/** Pure helper — map sync push ACKs by mutation ID (FR-072a). */
+export function indexPushResultsByMutationId(
+  results: SyncPushResponse["results"],
+): Map<string, SyncPushResponse["results"][number]> {
+  return new Map(results.map((r) => [r.client_mutation_id, r]));
+}
 
 export type FlushResult = {
   pushed: number;
@@ -31,6 +36,8 @@ export type FlushResult = {
   progressionEvents: ProgressionEvent[];
   truncated: boolean;
 };
+
+let flushMutex: Promise<FlushResult> | null = null;
 
 export async function applyPull(userId: string, locale?: string): Promise<void> {
   const deviceId = await getOrCreateDeviceId(userId);
@@ -80,10 +87,13 @@ async function applyPushResults(
   let conflicts = 0;
   const progressionEvents: ProgressionEvent[] = [];
 
-  for (let i = 0; i < windowItems.length; i += 1) {
-    const item = windowItems[i]!;
-    const result = response.results[i];
+  // FR-072a/d: ACK by client_mutation_id — never by array index (server may reorder).
+  const byMutationId = indexPushResultsByMutationId(response.results);
+
+  for (const item of windowItems) {
+    const result = byMutationId.get(item.client_mutation_id);
     if (!result) {
+      // truncated / missing result → pending; do not bump attempts
       item.status = "pending";
       await updateOutboxItem(userId, item);
       continue;
