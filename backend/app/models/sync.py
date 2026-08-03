@@ -27,7 +27,8 @@ class SyncConflictLog(Base):
         CheckConstraint(
             "conflict_kind IN ("
             "'lost_push','tie_revision',"
-            "'session_immutable_after_evaluate','session_date_immutable'"
+            "'session_immutable_after_evaluate','session_date_immutable',"
+            "'satellite_config_activation_lost'"
             ")",
             name="ck_sync_conflict_logs_kind",
         ),
@@ -89,6 +90,14 @@ class ClientMutation(Base):
             "client_mutation_id",
             name="uq_client_mutations_user_mutation",
         ),
+        CheckConstraint(
+            "result_status IN ('applied','applied_detached')",
+            name="ck_client_mutations_result_status",
+        ),
+        CheckConstraint(
+            "(depends_on ? 'schema_version') AND (depends_on ? 'mutation_ids')",
+            name="ck_client_mutations_depends_on_schema",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
@@ -100,7 +109,19 @@ class ClientMutation(Base):
     client_mutation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     entity_type: Mapped[str] = mapped_column(Text, nullable=False)
     entity_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    depends_on: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text(
+            "jsonb_build_object('schema_version', 1, 'mutation_ids', '[]'::jsonb)"
+        ),
+    )
     content_hash: Mapped[str | None] = mapped_column(Text)
+    result_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'applied'"),
+    )
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

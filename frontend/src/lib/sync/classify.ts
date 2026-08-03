@@ -2,6 +2,7 @@
 
 export type PushItemStatus =
   | "applied"
+  | "applied_detached"
   | "idempotent"
   | "conflict_lost"
   | "conflict_tie"
@@ -33,7 +34,11 @@ export function classifyAck(
   status: PushItemStatus,
   errorCode: string | null,
 ): AckAction {
-  if (status === "applied" || status === "idempotent") {
+  if (
+    status === "applied" ||
+    status === "applied_detached" ||
+    status === "idempotent"
+  ) {
     return { kind: "done" };
   }
   if (

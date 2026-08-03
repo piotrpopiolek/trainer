@@ -175,6 +175,7 @@ export async function flushOutbox(userId: string): Promise<FlushResult> {
             revision: i.revision,
             client_updated_at: i.client_updated_at,
             payload: i.payload,
+            depends_on: i.depends_on ?? [],
           })),
           deviceId,
         );

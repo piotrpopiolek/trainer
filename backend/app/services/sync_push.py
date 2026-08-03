@@ -100,7 +100,12 @@ async def _claim(
         client_mutation_id=item.client_mutation_id,
         entity_type=item.entity_type,
         entity_id=item.entity_id,
+        depends_on={
+            "schema_version": 1,
+            "mutation_ids": [str(u) for u in item.depends_on],
+        },
         content_hash=digest,
+        result_status="applied",
     )
     try:
         async with db.begin_nested():

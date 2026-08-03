@@ -8,6 +8,7 @@ export const syncPushItemResultSchema = z.object({
   client_mutation_id: z.string().uuid(),
   status: z.enum([
     "applied",
+    "applied_detached",
     "idempotent",
     "conflict_lost",
     "conflict_tie",
@@ -19,6 +20,9 @@ export const syncPushItemResultSchema = z.object({
   progression_skipped: z.string().nullable().optional(),
   winning_revision: z.number().nullable().optional(),
   winning_updated_at: z.string().nullable().optional(),
+  registered_config_version_id: z.string().uuid().nullable().optional(),
+  activation_applied: z.boolean().nullable().optional(),
+  dependency_failed_mutation_id: z.string().uuid().nullable().optional(),
 });
 
 export const syncPushResponseSchema = z.object({
@@ -68,6 +72,7 @@ export type SyncPushItem = {
   revision: number;
   client_updated_at: string | null;
   payload: Record<string, unknown> | null;
+  depends_on?: string[];
 };
 
 export async function syncPush(

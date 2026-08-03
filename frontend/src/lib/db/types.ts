@@ -19,6 +19,10 @@ export type OutboxItem = {
   revision: number;
   client_updated_at: string;
   payload: Record<string, unknown> | null;
+  /** Prerequisite outbox mutation IDs (FR-072a). */
+  depends_on: string[];
+  /** Diagnostic only — which prereqs block flush (no fifth outbox status). */
+  blocked_by: string[];
   status: OutboxStatus;
   attempts: number;
   transport_failures: number;

@@ -11,6 +11,7 @@ export type EnqueueInput = {
   client_updated_at?: string;
   payload: Record<string, unknown> | null;
   client_mutation_id?: string;
+  depends_on?: string[];
 };
 
 export async function enqueueOutbox(
@@ -18,6 +19,7 @@ export async function enqueueOutbox(
   input: EnqueueInput,
 ): Promise<OutboxItem> {
   const now = new Date().toISOString();
+  const dependsOn = [...new Set(input.depends_on ?? [])].sort();
   const item: OutboxItem = {
     schema_version: 1,
     client_mutation_id: input.client_mutation_id ?? newClientMutationId(),
@@ -27,6 +29,8 @@ export async function enqueueOutbox(
     revision: input.revision ?? 1,
     client_updated_at: input.client_updated_at ?? now,
     payload: input.payload,
+    depends_on: dependsOn,
+    blocked_by: [],
     status: "pending",
     attempts: 0,
     transport_failures: 0,

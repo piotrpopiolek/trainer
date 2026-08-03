@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SyncPushItemV1(BaseModel):
@@ -24,6 +24,21 @@ class SyncPushItemV1(BaseModel):
     revision: int = Field(1, ge=1)
     client_updated_at: datetime | None = None
     payload: dict[str, Any] | None = None
+    # FR-072a: prerequisite client_mutation_id values (not entity_id).
+    depends_on: list[UUID] = Field(default_factory=list, max_length=20)
+
+    @field_validator("depends_on")
+    @classmethod
+    def unique_sorted_depends_on(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("depends_on_duplicate")
+        return sorted(value, key=lambda u: str(u))
+
+    @model_validator(mode="after")
+    def no_self_dependency(self) -> SyncPushItemV1:
+        if self.client_mutation_id in self.depends_on:
+            raise ValueError("depends_on_self_reference")
+        return self
 
 
 class SyncPushRequestV1(BaseModel):
@@ -39,6 +54,7 @@ class SyncPushItemResultV1(BaseModel):
     client_mutation_id: UUID
     status: Literal[
         "applied",
+        "applied_detached",
         "idempotent",
         "conflict_lost",
         "conflict_tie",
@@ -50,6 +66,10 @@ class SyncPushItemResultV1(BaseModel):
     progression_skipped: str | None = None
     winning_revision: int | None = None
     winning_updated_at: datetime | None = None
+    # Stage 2 metadata (populated by later slices; optional for Slice A).
+    registered_config_version_id: UUID | None = None
+    activation_applied: bool | None = None
+    dependency_failed_mutation_id: UUID | None = None
 
 
 class SyncPushResponseV1(BaseModel):
