@@ -55,6 +55,14 @@ export const todayCcExerciseSchema = z.object({
   technique: z.string().nullable().optional(),
 });
 
+export const satellitePendingRegressionSchema = z.object({
+  schema_version: schemaVersion,
+  id: z.string().uuid(),
+  from_step: z.number(),
+  to_step: z.number(),
+  status: z.literal("pending"),
+});
+
 export const todaySatelliteSchema = z.object({
   schema_version: schemaVersion,
   exercise_id: z.string().uuid(),
@@ -68,6 +76,7 @@ export const todaySatelliteSchema = z.object({
   goal: satelliteGoalSchema.nullable().optional(),
   config_version_id: z.string().uuid().nullable().optional(),
   config_hash: z.string().nullable().optional(),
+  pending_regression: satellitePendingRegressionSchema.nullable().optional(),
 });
 
 export const progressionEventSchema = z.object({

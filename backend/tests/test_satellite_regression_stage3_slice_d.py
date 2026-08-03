@@ -296,7 +296,12 @@ async def test_two_failed_days_create_pending_suggestion(db: AsyncSession) -> No
     assert progress.fail_streak == 1
     assert (
         await db.scalar(
-            select(func.count()).select_from(SatelliteRegressionRecommendation)
+            select(func.count())
+            .select_from(SatelliteRegressionRecommendation)
+            .where(
+                SatelliteRegressionRecommendation.user_id == user.id,
+                SatelliteRegressionRecommendation.exercise_id == sat.id,
+            )
         )
         or 0
     ) == 0
@@ -391,7 +396,9 @@ async def test_decline_keeps_step_resets_streak(db: AsyncSession) -> None:
     await _fail_and_finalize(db, user=user, sat=sat, local_date=date(2026, 8, 4))
     rec = await db.scalar(
         select(SatelliteRegressionRecommendation).where(
-            SatelliteRegressionRecommendation.status == "pending"
+            SatelliteRegressionRecommendation.user_id == user.id,
+            SatelliteRegressionRecommendation.exercise_id == sat.id,
+            SatelliteRegressionRecommendation.status == "pending",
         )
     )
     assert rec is not None
@@ -429,7 +436,9 @@ async def test_success_stales_pending_recommendation(db: AsyncSession) -> None:
     await _fail_and_finalize(db, user=user, sat=sat, local_date=date(2026, 8, 4))
     rec = await db.scalar(
         select(SatelliteRegressionRecommendation).where(
-            SatelliteRegressionRecommendation.status == "pending"
+            SatelliteRegressionRecommendation.user_id == user.id,
+            SatelliteRegressionRecommendation.exercise_id == sat.id,
+            SatelliteRegressionRecommendation.status == "pending",
         )
     )
     assert rec is not None

@@ -5,6 +5,26 @@ import { Button, Modal } from "@/components/ui";
 import type { ProgressionEvent } from "@/lib/schemas";
 import { useSeenEventsStore } from "@/stores/seenEventsStore";
 
+function titleKey(eventType: string): string {
+  if (eventType === "advance" || eventType === "satellite_advance") {
+    return "progress.advanceTitle";
+  }
+  if (eventType === "satellite_regress_confirmed") {
+    return "progress.satelliteRegressConfirmedTitle";
+  }
+  return "progress.regressTitle";
+}
+
+function bodyKey(eventType: string): string {
+  if (eventType === "advance" || eventType === "satellite_advance") {
+    return "progress.advanceBody";
+  }
+  if (eventType === "satellite_regress_confirmed") {
+    return "progress.satelliteRegressConfirmedBody";
+  }
+  return "progress.regressBody";
+}
+
 export function ProgressionSurface({
   events,
   names,
@@ -20,20 +40,19 @@ export function ProgressionSurface({
 
   if (!current) return null;
 
-  const isAdvance = current.event_type === "advance";
   const name = names[current.exercise_id] ?? t("progress.unknownExercise");
 
   return (
     <Modal
       open
-      title={isAdvance ? t("progress.advanceTitle") : t("progress.regressTitle")}
+      title={t(titleKey(current.event_type))}
       onClose={() => markSeen(current.id)}
       actions={
         <Button onClick={() => markSeen(current.id)}>{t("progress.ack")}</Button>
       }
     >
       <p>
-        {t(isAdvance ? "progress.advanceBody" : "progress.regressBody", {
+        {t(bodyKey(current.event_type), {
           name,
           from: current.from_step,
           to: current.to_step,

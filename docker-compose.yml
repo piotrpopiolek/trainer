@@ -134,5 +134,27 @@ services:
       db:
         condition: service_healthy
 
+  satellite-finalize:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-trainer}
+      TRAINER_APP_PASSWORD: ${TRAINER_APP_PASSWORD:?set TRAINER_APP_PASSWORD in .env}
+      SATELLITE_FINALIZE_HEARTBEAT_PATH: ${SATELLITE_FINALIZE_HEARTBEAT_PATH:-}
+      SATELLITE_FINALIZE_LIMIT: ${SATELLITE_FINALIZE_LIMIT:-500}
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    entrypoint: ["python", "-m", "app.jobs.satellite_finalize"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

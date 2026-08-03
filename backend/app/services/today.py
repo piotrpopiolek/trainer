@@ -18,16 +18,19 @@ from app.models.catalog import (
     SatelliteConfigVersion,
 )
 from app.models.progression import UserExerciseProgress
+from app.models.satellite_progress import SatelliteRegressionRecommendation
 from app.models.user import User
 from app.models.workout import WorkoutSession
 from app.schemas.api import (
     TodayCcExerciseV1,
     TodaySatelliteV1,
     TodaySessionDto,
+    SatellitePendingRegressionV1,
 )
 from app.services.cc_day import get_active_enrollment, resolve_cc_day_for_user
 from app.services.errors import DomainError
 from app.services.locale import resolve_locale
+from app.services.satellite_progression import SatelliteProgressionOrchestrator
 from app.services.sessions import progress_to_read, session_to_read
 
 
@@ -63,6 +66,10 @@ async def build_today(
     locale: str | None = None,
 ) -> TodaySessionDto:
     day = local_date or _local_today(user.timezone)
+    # Slice E: finalize overdue failed days before surfacing progress (FR-053).
+    await SatelliteProgressionOrchestrator().finalize_due_outcomes(
+        db, user_id=user.id
+    )
     requested, resolved = resolve_locale(requested=locale, user_locale=user.locale)
     cc = await resolve_cc_day_for_user(db, user, local_date=day)
     enrollment = await get_active_enrollment(db, user.id)
@@ -179,6 +186,28 @@ async def build_today(
         goal = None
         if step is not None and isinstance(step.rules, dict):
             goal = step.rules.get("goal")
+        pending_reg = None
+        rec = await db.scalar(
+            select(SatelliteRegressionRecommendation).where(
+                SatelliteRegressionRecommendation.user_id == user.id,
+                SatelliteRegressionRecommendation.exercise_id == sat.id,
+                SatelliteRegressionRecommendation.status == "pending",
+            )
+        )
+        if rec is not None:
+            from_step_row = await db.scalar(
+                select(ExerciseStep).where(ExerciseStep.id == rec.from_step_id)
+            )
+            to_step_row = await db.scalar(
+                select(ExerciseStep).where(ExerciseStep.id == rec.to_step_id)
+            )
+            if from_step_row is not None and to_step_row is not None:
+                pending_reg = SatellitePendingRegressionV1(
+                    id=rec.id,
+                    from_step=from_step_row.step_number,
+                    to_step=to_step_row.step_number,
+                    status="pending",
+                )
         satellites_out.append(
             TodaySatelliteV1(
                 exercise_id=sat.id,
@@ -192,6 +221,7 @@ async def build_today(
                 goal=goal if isinstance(goal, dict) else None,
                 config_version_id=sat.current_config_version_id,
                 config_hash=cfg.config_hash.hex() if cfg is not None else None,
+                pending_regression=pending_reg,
             )
         )
 

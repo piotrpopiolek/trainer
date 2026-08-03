@@ -443,6 +443,11 @@ async def test_log_on_steps_satellite_advances_on_success(
     assert any(e.event_type == "satellite_advance" for e in read.progression_events)
 
     recs = await db.scalar(
-        select(func.count()).select_from(SatelliteRegressionRecommendation)
+        select(func.count())
+        .select_from(SatelliteRegressionRecommendation)
+        .where(
+            SatelliteRegressionRecommendation.user_id == user.id,
+            SatelliteRegressionRecommendation.exercise_id == sat.id,
+        )
     )
     assert int(recs or 0) == 0

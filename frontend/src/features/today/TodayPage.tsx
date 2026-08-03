@@ -7,6 +7,7 @@ import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import {
   createSessionOfflineAware,
+  decideSatelliteRegressionOfflineAware,
   softDeleteSessionOfflineAware,
 } from "@/features/sync/writes";
 import { fetchToday } from "@/features/training/api";
@@ -161,9 +162,29 @@ export function TodayPage() {
           sessions: old.sessions.filter((s) => s.id !== target.id),
         };
       });
-      if (navigator.onLine) {
-        await qc.invalidateQueries({ queryKey: ["today"] });
+      await qc.invalidateQueries({ queryKey: ["today"] });
+    },
+  });
+
+  const regressMut = useMutation({
+    mutationFn: async (input: {
+      exerciseId: string;
+      recommendationId: string;
+      decision: "accept" | "decline";
+    }) => {
+      if (!me?.id) throw new ApiError(401, "unauthorized");
+      return decideSatelliteRegressionOfflineAware(me.id, input);
+    },
+    onSuccess: async (result) => {
+      if (result.event) {
+        setEvents((prev) => [...prev, result.event!]);
       }
+      setFlash(
+        result.pendingSync
+          ? t("today.regressPendingSync")
+          : t("today.regressDecided"),
+      );
+      await qc.invalidateQueries({ queryKey: ["today"] });
     },
   });
 
@@ -272,63 +293,103 @@ export function TodayPage() {
             <p className="text-sm text-slate-500">{t("today.noSatellites")}</p>
           ) : (
             data.satellites.map((sat) => (
-              <ExerciseRow
-                key={sat.exercise_id}
-                name={sat.name}
-                stepName={sat.step_name}
-                step={sat.current_step_number ?? 1}
-                onLog={() => {
-                  const goal = (sat.goal ?? {}) as SatelliteGoal;
-                  const metrics = activeMetricsList(sat.active_metrics);
-                  const goalType =
-                    goal.type === "completed"
-                      ? "completed"
-                      : goal.type === "duration"
-                        ? "duration"
-                        : "reps";
-                  const requireBothSides = Boolean(goal.require_both_sides);
-                  const setCount =
-                    typeof goal.sets === "number" && goal.sets >= 1 ? goal.sets : 3;
-                  const setSides: Array<"left" | "right" | null> = [];
-                  if (goalType !== "completed") {
-                    if (requireBothSides) {
-                      for (let i = 0; i < setCount; i++) setSides.push("left");
-                      for (let i = 0; i < setCount; i++) setSides.push("right");
-                    } else {
-                      for (let i = 0; i < setCount; i++) setSides.push(null);
+              <div key={sat.exercise_id} className="flex flex-col gap-2">
+                <ExerciseRow
+                  name={sat.name}
+                  stepName={sat.step_name}
+                  step={sat.current_step_number ?? 1}
+                  onLog={() => {
+                    const goal = (sat.goal ?? {}) as SatelliteGoal;
+                    const metrics = activeMetricsList(sat.active_metrics);
+                    const goalType =
+                      goal.type === "completed"
+                        ? "completed"
+                        : goal.type === "duration"
+                          ? "duration"
+                          : "reps";
+                    const requireBothSides = Boolean(goal.require_both_sides);
+                    const setCount =
+                      typeof goal.sets === "number" && goal.sets >= 1 ? goal.sets : 3;
+                    const setSides: Array<"left" | "right" | null> = [];
+                    if (goalType !== "completed") {
+                      if (requireBothSides) {
+                        for (let i = 0; i < setCount; i++) setSides.push("left");
+                        for (let i = 0; i < setCount; i++) setSides.push("right");
+                      } else {
+                        for (let i = 0; i < setCount; i++) setSides.push(null);
+                      }
                     }
-                  }
-                  const defaultVal =
-                    goalType === "duration"
-                      ? String(goal.min_duration_sec ?? 30)
-                      : String(goal.min_reps ?? 10);
-                  const trackWeight = metrics.includes("weight_kg");
-                  setCompletedFlag(false);
-                  setSetValues(
-                    goalType === "completed"
-                      ? []
-                      : Array.from({ length: setSides.length }, () => defaultVal),
-                  );
-                  setWeightValues(
-                    trackWeight
-                      ? Array.from({ length: setSides.length }, () => "20")
-                      : [],
-                  );
-                  setLogExercise({
-                    id: sat.exercise_id,
-                    kind: "satellite",
-                    name: sat.name,
-                    sets: setSides.length || 1,
-                    useDuration: goalType === "duration",
-                    goalType,
-                    requireBothSides,
-                    trackWeight,
-                    setSides,
-                    configVersionId: sat.config_version_id ?? undefined,
-                    configHash: sat.config_hash ?? undefined,
-                  });
-                }}
-              />
+                    const defaultVal =
+                      goalType === "duration"
+                        ? String(goal.min_duration_sec ?? 30)
+                        : String(goal.min_reps ?? 10);
+                    const trackWeight = metrics.includes("weight_kg");
+                    setCompletedFlag(false);
+                    setSetValues(
+                      goalType === "completed"
+                        ? []
+                        : Array.from({ length: setSides.length }, () => defaultVal),
+                    );
+                    setWeightValues(
+                      trackWeight
+                        ? Array.from({ length: setSides.length }, () => "20")
+                        : [],
+                    );
+                    setLogExercise({
+                      id: sat.exercise_id,
+                      kind: "satellite",
+                      name: sat.name,
+                      sets: setSides.length || 1,
+                      useDuration: goalType === "duration",
+                      goalType,
+                      requireBothSides,
+                      trackWeight,
+                      setSides,
+                      configVersionId: sat.config_version_id ?? undefined,
+                      configHash: sat.config_hash ?? undefined,
+                    });
+                  }}
+                />
+                {sat.pending_regression ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+                    <p className="font-medium">{t("today.regressSuggestTitle")}</p>
+                    <p className="mt-1">
+                      {t("today.regressSuggestBody", {
+                        name: sat.name,
+                        from: sat.pending_regression.from_step,
+                        to: sat.pending_regression.to_step,
+                      })}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        disabled={regressMut.isPending}
+                        onClick={() =>
+                          regressMut.mutate({
+                            exerciseId: sat.exercise_id,
+                            recommendationId: sat.pending_regression!.id,
+                            decision: "accept",
+                          })
+                        }
+                      >
+                        {t("today.regressAccept")}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={regressMut.isPending}
+                        onClick={() =>
+                          regressMut.mutate({
+                            exerciseId: sat.exercise_id,
+                            recommendationId: sat.pending_regression!.id,
+                            decision: "decline",
+                          })
+                        }
+                      >
+                        {t("today.regressDecline")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ))
           )}
         </section>

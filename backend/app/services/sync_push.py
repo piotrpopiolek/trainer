@@ -35,13 +35,15 @@ from app.services import sessions as session_service
 from app.services.errors import DomainError, LegalRequiredError, NotFoundError
 from app.services.legal import record_legal_acceptance
 from app.services.measurements import soft_delete_measurement
+from app.services.satellite_progression import SatelliteProgressionOrchestrator
 from app.services.sessions import progress_to_read
 
 _TYPE_ORDER = {
     "legal_acceptance": 0,
     "satellite": 1,
-    "workout_session": 2,
-    "body_measurement": 3,
+    "satellite_regression_decision": 2,
+    "workout_session": 3,
+    "body_measurement": 4,
 }
 _OP_ORDER = {"delete": 0, "upsert": 1}
 MAX_BATCH = 20
@@ -867,10 +869,67 @@ async def apply_push_item(
                 error_code="satellite_delete_unsupported",
             )
         return await _apply_satellite_upsert(db, user=user, item=item)
+    if item.entity_type == "satellite_regression_decision":
+        return await _apply_satellite_regression_decision(db, user=user, item=item)
     return SyncPushItemResultV1(
         client_mutation_id=item.client_mutation_id,
         status="rejected",
         error_code="unsupported_entity_type",
+    )
+
+
+async def _apply_satellite_regression_decision(
+    db: AsyncSession,
+    *,
+    user: User,
+    item: SyncPushItemV1,
+) -> SyncPushItemResultV1:
+    if item.op == "delete":
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="unsupported_op",
+        )
+    payload = item.payload or {}
+    raw_decision = payload.get("decision")
+    raw_rec = payload.get("recommendation_id")
+    if raw_decision not in ("accept", "decline") or raw_rec is None:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="invalid_payload",
+        )
+    try:
+        recommendation_id = UUID(str(raw_rec))
+    except (TypeError, ValueError):
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code="invalid_payload",
+        )
+    from typing import Literal
+
+    from app.services.satellite_progression import SatelliteProgressionOrchestrator
+
+    decision: Literal["accept", "decline"] = raw_decision
+    try:
+        await SatelliteProgressionOrchestrator().decide_recommendation(
+            db,
+            user_id=user.id,
+            exercise_id=item.entity_id,
+            recommendation_id=recommendation_id,
+            decision=decision,
+            commit=False,
+        )
+    except DomainError as exc:
+        return SyncPushItemResultV1(
+            client_mutation_id=item.client_mutation_id,
+            status="rejected",
+            error_code=exc.error_code,
+        )
+    return SyncPushItemResultV1(
+        client_mutation_id=item.client_mutation_id,
+        status="applied",
     )
 
 
@@ -888,6 +947,12 @@ async def push_batch(
         raise DomainError("batch_duplicate_mutation_id", http_status=422)
 
     await _touch_device(db, user_id=user.id, device_id=body.device_id)
+    await db.commit()
+
+    # Slice E: finalize overdue failed days before applying outbox (FR-053).
+    await SatelliteProgressionOrchestrator().finalize_due_outcomes(
+        db, user_id=user.id
+    )
     await db.commit()
 
     user_id = user.id

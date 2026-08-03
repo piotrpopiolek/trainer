@@ -14,6 +14,7 @@ import {
   type Today,
 } from "@/lib/schemas";
 import { newClientMutationId } from "@/lib/uuid";
+import { useAuthStore } from "@/stores/authStore";
 import { z } from "zod";
 
 export async function fetchToday(params?: {
@@ -219,5 +220,37 @@ export async function overrideProgress(
   return {
     progress: progressItemSchema.parse(raw.progress),
     event: progressionEventSchema.parse(raw.event),
+  };
+}
+
+export async function decideSatelliteRegression(
+  exerciseId: string,
+  recommendationId: string,
+  decision: "accept" | "decline",
+): Promise<{
+  recommendationId: string;
+  status: string;
+  progress: ProgressItem;
+  event: ProgressionEvent | null;
+}> {
+  const csrf = useAuthStore.getState().me?.csrf_token;
+  const raw = await apiJson<{
+    recommendation_id: string;
+    status: string;
+    progress: unknown;
+    event: unknown | null;
+  }>(
+    `/api/satellites/${exerciseId}/regression-recommendations/${recommendationId}/${decision}`,
+    {
+      method: "POST",
+      csrfToken: csrf,
+      body: JSON.stringify({ schema_version: 1 }),
+    },
+  );
+  return {
+    recommendationId: raw.recommendation_id,
+    status: raw.status,
+    progress: progressItemSchema.parse(raw.progress),
+    event: raw.event ? progressionEventSchema.parse(raw.event) : null,
   };
 }

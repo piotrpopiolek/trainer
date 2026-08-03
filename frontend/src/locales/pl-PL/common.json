@@ -77,7 +77,13 @@
     "stepDetails": "Wykonanie i wskazówki",
     "sectionExecution": "Wykonanie",
     "sectionRationale": "Rentgen",
-    "sectionTechnique": "Doskonalenie"
+    "sectionTechnique": "Doskonalenie",
+    "regressSuggestTitle": "Sugestia regresu",
+    "regressSuggestBody": "{{name}}: po nieudanych dniach serwer proponuje krok {{from}} → {{to}}. Decyzja jest po Twojej stronie.",
+    "regressAccept": "Obniż krok",
+    "regressDecline": "Zostaw krok",
+    "regressDecided": "Decyzja zapisana.",
+    "regressPendingSync": "Decyzja w kolejce synchronizacji."
   },
   "progress": {
     "title": "Mój progres CC",
@@ -89,6 +95,8 @@
     "regressTitle": "Regres",
     "advanceBody": "{{name}}: krok {{from}} → {{to}}",
     "regressBody": "{{name}}: krok {{from}} → {{to}} (dwie kolejne nieudane próby)",
+    "satelliteRegressConfirmedTitle": "Regres satelity",
+    "satelliteRegressConfirmedBody": "{{name}}: krok {{from}} → {{to}} (zaakceptowano sugestię)",
     "ack": "OK",
     "unknownExercise": "Ćwiczenie"
   },
@@ -193,6 +201,8 @@
     "stage1GoalOnlyOneStep": "Na razie satelity goal-only mają dokładnie jeden krok.",
     "goalOnlyRequiresOneStep": "Tryb goal-only wymaga dokładnie jednego kroku.",
     "stepsModeRequires2To5": "Mini-progresja wymaga od 2 do 5 kroków.",
-    "bilateralNotAllowed": "Przy wymaganych stronach L/P nie używaj wariantu bilateralnego."
+    "bilateralNotAllowed": "Przy wymaganych stronach L/P nie używaj wariantu bilateralnego.",
+    "recommendationStale": "Sugestia regresu jest nieaktualna — odśwież ekran.",
+    "recommendationNotPending": "Ta sugestia regresu została już rozstrzygnięta."
   }
 }

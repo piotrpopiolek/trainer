@@ -30,6 +30,8 @@ const KNOWN: Record<string, string> = {
   goal_only_requires_one_step: "errors.goalOnlyRequiresOneStep",
   steps_mode_requires_2_to_5: "errors.stepsModeRequires2To5",
   bilateral_not_allowed_when_require_both_sides: "errors.bilateralNotAllowed",
+  recommendation_stale: "errors.recommendationStale",
+  recommendation_not_pending: "errors.recommendationNotPending",
 };
 
 export function errorCodeToI18nKey(errorCode: string): string {

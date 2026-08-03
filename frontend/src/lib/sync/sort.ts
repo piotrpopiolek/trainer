@@ -6,8 +6,9 @@ import type { OutboxEntityType, OutboxItem } from "@/lib/db/types";
 const TYPE_ORDER: Record<OutboxEntityType, number> = {
   legal_acceptance: 0,
   satellite: 1,
-  workout_session: 2,
-  body_measurement: 3,
+  satellite_regression_decision: 2,
+  workout_session: 3,
+  body_measurement: 4,
 };
 
 function sortKeyTime(item: OutboxItem): string {

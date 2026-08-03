@@ -180,6 +180,41 @@ describe("outbox sort FR-072a (topo + tie-breaker)", () => {
     ]);
   });
 
+  it("places regression decisions after satellite create and before sessions", () => {
+    const sorted = sortOutboxItems([
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000001",
+        entity_type: "workout_session",
+        entity_id: "018f0000-0000-7000-8000-000000000011",
+        op: "upsert",
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000002",
+        entity_type: "satellite_regression_decision",
+        entity_id: "018f0000-0000-7000-8000-000000000012",
+        op: "upsert",
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000003",
+        entity_type: "satellite",
+        entity_id: "018f0000-0000-7000-8000-000000000013",
+        op: "upsert",
+      }),
+      item({
+        client_mutation_id: "018f0000-0000-7000-8000-000000000004",
+        entity_type: "legal_acceptance",
+        entity_id: "018f0000-0000-7000-8000-000000000014",
+        op: "upsert",
+      }),
+    ]);
+    expect(sorted.map((i) => i.entity_type)).toEqual([
+      "legal_acceptance",
+      "satellite",
+      "satellite_regression_decision",
+      "workout_session",
+    ]);
+  });
+
   it("takeFlushWindow caps at 20 after topo", () => {
     const items = Array.from({ length: 25 }, (_, i) =>
       item({

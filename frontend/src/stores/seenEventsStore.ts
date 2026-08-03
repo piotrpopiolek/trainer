@@ -9,7 +9,7 @@ type SeenEventsState = {
   filterUnseen: (events: ProgressionEvent[]) => ProgressionEvent[];
 };
 
-/** FR-036: surface advance/regress once per event.id */
+/** FR-036 / FR-053: surface CC + satellite progression events once per event.id */
 export const useSeenEventsStore = create<SeenEventsState>()(
   persist(
     (set, get) => ({
@@ -21,11 +21,13 @@ export const useSeenEventsStore = create<SeenEventsState>()(
       },
       filterUnseen: (events) => {
         const seen = new Set(get().seenIds);
-        return events.filter(
-          (e) =>
-            (e.event_type === "advance" || e.event_type === "regress") &&
-            !seen.has(e.id),
-        );
+        const surface = new Set([
+          "advance",
+          "regress",
+          "satellite_advance",
+          "satellite_regress_confirmed",
+        ]);
+        return events.filter((e) => surface.has(e.event_type) && !seen.has(e.id));
       },
     }),
     { name: "trainer.seen-progression-events" },

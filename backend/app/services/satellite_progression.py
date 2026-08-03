@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import or_, select, text, update
@@ -192,7 +192,7 @@ class SatelliteProgressionOrchestrator:
             )
             .values(status="stale", decided_at=now)
         )
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def _maybe_create_suggestion(
         self,
@@ -205,7 +205,7 @@ class SatelliteProgressionOrchestrator:
         config_version_id: UUID,
         threshold: int,
         step_ladder: list[tuple[int, str]],
-        rules_snapshot: dict | None,
+        rules_snapshot: dict[str, Any] | None,
         schema_version: int | None,
         session_id: UUID | None,
     ) -> ProgressionEvent | None:
@@ -243,6 +243,9 @@ class SatelliteProgressionOrchestrator:
                 await db.flush()
         except IntegrityError:
             return None
+        snapshot = rules_snapshot
+        if snapshot is None or "schema_version" not in snapshot:
+            snapshot = {"schema_version": schema_version or 1}
         ev = ProgressionEvent(
             id=new_uuid7(),
             user_id=user_id,
@@ -252,8 +255,8 @@ class SatelliteProgressionOrchestrator:
             from_step=proposal.from_step,
             to_step=proposal.to_step,
             reason=f"failed_days>={proposal.threshold}",
-            rules_snapshot=rules_snapshot,
-            progression_schema_version=schema_version,
+            rules_snapshot=snapshot,
+            progression_schema_version=schema_version or 1,
         )
         db.add(ev)
         return ev
@@ -342,8 +345,8 @@ class SatelliteProgressionOrchestrator:
                 from_step=from_number,
                 to_step=to_number,
                 reason="recommendation_accepted",
-                rules_snapshot=None,
-                progression_schema_version=None,
+                rules_snapshot={"schema_version": 1},
+                progression_schema_version=1,
             )
             db.add(event)
         else:
@@ -369,7 +372,7 @@ class SatelliteProgressionOrchestrator:
         exercise_id: UUID | None = None,
         now: datetime | None = None,
     ) -> int:
-        """Lazy finalizer for pending failed days (also used by future Today/cron)."""
+        """Lazy finalizer for pending failed days (Today / session / sync / cron)."""
         moment = now or datetime.now(UTC)
         q = select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user_id,

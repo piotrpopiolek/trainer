@@ -9,7 +9,7 @@ import { enqueueOutbox, listOutboxByStatus } from "@/lib/db/outbox";
 import { openUserDb } from "@/lib/db/open";
 import { requestPersistentStorage } from "@/lib/db/persist";
 import { buildOfflineSatellitePin } from "@/lib/satelliteOfflinePin";
-import type { Measurement, Satellite, Session } from "@/lib/schemas";
+import type { Measurement, ProgressionEvent, Satellite, Session } from "@/lib/schemas";
 import { resolveSessionDependsOn } from "@/lib/sync/dependsOn";
 import { newClientMutationId } from "@/lib/uuid";
 import { useSyncStore } from "@/stores/syncStore";
@@ -311,4 +311,44 @@ export async function enqueueLegalAcceptance(
     payload: { ...payload, client_mutation_id: mutationId },
   });
   await afterEnqueue(userId);
+}
+
+export async function decideSatelliteRegressionOfflineAware(
+  userId: string,
+  input: {
+    exerciseId: string;
+    recommendationId: string;
+    decision: "accept" | "decline";
+  },
+): Promise<{ pendingSync: boolean; event: ProgressionEvent | null }> {
+  if (navigator.onLine) {
+    try {
+      const result = await online.decideSatelliteRegression(
+        input.exerciseId,
+        input.recommendationId,
+        input.decision,
+      );
+      return { pendingSync: false, event: result.event };
+    } catch (err) {
+      if (!isOfflineOrNetwork(err)) throw err;
+    }
+  }
+
+  const mutationId = newClientMutationId();
+  const now = new Date().toISOString();
+  await enqueueOutbox(userId, {
+    client_mutation_id: mutationId,
+    entity_type: "satellite_regression_decision",
+    entity_id: input.exerciseId,
+    revision: 1,
+    client_updated_at: now,
+    payload: {
+      schema_version: 1,
+      recommendation_id: input.recommendationId,
+      decision: input.decision,
+      client_mutation_id: mutationId,
+    },
+  });
+  await afterEnqueue(userId);
+  return { pendingSync: true, event: null };
 }

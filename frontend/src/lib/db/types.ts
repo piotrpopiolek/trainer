@@ -4,7 +4,8 @@ export type OutboxEntityType =
   | "legal_acceptance"
   | "workout_session"
   | "body_measurement"
-  | "satellite";
+  | "satellite"
+  | "satellite_regression_decision";
 
 export type OutboxOp = "upsert" | "delete";
 

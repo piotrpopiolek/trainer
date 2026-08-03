@@ -18,6 +18,7 @@ class SyncPushItemV1(BaseModel):
         "workout_session",
         "body_measurement",
         "satellite",
+        "satellite_regression_decision",
     ]
     entity_id: UUID
     op: Literal["upsert", "delete"] = "upsert"

@@ -29,6 +29,7 @@ from app.services.errors import DomainError
 from app.services.legal import require_health_disclaimer_for_session
 from app.services.locale import resolve_locale
 from app.services.progression import ProgressionEngine
+from app.services.satellite_progression import SatelliteProgressionOrchestrator
 from app.services.session_rules import (
     assert_no_active_cc_log_same_day,
     soft_delete_session,
@@ -230,6 +231,10 @@ async def create_session(
 ) -> SessionReadV1:
     await require_health_disclaimer_for_session(
         db, user_id=user.id, locale=user.locale or "pl-PL"
+    )
+    # Slice E: finalize overdue failed days before evaluating new logs (FR-053).
+    await SatelliteProgressionOrchestrator().finalize_due_outcomes(
+        db, user_id=user.id
     )
     tz_name = body.client_timezone or user.timezone
     performed_at = body.performed_at

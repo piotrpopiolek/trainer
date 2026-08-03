@@ -159,6 +159,14 @@ class TodayCcExerciseV1(BaseModel):
     technique: str | None = None
 
 
+class SatellitePendingRegressionV1(BaseModel):
+    schema_version: int = 1
+    id: UUID
+    from_step: int
+    to_step: int
+    status: Literal["pending"] = "pending"
+
+
 class TodaySatelliteV1(BaseModel):
     schema_version: int = 1
     exercise_id: UUID
@@ -172,6 +180,7 @@ class TodaySatelliteV1(BaseModel):
     goal: dict[str, Any] | None = None
     config_version_id: UUID | None = None
     config_hash: str | None = None
+    pending_regression: SatellitePendingRegressionV1 | None = None
 
 
 class TodaySessionDto(BaseModel):
