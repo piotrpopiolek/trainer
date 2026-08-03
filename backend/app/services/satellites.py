@@ -138,16 +138,20 @@ async def create_satellite(
     schema_id = await _satellite_schema_id(db)
     now = body.client_updated_at or datetime.now(UTC)
     ex_id = exercise_id if exercise_id is not None else new_uuid7()
-    config_version_id = new_uuid7()
+    config_version_id = body.config_version_id or new_uuid7()
 
     step_rows: list[tuple[UUID, Any, Any]] = []
     config_steps: list[SatelliteConfigStepV1] = []
+    seen_step_ids: set[UUID] = set()
     for step in sorted(body.steps, key=lambda s: s.step_number):
         try:
             rules = parse_satellite_rules(step.rules)
         except Exception as exc:
             raise DomainError("invalid_satellite_rules", http_status=422) from exc
-        step_id = new_uuid7()
+        step_id = step.step_id or new_uuid7()
+        if step_id in seen_step_ids:
+            raise DomainError("duplicate_step_id", http_status=422)
+        seen_step_ids.add(step_id)
         step_rows.append((step_id, step, rules))
         config_steps.append(
             SatelliteConfigStepV1(

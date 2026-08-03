@@ -233,6 +233,7 @@ class SatelliteStepCreateV1(BaseModel):
     rules: dict[str, Any]
     name: str | None = None
     description: str | None = None
+    step_id: UUID | None = None
 
 
 class SatelliteCreateV1(BaseModel):
@@ -250,6 +251,7 @@ class SatelliteCreateV1(BaseModel):
     steps: list[SatelliteStepCreateV1] = Field(..., min_length=1, max_length=5)
     client_mutation_id: UUID
     client_updated_at: datetime | None = None
+    config_version_id: UUID | None = None
 
 
 class SatelliteReadV1(BaseModel):

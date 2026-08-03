@@ -5,9 +5,12 @@ import {
   putSatelliteCache,
   putSessionCache,
 } from "@/lib/db/cache";
-import { enqueueOutbox } from "@/lib/db/outbox";
+import { enqueueOutbox, listOutboxByStatus } from "@/lib/db/outbox";
+import { openUserDb } from "@/lib/db/open";
 import { requestPersistentStorage } from "@/lib/db/persist";
+import { buildOfflineSatellitePin } from "@/lib/satelliteOfflinePin";
 import type { Measurement, Satellite, Session } from "@/lib/schemas";
+import { resolveSessionDependsOn } from "@/lib/sync/dependsOn";
 import { newClientMutationId } from "@/lib/uuid";
 import { useSyncStore } from "@/stores/syncStore";
 import { flushOutbox } from "@/features/sync/flush";
@@ -35,9 +38,15 @@ async function afterEnqueue(userId: string): Promise<void> {
   }
 }
 
+export type CreateSessionOfflineOptions = {
+  /** Extra mutation IDs (e.g. explicit tombstone when not discoverable). */
+  dependsOn?: string[];
+};
+
 export async function createSessionOfflineAware(
   userId: string,
   input: Parameters<typeof online.createSession>[0],
+  options?: CreateSessionOfflineOptions,
 ): Promise<{ session: Session; pendingSync: boolean }> {
   if (navigator.onLine) {
     try {
@@ -52,6 +61,13 @@ export async function createSessionOfflineAware(
   const mutationId = newClientMutationId();
   const entityId = newClientMutationId();
   const now = new Date().toISOString();
+  const pending = await listOutboxByStatus(userId, ["pending", "in_flight"]);
+  const dependsOn = resolveSessionDependsOn({
+    pending,
+    localDate: input.localDate,
+    logs: input.logs,
+    extraDependsOn: options?.dependsOn,
+  });
   const payload = {
     schema_version: 1,
     performed_at: input.performedAt,
@@ -69,6 +85,7 @@ export async function createSessionOfflineAware(
     revision: 1,
     client_updated_at: input.performedAt,
     payload,
+    depends_on: dependsOn,
   });
   const session: Session = {
     schema_version: 1,
@@ -90,6 +107,8 @@ export async function createSessionOfflineAware(
       goal_met: false,
       counts_for_progression: false,
       notes: l.notes ?? null,
+      satellite_config_version_id: l.satellite_config_version_id ?? null,
+      satellite_config_hash: l.satellite_config_hash ?? null,
     })),
     progression_events: [],
     progress: [],
@@ -107,26 +126,40 @@ export async function softDeleteSessionOfflineAware(
   userId: string,
   sessionId: string,
   revision: number,
-): Promise<{ pendingSync: boolean }> {
+): Promise<{ pendingSync: boolean; clientMutationId: string }> {
   if (navigator.onLine) {
     try {
       await online.softDeleteSession(sessionId);
       await deleteSessionCache(userId, sessionId);
-      return { pendingSync: false };
+      return { pendingSync: false, clientMutationId: "" };
     } catch (err) {
       if (!isOfflineOrNetwork(err)) throw err;
     }
   }
+
+  let localDate: string | null = null;
+  try {
+    const db = await openUserDb(userId);
+    const cached = await db.get("sessions", sessionId);
+    if (cached && typeof cached.local_date === "string") {
+      localDate = cached.local_date;
+    }
+  } catch {
+    // cache miss is fine — replacement edge may be passed explicitly
+  }
+
+  const mutationId = newClientMutationId();
   await enqueueOutbox(userId, {
+    client_mutation_id: mutationId,
     entity_type: "workout_session",
     entity_id: sessionId,
     op: "delete",
     revision: revision + 1,
-    payload: null,
+    payload: localDate ? { local_date: localDate } : null,
   });
   await deleteSessionCache(userId, sessionId);
   await afterEnqueue(userId);
-  return { pendingSync: true };
+  return { pendingSync: true, clientMutationId: mutationId };
 }
 
 export async function createMeasurementOfflineAware(
@@ -200,40 +233,29 @@ export async function createSatelliteOfflineAware(
   }
   const mutationId = newClientMutationId();
   const entityId = newClientMutationId();
-  const isTypeC = input.exercise_type === "C";
-  const metrics: string[] = [];
-  if (!isTypeC) {
-    metrics.push("reps");
-    if (input.trackWeight) metrics.push("weight_kg");
-    if (input.requireBothSides) metrics.push("sides");
-  }
-  const goal = isTypeC
-    ? { type: "completed" as const }
-    : {
-        type: "reps" as const,
-        sets: input.goalSets ?? 3,
-        min_reps: input.goalReps ?? 10,
-        require_both_sides: input.requireBothSides ?? false,
-        min_weight_kg: null,
-      };
+  const pin = await buildOfflineSatellitePin({
+    exercise_type: input.exercise_type,
+    stepName: input.stepName,
+    goalSets: input.goalSets,
+    goalReps: input.goalReps,
+    requireBothSides: input.requireBothSides,
+    trackWeight: input.trackWeight,
+  });
   const payload = {
     schema_version: 1,
     name: input.name,
     exercise_type: input.exercise_type,
-    active_metrics: { schema_version: 1, metrics },
+    active_metrics: pin.activeMetrics,
     schedule_kind: input.schedule_kind,
     weekdays: input.weekdays,
     schedule_category: input.schedule_category,
-    steps: [
-      {
-        step_number: 1,
-        name: input.stepName,
-        rules: {
-          schema_version: 1,
-          goal,
-        },
-      },
-    ],
+    config_version_id: pin.configVersionId,
+    steps: pin.steps.map((s) => ({
+      step_number: s.step_number,
+      step_id: s.step_id,
+      name: s.name,
+      rules: s.rules,
+    })),
     client_mutation_id: mutationId,
   };
   await enqueueOutbox(userId, {
@@ -248,14 +270,19 @@ export async function createSatelliteOfflineAware(
     id: entityId,
     name: input.name,
     exercise_type: input.exercise_type,
-    active_metrics: payload.active_metrics,
+    active_metrics: pin.activeMetrics,
     schedule_kind: input.schedule_kind,
     weekdays: input.weekdays ?? null,
     schedule_category: input.schedule_category ?? null,
     revision: 1,
-    current_config_version_id: null,
-    config_hash: null,
-    steps: payload.steps as unknown as Array<Record<string, unknown>>,
+    current_config_version_id: pin.configVersionId,
+    config_hash: pin.configHash,
+    steps: pin.steps.map((s) => ({
+      step_number: s.step_number,
+      step_id: s.step_id,
+      name: s.name,
+      rules: s.rules,
+    })) as unknown as Array<Record<string, unknown>>,
   };
   await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);
   await afterEnqueue(userId);
