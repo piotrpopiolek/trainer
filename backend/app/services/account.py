@@ -12,10 +12,19 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.body_measurement import BodyMeasurement
-from app.models.catalog import Exercise
+from app.models.catalog import (
+    Exercise,
+    ExerciseStep,
+    SatelliteConfigActivation,
+    SatelliteConfigVersion,
+)
 from app.models.legal import UserLegalAcceptance
 from app.models.onboarding import UserOnboarding
 from app.models.progression import ProgressionEvent, UserExerciseProgress
+from app.models.satellite_progress import (
+    SatelliteDailyOutcome,
+    SatelliteRegressionRecommendation,
+)
 from app.models.sync import ClientMutation, SyncConflictLog, SyncDevice
 from app.models.user import User
 from app.models.workout import SessionExerciseLog, WorkoutSession
@@ -87,6 +96,16 @@ async def stream_account_export(
                     "sets": log.sets,
                     "goal_met": log.goal_met,
                     "counts_for_progression": log.counts_for_progression,
+                    "satellite_config_version_id": (
+                        str(log.satellite_config_version_id)
+                        if log.satellite_config_version_id
+                        else None
+                    ),
+                    "satellite_config_hash": (
+                        log.satellite_config_hash.hex()
+                        if log.satellite_config_hash
+                        else None
+                    ),
                 },
             )
 
@@ -124,6 +143,9 @@ async def stream_account_export(
                 "event_type": ev.event_type,
                 "from_step": ev.from_step,
                 "to_step": ev.to_step,
+                "related_outcome_id": (
+                    str(ev.related_outcome_id) if ev.related_outcome_id else None
+                ),
                 "created_at": ev.created_at.isoformat(),
             },
         )
@@ -159,7 +181,147 @@ async def stream_account_export(
                 "id": str(sat.id),
                 "name": sat.name,
                 "exercise_type": sat.exercise_type,
+                "schedule_kind": sat.schedule_kind,
+                "revision": sat.revision,
+                "current_config_version_id": (
+                    str(sat.current_config_version_id)
+                    if sat.current_config_version_id
+                    else None
+                ),
+                "pending_config_version_id": (
+                    str(sat.pending_config_version_id)
+                    if sat.pending_config_version_id
+                    else None
+                ),
+                "config_effective_on": (
+                    sat.config_effective_on.isoformat()
+                    if sat.config_effective_on
+                    else None
+                ),
                 "deleted_at": sat.deleted_at.isoformat() if sat.deleted_at else None,
+            },
+        )
+        steps = (
+            await db.scalars(
+                select(ExerciseStep)
+                .where(ExerciseStep.exercise_id == sat.id)
+                .order_by(ExerciseStep.step_number)
+            )
+        ).all()
+        for step in steps:
+            yield _line(
+                "satellite_steps",
+                {
+                    "id": str(step.id),
+                    "exercise_id": str(sat.id),
+                    "step_number": step.step_number,
+                    "name": step.name,
+                    "rules": step.rules,
+                },
+            )
+
+    configs = (
+        await db.scalars(
+            select(SatelliteConfigVersion)
+            .where(SatelliteConfigVersion.user_id == user_id)
+            .order_by(SatelliteConfigVersion.created_at)
+        )
+    ).all()
+    for cfg in configs:
+        yield _line(
+            "satellite_config_versions",
+            {
+                "id": str(cfg.id),
+                "exercise_id": str(cfg.exercise_id),
+                "authored_revision": cfg.authored_revision,
+                "schema_version": cfg.schema_version,
+                "config_hash": cfg.config_hash.hex(),
+                "document": cfg.document,
+                "registered_by_mutation_id": str(cfg.registered_by_mutation_id),
+                "created_at": cfg.created_at.isoformat(),
+            },
+        )
+
+    activations = (
+        await db.scalars(
+            select(SatelliteConfigActivation)
+            .where(SatelliteConfigActivation.user_id == user_id)
+            .order_by(SatelliteConfigActivation.effective_from_local_date)
+        )
+    ).all()
+    for act in activations:
+        yield _line(
+            "satellite_config_activations",
+            {
+                "id": str(act.id),
+                "exercise_id": str(act.exercise_id),
+                "config_version_id": str(act.config_version_id),
+                "effective_from_local_date": act.effective_from_local_date.isoformat(),
+                "effective_until_local_date": (
+                    act.effective_until_local_date.isoformat()
+                    if act.effective_until_local_date
+                    else None
+                ),
+                "activated_at": act.activated_at.isoformat(),
+            },
+        )
+
+    outcomes = (
+        await db.scalars(
+            select(SatelliteDailyOutcome)
+            .where(SatelliteDailyOutcome.user_id == user_id)
+            .order_by(SatelliteDailyOutcome.local_date)
+        )
+    ).all()
+    for outcome in outcomes:
+        yield _line(
+            "satellite_daily_outcomes",
+            {
+                "id": str(outcome.id),
+                "exercise_id": str(outcome.exercise_id),
+                "local_date": outcome.local_date.isoformat(),
+                "step_id": str(outcome.step_id),
+                "config_version_id": str(outcome.config_version_id),
+                "status": outcome.status,
+                "result": outcome.result,
+                "has_attempt": outcome.has_attempt,
+                "has_success": outcome.has_success,
+                "result_snapshot": outcome.result_snapshot,
+                "finalize_after": (
+                    outcome.finalize_after.isoformat() if outcome.finalize_after else None
+                ),
+                "finalized_at": (
+                    outcome.finalized_at.isoformat() if outcome.finalized_at else None
+                ),
+                "source_log_deleted_at": (
+                    outcome.source_log_deleted_at.isoformat()
+                    if outcome.source_log_deleted_at
+                    else None
+                ),
+            },
+        )
+
+    recommendations = (
+        await db.scalars(
+            select(SatelliteRegressionRecommendation)
+            .where(SatelliteRegressionRecommendation.user_id == user_id)
+            .order_by(SatelliteRegressionRecommendation.created_at)
+        )
+    ).all()
+    for rec in recommendations:
+        yield _line(
+            "satellite_regression_recommendations",
+            {
+                "id": str(rec.id),
+                "exercise_id": str(rec.exercise_id),
+                "trigger_outcome_id": str(rec.trigger_outcome_id),
+                "config_version_id": str(rec.config_version_id),
+                "from_step_id": str(rec.from_step_id),
+                "to_step_id": str(rec.to_step_id),
+                "status": rec.status,
+                "expected_progress_revision": rec.expected_progress_revision,
+                "created_at": rec.created_at.isoformat(),
+                "decided_at": rec.decided_at.isoformat() if rec.decided_at else None,
             },
         )
 

@@ -261,3 +261,21 @@ async def assert_user_training_gone(db: AsyncSession, *, user_id: UUID) -> None:
     )
     if int(act or 0) > 0:
         raise AssertionError(f"satellite_config_activations still present for {user_id}")
+
+    outcomes = await db.scalar(
+        select(func.count())
+        .select_from(SatelliteDailyOutcome)
+        .where(SatelliteDailyOutcome.user_id == user_id)
+    )
+    if int(outcomes or 0) > 0:
+        raise AssertionError(f"satellite_daily_outcomes still present for {user_id}")
+
+    recs = await db.scalar(
+        select(func.count())
+        .select_from(SatelliteRegressionRecommendation)
+        .where(SatelliteRegressionRecommendation.user_id == user_id)
+    )
+    if int(recs or 0) > 0:
+        raise AssertionError(
+            f"satellite_regression_recommendations still present for {user_id}"
+        )
