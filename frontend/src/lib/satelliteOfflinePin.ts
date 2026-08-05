@@ -4,6 +4,7 @@ import { sha256JcsHex } from "@/lib/canonicalJson";
 import {
   activeMetricsSchema,
   satelliteRulesSchema,
+  type SatelliteProgressionPolicy,
   type SatelliteRules,
 } from "@/lib/satelliteContracts";
 import { newClientMutationId } from "@/lib/uuid";
@@ -80,25 +81,10 @@ export async function buildOfflineSatellitePin(input: {
   const stepId = input.stepId ?? newClientMutationId();
   const rules = buildRulesForPin(input);
   const activeMetrics = buildActiveMetrics(input);
-  const document: Record<string, unknown> = {
-    schema_version: 1,
+  return buildOfflineSatellitePinFromParts({
     exercise_type: input.exercise_type,
-    active_metrics: activeMetrics,
-    progression: { mode: "goal_only" },
-    steps: [
-      {
-        step_id: stepId,
-        sort_order: 1,
-        rules,
-      },
-    ],
-  };
-  const configHash = await sha256JcsHex(document);
-  return {
-    configVersionId,
-    configHash,
-    document,
     activeMetrics,
+    progression: { mode: "goal_only" },
     steps: [
       {
         step_id: stepId,
@@ -107,5 +93,55 @@ export async function buildOfflineSatellitePin(input: {
         rules,
       },
     ],
+    configVersionId,
+  });
+}
+
+/** Multi-step / preset create — same document shape as backend SatelliteConfigDocumentV1. */
+export async function buildOfflineSatellitePinFromParts(input: {
+  exercise_type: "B" | "C";
+  activeMetrics: { schema_version: 1; metrics: string[] };
+  progression: SatelliteProgressionPolicy;
+  steps: Array<{
+    step_id?: string;
+    step_number: number;
+    name: string | null;
+    rules: SatelliteRules;
+  }>;
+  configVersionId?: string;
+}): Promise<OfflineSatellitePin> {
+  const configVersionId = input.configVersionId ?? newClientMutationId();
+  const activeMetrics = activeMetricsSchema.parse({
+    schema_version: 1,
+    metrics: [...input.activeMetrics.metrics].sort(),
+  }) as { schema_version: 1; metrics: string[] };
+  const steps = input.steps.map((s) => {
+    const step_id = s.step_id ?? newClientMutationId();
+    const rules = satelliteRulesSchema.parse(s.rules);
+    return {
+      step_id,
+      step_number: s.step_number,
+      name: s.name,
+      rules,
+    };
+  });
+  const document: Record<string, unknown> = {
+    schema_version: 1,
+    exercise_type: input.exercise_type,
+    active_metrics: activeMetrics,
+    progression: input.progression,
+    steps: steps.map((s) => ({
+      step_id: s.step_id,
+      sort_order: s.step_number,
+      rules: s.rules,
+    })),
+  };
+  const configHash = await sha256JcsHex(document);
+  return {
+    configVersionId,
+    configHash,
+    document,
+    activeMetrics,
+    steps,
   };
 }

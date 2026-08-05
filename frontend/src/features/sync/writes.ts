@@ -8,7 +8,12 @@ import {
 import { enqueueOutbox, listOutboxByStatus } from "@/lib/db/outbox";
 import { openUserDb } from "@/lib/db/open";
 import { requestPersistentStorage } from "@/lib/db/persist";
-import { buildOfflineSatellitePin } from "@/lib/satelliteOfflinePin";
+import { buildOfflineSatellitePin, buildOfflineSatellitePinFromParts } from "@/lib/satelliteOfflinePin";
+import {
+  buildSatellitePresetCreate,
+  type SatelliteCreateRequest,
+  type SatellitePresetId,
+} from "@/lib/satellitePresets";
 import type { Measurement, ProgressionEvent, Satellite, Session } from "@/lib/schemas";
 import { resolveSessionDependsOn } from "@/lib/sync/dependsOn";
 import { newClientMutationId } from "@/lib/uuid";
@@ -231,37 +236,35 @@ export async function createMeasurementOfflineAware(
   return { measurement, pendingSync: true };
 }
 
-export async function createSatelliteOfflineAware(
+async function enqueueSatelliteCreate(
   userId: string,
-  input: Parameters<typeof online.createSatellite>[0],
+  body: SatelliteCreateRequest,
 ): Promise<{ satellite: Satellite; pendingSync: boolean }> {
-  if (navigator.onLine) {
-    try {
-      const satellite = await online.createSatellite(input);
-      await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);
-      return { satellite, pendingSync: false };
-    } catch (err) {
-      if (!isOfflineOrNetwork(err)) throw err;
-    }
-  }
-  const mutationId = newClientMutationId();
+  const mutationId = body.client_mutation_id ?? newClientMutationId();
   const entityId = newClientMutationId();
-  const pin = await buildOfflineSatellitePin({
-    exercise_type: input.exercise_type,
-    stepName: input.stepName,
-    goalSets: input.goalSets,
-    goalReps: input.goalReps,
-    requireBothSides: input.requireBothSides,
-    trackWeight: input.trackWeight,
+  const pin = await buildOfflineSatellitePinFromParts({
+    exercise_type: body.exercise_type,
+    activeMetrics: body.active_metrics,
+    progression: body.progression ?? { mode: "goal_only" },
+    steps: body.steps.map((s) => ({
+      step_id: s.step_id,
+      step_number: s.step_number,
+      name: s.name ?? null,
+      rules: s.rules,
+    })),
+    configVersionId: body.config_version_id,
   });
-  const payload = {
+  const payload: Record<string, unknown> = {
     schema_version: 1,
-    name: input.name,
-    exercise_type: input.exercise_type,
+    name: body.name,
+    exercise_type: body.exercise_type,
     active_metrics: pin.activeMetrics,
-    schedule_kind: input.schedule_kind,
-    weekdays: input.weekdays,
-    schedule_category: input.schedule_category,
+    equipment: body.equipment ?? [],
+    tags: body.tags ?? [],
+    schedule_kind: body.schedule_kind,
+    weekdays: body.weekdays,
+    schedule_category: body.schedule_category,
+    progression: body.progression ?? { mode: "goal_only" },
     config_version_id: pin.configVersionId,
     steps: pin.steps.map((s) => ({
       step_number: s.step_number,
@@ -281,12 +284,14 @@ export async function createSatelliteOfflineAware(
   const satellite: Satellite = {
     schema_version: 1,
     id: entityId,
-    name: input.name,
-    exercise_type: input.exercise_type,
+    name: body.name,
+    exercise_type: body.exercise_type,
     active_metrics: pin.activeMetrics,
-    schedule_kind: input.schedule_kind,
-    weekdays: input.weekdays ?? null,
-    schedule_category: input.schedule_category ?? null,
+    equipment: body.equipment ?? [],
+    tags: body.tags ?? [],
+    schedule_kind: body.schedule_kind,
+    weekdays: body.weekdays ?? null,
+    schedule_category: body.schedule_category ?? null,
     revision: 1,
     current_config_version_id: pin.configVersionId,
     config_hash: pin.configHash,
@@ -300,6 +305,75 @@ export async function createSatelliteOfflineAware(
   await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);
   await afterEnqueue(userId);
   return { satellite, pendingSync: true };
+}
+
+export async function createSatelliteFromBodyOfflineAware(
+  userId: string,
+  body: SatelliteCreateRequest,
+): Promise<{ satellite: Satellite; pendingSync: boolean }> {
+  if (navigator.onLine) {
+    try {
+      const satellite = await online.createSatelliteFromBody(body);
+      await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);
+      return { satellite, pendingSync: false };
+    } catch (err) {
+      if (!isOfflineOrNetwork(err)) throw err;
+    }
+  }
+  return enqueueSatelliteCreate(userId, body);
+}
+
+export async function createSatellitePresetOfflineAware(
+  userId: string,
+  presetId: SatellitePresetId,
+  opts?: { name?: string },
+): Promise<{ satellite: Satellite; pendingSync: boolean }> {
+  return createSatelliteFromBodyOfflineAware(
+    userId,
+    buildSatellitePresetCreate(presetId, { name: opts?.name }),
+  );
+}
+
+export async function createSatelliteOfflineAware(
+  userId: string,
+  input: Parameters<typeof online.createSatellite>[0],
+): Promise<{ satellite: Satellite; pendingSync: boolean }> {
+  if (navigator.onLine) {
+    try {
+      const satellite = await online.createSatellite(input);
+      await putSatelliteCache(userId, satellite as unknown as Record<string, unknown>);
+      return { satellite, pendingSync: false };
+    } catch (err) {
+      if (!isOfflineOrNetwork(err)) throw err;
+    }
+  }
+  const mutationId = newClientMutationId();
+  const pin = await buildOfflineSatellitePin({
+    exercise_type: input.exercise_type,
+    stepName: input.stepName,
+    goalSets: input.goalSets,
+    goalReps: input.goalReps,
+    requireBothSides: input.requireBothSides,
+    trackWeight: input.trackWeight,
+  });
+  return enqueueSatelliteCreate(userId, {
+    schema_version: 1,
+    name: input.name,
+    exercise_type: input.exercise_type,
+    active_metrics: pin.activeMetrics,
+    schedule_kind: input.schedule_kind,
+    weekdays: input.weekdays,
+    schedule_category: input.schedule_category,
+    progression: { mode: "goal_only" },
+    config_version_id: pin.configVersionId,
+    client_mutation_id: mutationId,
+    steps: pin.steps.map((s) => ({
+      step_number: s.step_number,
+      step_id: s.step_id,
+      name: s.name,
+      rules: s.rules,
+    })),
+  });
 }
 
 export async function enqueueLegalAcceptance(

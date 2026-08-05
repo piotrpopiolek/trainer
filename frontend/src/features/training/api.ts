@@ -82,6 +82,21 @@ export async function listSatellites(): Promise<Satellite[]> {
   return z.array(satelliteSchema).parse(raw.items);
 }
 
+import type { SatelliteCreateRequest } from "@/lib/satellitePresets";
+
+export async function createSatelliteFromBody(
+  body: SatelliteCreateRequest,
+): Promise<Satellite> {
+  const raw = await apiJson<unknown>("/api/satellites", {
+    method: "POST",
+    body: JSON.stringify({
+      ...body,
+      client_mutation_id: body.client_mutation_id ?? newClientMutationId(),
+    }),
+  });
+  return satelliteSchema.parse(raw);
+}
+
 export async function createSatellite(input: {
   name: string;
   exercise_type: "B" | "C";
@@ -110,30 +125,25 @@ export async function createSatellite(input: {
         require_both_sides: input.requireBothSides ?? false,
         min_weight_kg: null,
       };
-  const raw = await apiJson<unknown>("/api/satellites", {
-    method: "POST",
-    body: JSON.stringify({
-      schema_version: 1,
-      name: input.name,
-      exercise_type: input.exercise_type,
-      active_metrics: { schema_version: 1, metrics },
-      schedule_kind: input.schedule_kind,
-      weekdays: input.weekdays,
-      schedule_category: input.schedule_category,
-      steps: [
-        {
-          step_number: 1,
-          name: input.stepName,
-          rules: {
-            schema_version: 1,
-            goal,
-          },
+  return createSatelliteFromBody({
+    schema_version: 1,
+    name: input.name,
+    exercise_type: input.exercise_type,
+    active_metrics: { schema_version: 1, metrics },
+    schedule_kind: input.schedule_kind,
+    weekdays: input.weekdays,
+    schedule_category: input.schedule_category,
+    steps: [
+      {
+        step_number: 1,
+        name: input.stepName,
+        rules: {
+          schema_version: 1,
+          goal,
         },
-      ],
-      client_mutation_id: newClientMutationId(),
-    }),
+      },
+    ],
   });
-  return satelliteSchema.parse(raw);
 }
 
 export async function updateSatellite(input: {

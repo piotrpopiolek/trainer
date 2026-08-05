@@ -4,11 +4,16 @@ import { useTranslation } from "react-i18next";
 
 import { Button, Input, Page, Select } from "@/components/ui";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
-import { createSatelliteOfflineAware } from "@/features/sync/writes";
+import { createSatelliteOfflineAware, createSatellitePresetOfflineAware } from "@/features/sync/writes";
 import { cloneSatellite, listSatellites, updateSatellite } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import type { Satellite } from "@/lib/schemas";
+import {
+  SATELLITE_PRESET_IDS,
+  satellitePresetMeta,
+  type SatellitePresetId,
+} from "@/lib/satellitePresets";
 import { useAuthStore } from "@/stores/authStore";
 
 function scheduleKindLabel(
@@ -196,6 +201,17 @@ export function SatellitesPage() {
     },
   });
 
+  const presetMut = useMutation({
+    mutationFn: (presetId: SatellitePresetId) => {
+      if (!me?.id) throw new ApiError(401, "unauthorized");
+      return createSatellitePresetOfflineAware(me.id, presetId);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["satellites"] });
+      await qc.invalidateQueries({ queryKey: ["today"] });
+    },
+  });
+
   const count = listQ.data?.length ?? 0;
 
   return (
@@ -227,6 +243,44 @@ export function SatellitesPage() {
             />
           ))}
         </ul>
+
+        <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/70 p-4">
+          <h2 className="font-display text-lg font-semibold">
+            {t("satellites.presetsTitle")}
+          </h2>
+          <p className="text-sm text-slate-600">{t("satellites.presetsHint")}</p>
+          <ul className="flex flex-col gap-2">
+            {SATELLITE_PRESET_IDS.map((presetId) => {
+              const meta = satellitePresetMeta(presetId);
+              return (
+                <li
+                  key={presetId}
+                  className="flex flex-col gap-2 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-medium">{meta.defaultName}</p>
+                    <p className="text-xs text-slate-500">{t(meta.summaryKey)}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={presetMut.isPending || count >= 10}
+                    onClick={() => presetMut.mutate(presetId)}
+                  >
+                    {t("satellites.addPreset")}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          {presetMut.isError ? (
+            <p className="text-sm text-rose-700">
+              {presetMut.error instanceof ApiError
+                ? t(errorCodeToI18nKey(presetMut.error.errorCode))
+                : t("errors.generic")}
+            </p>
+          ) : null}
+        </section>
 
         <form
           className="flex flex-col gap-3 rounded-xl border border-dashed border-slate-300 bg-white/60 p-4"
