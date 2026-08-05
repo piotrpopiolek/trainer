@@ -326,6 +326,7 @@ async def test_rebuild_matches_cache_after_override(db: AsyncSession) -> None:
     assert streak == progress.fail_streak == 0
 
 
+@pytest.mark.idor
 @pytest.mark.asyncio
 async def test_override_rejects_foreign_related_outcome(db: AsyncSession) -> None:
     user = await _ready(db, "s4d-idor@ex.com")

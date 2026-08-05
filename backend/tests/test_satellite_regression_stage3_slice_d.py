@@ -377,6 +377,7 @@ async def test_accept_regresses_one_step(db: AsyncSession) -> None:
     assert rec.status == "accepted"
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_concurrent_session_create_and_decide_no_deadlock(
     db: AsyncSession,

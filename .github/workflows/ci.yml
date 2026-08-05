@@ -83,9 +83,39 @@ jobs:
           exit 1
       - name: Alembic upgrade
         run: docker compose run --rm api alembic -c backend/alembic.ini upgrade head
+      - name: Seed catalog
+        run: docker compose run --rm api python -m app.seed
       - name: Pytest IDOR
         # Marker suite only — coverage gate stays on the full pytest job
         run: docker compose run --rm api pytest -m idor --no-cov
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  backend-concurrency:
+    name: Backend concurrency suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare env
+        run: bash scripts/gen_dev_env.sh
+      - name: Build API image
+        run: docker compose build api
+      - name: Start database
+        run: docker compose up -d db
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T db pg_isready -U trainer -d trainer && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: Alembic upgrade
+        run: docker compose run --rm api alembic -c backend/alembic.ini upgrade head
+      - name: Seed catalog
+        run: docker compose run --rm api python -m app.seed
+      - name: Pytest concurrency
+        run: docker compose run --rm api pytest -m concurrency --no-cov
       - name: Tear down
         if: always()
         run: docker compose down -v
