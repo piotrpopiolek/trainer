@@ -232,10 +232,10 @@ async def test_finalize_batch_idempotent_and_heartbeat(
         db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
     )
     outcome = await _pending_overdue(
-        db, user=user, sat=sat, local_date=date(2026, 8, 3)
+        db, user=user, sat=sat, local_date=date(2030, 8, 3)
     )
 
-    now = datetime(2026, 8, 10, tzinfo=UTC)
+    now = datetime(2030, 8, 10, tzinfo=UTC)
     pairs = await list_due_finalize_pairs(db, now=now)
     assert (user.id, sat.id) in pairs
 
@@ -274,11 +274,11 @@ async def test_today_lazy_finalizes_overdue(db: AsyncSession) -> None:
         db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
     )
     outcome = await _pending_overdue(
-        db, user=user, sat=sat, local_date=date(2026, 8, 3)
+        db, user=user, sat=sat, local_date=date(2030, 8, 3)
     )
 
     # Freeze "now" by setting deadline far past; build_today uses real now.
-    await build_today(db, user=user, local_date=date(2026, 8, 10))
+    await build_today(db, user=user, local_date=date(2030, 8, 10))
     await db.refresh(outcome)
     assert outcome.status == "finalized"
     assert outcome.result == "failure"
@@ -309,7 +309,7 @@ async def test_create_session_lazy_finalizes_prior_day(db: AsyncSession) -> None
         db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
     )
     prior = await _pending_overdue(
-        db, user=user, sat=sat, local_date=date(2026, 8, 3)
+        db, user=user, sat=sat, local_date=date(2030, 8, 3)
     )
 
     await create_session(
@@ -317,8 +317,8 @@ async def test_create_session_lazy_finalizes_prior_day(db: AsyncSession) -> None
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 10, 12, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 10),
+            performed_at=datetime(2030, 8, 10, 12, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 10),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -351,7 +351,7 @@ async def test_create_session_lazy_finalizes_prior_day(db: AsyncSession) -> None
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 10),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 10),
         )
     )
     assert today_outcome is not None

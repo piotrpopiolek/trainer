@@ -266,8 +266,8 @@ async def test_fail_then_success_same_day_advances_once(db: AsyncSession) -> Non
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 9, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 3),
+            performed_at=datetime(2030, 8, 3, 9, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -288,8 +288,8 @@ async def test_fail_then_success_same_day_advances_once(db: AsyncSession) -> Non
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 16, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 3),
+            performed_at=datetime(2030, 8, 3, 16, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -327,7 +327,7 @@ async def test_fail_then_success_same_day_advances_once(db: AsyncSession) -> Non
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 3),
         )
     )
     assert outcome is not None

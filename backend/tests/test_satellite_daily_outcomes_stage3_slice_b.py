@@ -310,8 +310,8 @@ async def test_fail_then_success_same_day_finalizes_success(db: AsyncSession) ->
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 9, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 3),
+            performed_at=datetime(2030, 8, 3, 9, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -342,8 +342,8 @@ async def test_fail_then_success_same_day_finalizes_success(db: AsyncSession) ->
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 18, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 3),
+            performed_at=datetime(2030, 8, 3, 18, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -371,14 +371,14 @@ async def test_lazy_finalize_failure_step1_no_streak(db: AsyncSession) -> None:
     sat = await create_satellite(
         db, user=user, body=_copenhagen_body(mutation_id=new_uuid7()), commit=True
     )
-    # local_date near "now" so deadline is still in the future → pending attempt.
-    day = date(2026, 8, 3)
+    # local_date in the future so deadline stays ahead of real now → pending attempt.
+    day = date(2030, 8, 3)
     await create_session(
         db,
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 10, 0, tzinfo=UTC),
+            performed_at=datetime(2030, 8, 3, 10, 0, tzinfo=UTC),
             local_date=day,
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
@@ -454,8 +454,8 @@ async def test_lazy_finalize_failure_step2_increments_streak(db: AsyncSession) -
         user=user,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 3, 10, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 3),
+            performed_at=datetime(2030, 8, 3, 10, 0, tzinfo=UTC),
+            local_date=date(2030, 8, 3),
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[

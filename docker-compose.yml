@@ -35,6 +35,7 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       TRAINER_APP_PASSWORD: ${TRAINER_APP_PASSWORD:?set TRAINER_APP_PASSWORD in .env}
       TRAINER_MIGRATOR_PASSWORD: ${TRAINER_MIGRATOR_PASSWORD:?set TRAINER_MIGRATOR_PASSWORD in .env}
+      ENABLE_E2E_LOGIN: ${ENABLE_E2E_LOGIN:-0}
     depends_on:
       db:
         condition: service_healthy

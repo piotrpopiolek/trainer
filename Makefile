@@ -1,4 +1,4 @@
-.PHONY: up down logs api-shell migrate seed test test-idor lint frontend-install frontend-dev trust-ca content-gate go-live-smoke restore-drill
+.PHONY: up down logs api-shell migrate seed test test-idor test-concurrency lint frontend-install frontend-dev trust-ca content-gate go-live-smoke restore-drill
 
 up:
 	docker compose up -d --build
@@ -23,6 +23,9 @@ test:
 
 test-idor:
 	docker compose run --rm api pytest -m idor
+
+test-concurrency:
+	docker compose run --rm api pytest -m concurrency --no-cov
 
 lint:
 	docker compose run --rm api ruff check backend

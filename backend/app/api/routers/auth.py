@@ -26,7 +26,8 @@ from app.core.cookies import (
 from app.db.session import get_session
 from app.services.auth_session import AuthSessionService
 from app.services.csrf import ensure_csrf_cookie, new_csrf_token
-from app.services.errors import AuthError
+from app.services.e2e_auth import provision_e2e_ready_user
+from app.services.errors import AuthError, DomainError
 from app.services.legal import user_has_current_health_disclaimer
 from app.services.oauth_google import GoogleOAuthService
 
@@ -43,6 +44,11 @@ class MeResponse(BaseModel):
     onboarding_completed: bool
     health_disclaimer_accepted: bool
     csrf_token: str
+
+
+class E2eLoginRequest(BaseModel):
+    schema_version: int = 1
+    email: str | None = None
 
 
 @router.get("/google/start")
@@ -151,3 +157,23 @@ async def me(
         health_disclaimer_accepted=accepted,
         csrf_token=token,
     )
+
+
+@router.post("/e2e-login")
+async def e2e_login(
+    request: Request,
+    body: E2eLoginRequest = E2eLoginRequest(),
+    db: AsyncSession = Depends(get_session),
+    auth_sessions: AuthSessionService = Depends(get_auth_session_service),
+) -> RedirectResponse:
+    """Mint an onboarded session for Playwright (ENABLE_E2E_LOGIN + non-prod)."""
+    if settings.app_env in {"production", "staging"} or not settings.enable_e2e_login:
+        raise DomainError("not_found", http_status=404)
+    user = await provision_e2e_ready_user(db, email=body.email)
+    raw = await auth_sessions.create_session(
+        db, user=user, user_agent=request.headers.get("user-agent")
+    )
+    redirect = RedirectResponse(url=f"{settings.public_origin}/", status_code=302)
+    set_session_cookie(redirect, raw)
+    set_csrf_cookie(redirect, new_csrf_token())
+    return redirect

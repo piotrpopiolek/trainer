@@ -220,7 +220,7 @@ async def test_pending_soft_delete_cancels_when_no_attempts(db: AsyncSession) ->
         db,
         user=user,
         sat=sat,
-        local_date=date(2026, 8, 3),
+        local_date=date(2030, 8, 3),
         hour=10,
         sets=_fail_sets(),
     )
@@ -228,7 +228,7 @@ async def test_pending_soft_delete_cancels_when_no_attempts(db: AsyncSession) ->
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 3),
         )
     )
     assert outcome is not None
@@ -265,7 +265,7 @@ async def test_pending_soft_delete_recomputes_with_remaining_attempt(
         db,
         user=user,
         sat=sat,
-        local_date=date(2026, 8, 3),
+        local_date=date(2030, 8, 3),
         hour=9,
         sets=_fail_sets(),
     )
@@ -273,7 +273,7 @@ async def test_pending_soft_delete_recomputes_with_remaining_attempt(
         db,
         user=user,
         sat=sat,
-        local_date=date(2026, 8, 3),
+        local_date=date(2030, 8, 3),
         hour=11,
         sets=_fail_sets(),
     )
@@ -281,7 +281,7 @@ async def test_pending_soft_delete_recomputes_with_remaining_attempt(
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 3),
         )
     )
     assert outcome is not None
@@ -376,7 +376,7 @@ async def test_soft_delete_idempotent_second_call(db: AsyncSession) -> None:
         db,
         user=user,
         sat=sat,
-        local_date=date(2026, 8, 3),
+        local_date=date(2030, 8, 3),
         hour=10,
         sets=_fail_sets(),
     )
@@ -385,7 +385,7 @@ async def test_soft_delete_idempotent_second_call(db: AsyncSession) -> None:
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 3),
         )
     )
     assert outcome is not None
@@ -408,7 +408,7 @@ async def test_sync_soft_delete_pending_cancels_outcome(db: AsyncSession) -> Non
         db,
         user=user,
         sat=sat,
-        local_date=date(2026, 8, 3),
+        local_date=date(2030, 8, 3),
         hour=10,
         sets=_fail_sets(),
     )
@@ -438,7 +438,7 @@ async def test_sync_soft_delete_pending_cancels_outcome(db: AsyncSession) -> Non
         select(SatelliteDailyOutcome).where(
             SatelliteDailyOutcome.user_id == user.id,
             SatelliteDailyOutcome.exercise_id == sat.id,
-            SatelliteDailyOutcome.local_date == date(2026, 8, 3),
+            SatelliteDailyOutcome.local_date == date(2030, 8, 3),
         )
     )
     assert outcome is not None

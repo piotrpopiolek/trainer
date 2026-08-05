@@ -25,6 +25,7 @@ GOOGLE_REDIRECT_URI=https://localhost/api/auth/google/callback
 SESSION_COOKIE_NAME=__Host-trainer_session
 CSRF_SECRET=${CSRF}
 RATE_LIMIT_STORE=memory
+ENABLE_E2E_LOGIN=1
 BACKUP_ENCRYPTION_PASSPHRASE=$(openssl rand -hex 24)
 BACKUP_RETENTION_DAYS=30
 EOF

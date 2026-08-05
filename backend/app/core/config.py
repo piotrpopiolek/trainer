@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     google_jwks_url: str = "https://www.googleapis.com/oauth2/v3/certs"
     google_token_url: str = "https://oauth2.googleapis.com/token"
     google_auth_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    # Playwright / local only — must stay false in production/staging.
+    enable_e2e_login: bool = False
 
     @cached_property
     def resolved_database_url(self) -> str:
@@ -104,6 +106,8 @@ def validate_runtime_settings(cfg: Settings | None = None) -> None:
         errors.append("RATE_LIMIT_STORE=memory is forbidden (use postgres)")
     if not s.csrf_secret.strip():
         errors.append("CSRF_SECRET is required")
+    if s.enable_e2e_login:
+        errors.append("ENABLE_E2E_LOGIN is forbidden")
     if not s.google_client_id.strip() or not s.google_client_secret.strip():
         errors.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required")
     for label, value in (
