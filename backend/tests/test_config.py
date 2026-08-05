@@ -94,6 +94,8 @@ def test_validate_runtime_settings_rejects_prod_misconfig() -> None:
 
 
 def test_validate_runtime_settings_accepts_prod() -> None:
+    # Explicit enable_e2e_login=False: CI/dev .env may set ENABLE_E2E_LOGIN=1,
+    # and Settings() still merges env for fields not passed here.
     validate_runtime_settings(
         Settings(
             app_env="production",
@@ -103,5 +105,21 @@ def test_validate_runtime_settings_accepts_prod() -> None:
             google_client_secret="csec",
             public_origin="https://app.example.com",
             google_redirect_uri="https://app.example.com/api/auth/google/callback",
+            enable_e2e_login=False,
         )
     )
+
+
+def test_validate_runtime_settings_rejects_e2e_login_in_prod() -> None:
+    s = Settings(
+        app_env="production",
+        rate_limit_store="postgres",
+        csrf_secret="x" * 32,
+        google_client_id="cid",
+        google_client_secret="csec",
+        public_origin="https://app.example.com",
+        google_redirect_uri="https://app.example.com/api/auth/google/callback",
+        enable_e2e_login=True,
+    )
+    with pytest.raises(RuntimeError, match="ENABLE_E2E_LOGIN"):
+        validate_runtime_settings(s)
