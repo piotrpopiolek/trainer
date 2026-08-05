@@ -5,7 +5,13 @@ export async function requestPersistentStorage(userId: string): Promise<boolean>
   let persisted = false;
   try {
     if (typeof navigator !== "undefined" && navigator.storage?.persist) {
-      persisted = await navigator.storage.persist();
+      // Chromium can hang on persist() while offline — bound the wait.
+      persisted = await Promise.race([
+        navigator.storage.persist(),
+        new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), 1500);
+        }),
+      ]);
     }
   } catch {
     persisted = false;

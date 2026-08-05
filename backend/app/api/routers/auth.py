@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -26,7 +28,7 @@ from app.core.cookies import (
 from app.db.session import get_session
 from app.services.auth_session import AuthSessionService
 from app.services.csrf import ensure_csrf_cookie, new_csrf_token
-from app.services.e2e_auth import provision_e2e_ready_user
+from app.services.e2e_auth import provision_e2e_ready_user, seed_e2e_scenario
 from app.services.errors import AuthError, DomainError
 from app.services.legal import user_has_current_health_disclaimer
 from app.services.oauth_google import GoogleOAuthService
@@ -49,6 +51,11 @@ class MeResponse(BaseModel):
 class E2eLoginRequest(BaseModel):
     schema_version: int = 1
     email: str | None = None
+
+
+class E2eSeedRequest(BaseModel):
+    schema_version: int = 1
+    scenario: Literal["mini_progression", "pending_regression", "pending_config"]
 
 
 @router.get("/google/start")
@@ -177,3 +184,15 @@ async def e2e_login(
     set_session_cookie(redirect, raw)
     set_csrf_cookie(redirect, new_csrf_token())
     return redirect
+
+
+@router.post("/e2e-seed")
+async def e2e_seed(
+    body: E2eSeedRequest,
+    ctx: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Seed Playwright fixtures for the current session (ENABLE_E2E_LOGIN + non-prod)."""
+    if settings.app_env in {"production", "staging"} or not settings.enable_e2e_login:
+        raise DomainError("not_found", http_status=404)
+    return await seed_e2e_scenario(db, user=ctx.user, scenario=body.scenario)
