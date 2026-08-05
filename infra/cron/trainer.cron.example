@@ -19,3 +19,8 @@ REPO=/opt/trainer
 
 # Auth sessions / oauth_states / rate_limit_buckets cleanup
 25 2 * * * cd "$REPO" && docker compose --profile ops run --rm cleanup >>/var/log/trainer-cleanup.log 2>&1
+
+# Satellite daily-outcome finalizer (failed days after +36h)
+# Heartbeat: set SATELLITE_FINALIZE_HEARTBEAT_PATH in .env (silence ≥36h = incident).
+# Runbook: infra/runbooks/satellite-finalize.md
+30 2 * * * cd "$REPO" && docker compose --profile ops run --rm satellite-finalize >>/var/log/trainer-satellite-finalize.log 2>&1

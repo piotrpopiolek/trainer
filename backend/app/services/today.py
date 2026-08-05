@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
@@ -58,6 +59,240 @@ def _satellite_due_today(ex: Exercise, *, local_date: date, is_rest_day: bool) -
     return False
 
 
+async def _build_cc_exercises(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    program_day_id: UUID,
+    resolved_locale: str,
+) -> list[TodayCcExerciseV1]:
+    links = (
+        await db.scalars(
+            select(ProgramDayExercise)
+            .where(ProgramDayExercise.program_day_id == program_day_id)
+            .order_by(ProgramDayExercise.sort_order)
+        )
+    ).all()
+    if not links:
+        return []
+
+    exercise_ids = [link.exercise_id for link in links]
+    exercises = {
+        ex.id: ex
+        for ex in (
+            await db.scalars(select(Exercise).where(Exercise.id.in_(exercise_ids)))
+        ).all()
+    }
+    translations = {
+        tr.exercise_id: tr
+        for tr in (
+            await db.scalars(
+                select(ExerciseTranslation).where(
+                    ExerciseTranslation.exercise_id.in_(exercise_ids),
+                    ExerciseTranslation.locale == resolved_locale,
+                )
+            )
+        ).all()
+    }
+    progress_by_ex = {
+        p.exercise_id: p
+        for p in (
+            await db.scalars(
+                select(UserExerciseProgress).where(
+                    UserExerciseProgress.user_id == user_id,
+                    UserExerciseProgress.exercise_id.in_(exercise_ids),
+                )
+            )
+        ).all()
+    }
+    step_numbers = {
+        eid: (progress_by_ex[eid].current_step_number if eid in progress_by_ex else 1)
+        for eid in exercise_ids
+    }
+    steps = (
+        await db.scalars(
+            select(ExerciseStep).where(ExerciseStep.exercise_id.in_(exercise_ids))
+        )
+    ).all()
+    step_by_ex_num: dict[tuple[UUID, int], ExerciseStep] = {
+        (s.exercise_id, s.step_number): s for s in steps
+    }
+    current_steps = [
+        step_by_ex_num[(eid, step_numbers[eid])]
+        for eid in exercise_ids
+        if (eid, step_numbers[eid]) in step_by_ex_num
+    ]
+    step_ids = [s.id for s in current_steps]
+    step_trs = {
+        tr.exercise_step_id: tr
+        for tr in (
+            (
+                await db.scalars(
+                    select(ExerciseStepTranslation).where(
+                        ExerciseStepTranslation.exercise_step_id.in_(step_ids),
+                        ExerciseStepTranslation.locale == resolved_locale,
+                    )
+                )
+            ).all()
+            if step_ids
+            else []
+        )
+    }
+
+    out: list[TodayCcExerciseV1] = []
+    for link in links:
+        ex = exercises.get(link.exercise_id)
+        if ex is None:
+            continue
+        tr = translations.get(ex.id)
+        step_n = step_numbers[ex.id]
+        step = step_by_ex_num.get((ex.id, step_n))
+        rules = step.rules if step is not None else {}
+        step_tr = step_trs.get(step.id) if step is not None else None
+        standards = rules.get("standards") if isinstance(rules, dict) else None
+        out.append(
+            TodayCcExerciseV1(
+                exercise_id=ex.id,
+                slug=ex.slug,
+                name=tr.name if tr else (ex.slug or str(ex.id)),
+                current_step_number=step_n,
+                advance=rules.get("advance") if isinstance(rules, dict) else None,
+                regress=rules.get("regress") if isinstance(rules, dict) else None,
+                standards=standards if isinstance(standards, dict) else None,
+                step_name=step_tr.name if step_tr else None,
+                description=step_tr.description if step_tr else None,
+                execution=step_tr.execution if step_tr else None,
+                rationale=step_tr.rationale if step_tr else None,
+                technique=step_tr.technique if step_tr else None,
+            )
+        )
+    return out
+
+
+async def _build_satellites(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    local_date: date,
+    is_rest_day: bool,
+) -> list[TodaySatelliteV1]:
+    sats = (
+        await db.scalars(
+            select(Exercise).where(
+                Exercise.user_id == user_id,
+                Exercise.kind == "satellite",
+                Exercise.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    due = [
+        s
+        for s in sats
+        if _satellite_due_today(s, local_date=local_date, is_rest_day=is_rest_day)
+    ]
+    if not due:
+        return []
+
+    sat_ids = [s.id for s in due]
+    progress_by_ex = {
+        p.exercise_id: p
+        for p in (
+            await db.scalars(
+                select(UserExerciseProgress).where(
+                    UserExerciseProgress.user_id == user_id,
+                    UserExerciseProgress.exercise_id.in_(sat_ids),
+                )
+            )
+        ).all()
+    }
+    step_numbers = {
+        sid: (
+            progress_by_ex[sid].current_step_number
+            if sid in progress_by_ex
+            else 1
+        )
+        for sid in sat_ids
+    }
+    steps = (
+        await db.scalars(select(ExerciseStep).where(ExerciseStep.exercise_id.in_(sat_ids)))
+    ).all()
+    step_by_id: dict[UUID, ExerciseStep] = {s.id: s for s in steps}
+    step_by_ex_num = {(s.exercise_id, s.step_number): s for s in steps}
+
+    cfg_ids = [
+        s.current_config_version_id
+        for s in due
+        if s.current_config_version_id is not None
+    ]
+    configs = {
+        c.id: c
+        for c in (
+            (
+                await db.scalars(
+                    select(SatelliteConfigVersion).where(
+                        SatelliteConfigVersion.id.in_(cfg_ids)
+                    )
+                )
+            ).all()
+            if cfg_ids
+            else []
+        )
+    }
+
+    recs = (
+        await db.scalars(
+            select(SatelliteRegressionRecommendation).where(
+                SatelliteRegressionRecommendation.user_id == user_id,
+                SatelliteRegressionRecommendation.exercise_id.in_(sat_ids),
+                SatelliteRegressionRecommendation.status == "pending",
+            )
+        )
+    ).all()
+    rec_by_ex = {r.exercise_id: r for r in recs}
+
+    out: list[TodaySatelliteV1] = []
+    for sat in due:
+        step_number = step_numbers[sat.id]
+        step = step_by_ex_num.get((sat.id, step_number))
+        cfg = (
+            configs.get(sat.current_config_version_id)
+            if sat.current_config_version_id is not None
+            else None
+        )
+        goal = None
+        if step is not None and isinstance(step.rules, dict):
+            goal = step.rules.get("goal")
+        pending_reg = None
+        rec = rec_by_ex.get(sat.id)
+        if rec is not None:
+            from_step_row = step_by_id.get(rec.from_step_id)
+            to_step_row = step_by_id.get(rec.to_step_id)
+            if from_step_row is not None and to_step_row is not None:
+                pending_reg = SatellitePendingRegressionV1(
+                    id=rec.id,
+                    from_step=from_step_row.step_number,
+                    to_step=to_step_row.step_number,
+                    status="pending",
+                )
+        out.append(
+            TodaySatelliteV1(
+                exercise_id=sat.id,
+                name=sat.name or str(sat.id),
+                exercise_type=sat.exercise_type,
+                schedule_kind=sat.schedule_kind,
+                schedule_category=sat.schedule_category,
+                current_step_number=step_number,
+                step_name=step.name if step is not None else None,
+                active_metrics=sat.active_metrics,
+                goal=goal if isinstance(goal, dict) else None,
+                config_version_id=sat.current_config_version_id,
+                config_hash=cfg.config_hash.hex() if cfg is not None else None,
+                pending_regression=pending_reg,
+            )
+        )
+    return out
+
+
 async def build_today(
     db: AsyncSession,
     *,
@@ -99,135 +334,19 @@ async def build_today(
             )
         )
         if program_day is not None:
-            links = (
-                await db.scalars(
-                    select(ProgramDayExercise)
-                    .where(ProgramDayExercise.program_day_id == program_day.id)
-                    .order_by(ProgramDayExercise.sort_order)
-                )
-            ).all()
-            for link in links:
-                ex = await db.scalar(select(Exercise).where(Exercise.id == link.exercise_id))
-                if ex is None:
-                    continue
-                tr = await db.scalar(
-                    select(ExerciseTranslation).where(
-                        ExerciseTranslation.exercise_id == ex.id,
-                        ExerciseTranslation.locale == resolved,
-                    )
-                )
-                progress = await db.scalar(
-                    select(UserExerciseProgress).where(
-                        UserExerciseProgress.user_id == user.id,
-                        UserExerciseProgress.exercise_id == ex.id,
-                    )
-                )
-                step_n = progress.current_step_number if progress else 1
-                step = await db.scalar(
-                    select(ExerciseStep).where(
-                        ExerciseStep.exercise_id == ex.id,
-                        ExerciseStep.step_number == step_n,
-                    )
-                )
-                rules = step.rules if step is not None else {}
-                step_tr = None
-                if step is not None:
-                    step_tr = await db.scalar(
-                        select(ExerciseStepTranslation).where(
-                            ExerciseStepTranslation.exercise_step_id == step.id,
-                            ExerciseStepTranslation.locale == resolved,
-                        )
-                    )
-                standards = None
-                if isinstance(rules, dict):
-                    standards = rules.get("standards")
-                cc_exercises.append(
-                    TodayCcExerciseV1(
-                        exercise_id=ex.id,
-                        slug=ex.slug,
-                        name=tr.name if tr else (ex.slug or str(ex.id)),
-                        current_step_number=step_n,
-                        advance=rules.get("advance") if isinstance(rules, dict) else None,
-                        regress=rules.get("regress") if isinstance(rules, dict) else None,
-                        standards=standards if isinstance(standards, dict) else None,
-                        step_name=step_tr.name if step_tr else None,
-                        description=step_tr.description if step_tr else None,
-                        execution=step_tr.execution if step_tr else None,
-                        rationale=step_tr.rationale if step_tr else None,
-                        technique=step_tr.technique if step_tr else None,
-                    )
-                )
+            cc_exercises = await _build_cc_exercises(
+                db,
+                user_id=user.id,
+                program_day_id=program_day.id,
+                resolved_locale=resolved,
+            )
 
-    satellites_out: list[TodaySatelliteV1] = []
-    sats = (
-        await db.scalars(
-            select(Exercise).where(
-                Exercise.user_id == user.id,
-                Exercise.kind == "satellite",
-                Exercise.deleted_at.is_(None),
-            )
-        )
-    ).all()
-    for sat in sats:
-        if not _satellite_due_today(sat, local_date=day, is_rest_day=cc.is_rest_day):
-            continue
-        progress = await db.scalar(
-            select(UserExerciseProgress).where(
-                UserExerciseProgress.user_id == user.id,
-                UserExerciseProgress.exercise_id == sat.id,
-            )
-        )
-        step_number = progress.current_step_number if progress is not None else 1
-        step = await db.scalar(
-            select(ExerciseStep).where(
-                ExerciseStep.exercise_id == sat.id,
-                ExerciseStep.step_number == step_number,
-            )
-        )
-        cfg = None
-        if sat.current_config_version_id is not None:
-            cfg = await db.get(SatelliteConfigVersion, sat.current_config_version_id)
-        goal = None
-        if step is not None and isinstance(step.rules, dict):
-            goal = step.rules.get("goal")
-        pending_reg = None
-        rec = await db.scalar(
-            select(SatelliteRegressionRecommendation).where(
-                SatelliteRegressionRecommendation.user_id == user.id,
-                SatelliteRegressionRecommendation.exercise_id == sat.id,
-                SatelliteRegressionRecommendation.status == "pending",
-            )
-        )
-        if rec is not None:
-            from_step_row = await db.scalar(
-                select(ExerciseStep).where(ExerciseStep.id == rec.from_step_id)
-            )
-            to_step_row = await db.scalar(
-                select(ExerciseStep).where(ExerciseStep.id == rec.to_step_id)
-            )
-            if from_step_row is not None and to_step_row is not None:
-                pending_reg = SatellitePendingRegressionV1(
-                    id=rec.id,
-                    from_step=from_step_row.step_number,
-                    to_step=to_step_row.step_number,
-                    status="pending",
-                )
-        satellites_out.append(
-            TodaySatelliteV1(
-                exercise_id=sat.id,
-                name=sat.name or str(sat.id),
-                exercise_type=sat.exercise_type,
-                schedule_kind=sat.schedule_kind,
-                schedule_category=sat.schedule_category,
-                current_step_number=step_number,
-                step_name=step.name if step is not None else None,
-                active_metrics=sat.active_metrics,
-                goal=goal if isinstance(goal, dict) else None,
-                config_version_id=sat.current_config_version_id,
-                config_hash=cfg.config_hash.hex() if cfg is not None else None,
-                pending_regression=pending_reg,
-            )
-        )
+    satellites_out = await _build_satellites(
+        db,
+        user_id=user.id,
+        local_date=day,
+        is_rest_day=cc.is_rest_day,
+    )
 
     sessions_rows = (
         await db.scalars(
