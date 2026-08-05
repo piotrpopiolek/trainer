@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { Button, Input, Modal, Page } from "@/components/ui";
+import { Button, Input, Modal, Page, Select } from "@/components/ui";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import {
@@ -84,9 +84,23 @@ type LogTarget = {
   requireBothSides?: boolean;
   trackWeight?: boolean;
   setSides?: Array<"left" | "right" | null>;
+  goalSets?: number;
+  goalMinReps?: number;
+  goalMinDurationSec?: number;
+  defaultSetValue?: string;
   configVersionId?: string;
   configHash?: string;
 };
+
+const MAX_SATELLITE_SETS = 20;
+
+function nextSatelliteSide(
+  sides: Array<"left" | "right" | null>,
+  requireBothSides: boolean,
+): "left" | "right" | null {
+  if (!requireBothSides) return null;
+  return sides[sides.length - 1] === "left" ? "right" : "left";
+}
 
 function activeMetricsList(raw: unknown): string[] {
   if (!raw || typeof raw !== "object") return [];
@@ -327,43 +341,40 @@ export function TodayPage() {
                           ? "duration"
                           : "reps";
                     const requireBothSides = Boolean(goal.require_both_sides);
-                    const setCount =
+                    const goalSets =
                       typeof goal.sets === "number" && goal.sets >= 1 ? goal.sets : 3;
-                    const setSides: Array<"left" | "right" | null> = [];
-                    if (goalType !== "completed") {
-                      if (requireBothSides) {
-                        for (let i = 0; i < setCount; i++) setSides.push("left");
-                        for (let i = 0; i < setCount; i++) setSides.push("right");
-                      } else {
-                        for (let i = 0; i < setCount; i++) setSides.push(null);
-                      }
-                    }
                     const defaultVal =
                       goalType === "duration"
                         ? String(goal.min_duration_sec ?? 30)
                         : String(goal.min_reps ?? 10);
                     const trackWeight = metrics.includes("weight_kg");
-                    setCompletedFlag(false);
-                    setSetValues(
+                    const initialSides: Array<"left" | "right" | null> =
                       goalType === "completed"
                         ? []
-                        : Array.from({ length: setSides.length }, () => defaultVal),
-                    );
+                        : [requireBothSides ? "left" : null];
+                    setCompletedFlag(false);
+                    setSetValues(goalType === "completed" ? [] : [defaultVal]);
                     setWeightValues(
-                      trackWeight
-                        ? Array.from({ length: setSides.length }, () => "20")
-                        : [],
+                      trackWeight && goalType !== "completed" ? ["20"] : [],
                     );
                     setLogExercise({
                       id: sat.exercise_id,
                       kind: "satellite",
                       name: sat.name,
-                      sets: setSides.length || 1,
+                      sets: initialSides.length || 1,
                       useDuration: goalType === "duration",
                       goalType,
                       requireBothSides,
                       trackWeight,
-                      setSides,
+                      setSides: initialSides,
+                      goalSets,
+                      goalMinReps:
+                        typeof goal.min_reps === "number" ? goal.min_reps : undefined,
+                      goalMinDurationSec:
+                        typeof goal.min_duration_sec === "number"
+                          ? goal.min_duration_sec
+                          : undefined,
+                      defaultSetValue: defaultVal,
                       configVersionId: sat.config_version_id ?? undefined,
                       configHash: sat.config_hash ?? undefined,
                     });
@@ -515,7 +526,29 @@ export function TodayPage() {
             </>
           }
         >
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
+            {logExercise?.kind === "satellite" &&
+            logExercise.goalType &&
+            logExercise.goalType !== "completed" &&
+            logExercise.goalSets ? (
+              <p className="text-sm text-slate-600">
+                {logExercise.goalType === "duration"
+                  ? t("today.goalHintDuration", {
+                      sets: logExercise.goalSets,
+                      sec: logExercise.goalMinDurationSec ?? "—",
+                      sides: logExercise.requireBothSides
+                        ? t("today.goalHintSides")
+                        : "",
+                    })
+                  : t("today.goalHintReps", {
+                      sets: logExercise.goalSets,
+                      reps: logExercise.goalMinReps ?? "—",
+                      sides: logExercise.requireBothSides
+                        ? t("today.goalHintSides")
+                        : "",
+                    })}
+              </p>
+            ) : null}
             {logExercise?.goalType === "completed" ? (
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -526,50 +559,125 @@ export function TodayPage() {
                 {t("today.markCompleted")}
               </label>
             ) : (
-              setValues.map((r, i) => {
-                const side = logExercise?.setSides?.[i];
-                const sideLabel =
-                  side === "left"
-                    ? t("today.sideLeft")
-                    : side === "right"
-                      ? t("today.sideRight")
-                      : null;
-                return (
-                  <div key={i} className="flex flex-col gap-1">
-                    <Input
-                      label={
-                        sideLabel
-                          ? t("today.setSideN", { n: i + 1, side: sideLabel })
-                          : logExercise?.useDuration
-                            ? t("today.setDurationN", { n: i + 1 })
-                            : t("today.setN", { n: i + 1 })
-                      }
-                      type="number"
-                      min={0}
-                      value={r}
-                      onChange={(e) => {
-                        const next = [...setValues];
-                        next[i] = e.target.value;
-                        setSetValues(next);
-                      }}
-                    />
-                    {logExercise?.trackWeight ? (
+              <>
+                {setValues.map((r, i) => {
+                  const side = logExercise?.setSides?.[i];
+                  const sideLabel =
+                    side === "left"
+                      ? t("today.sideLeft")
+                      : side === "right"
+                        ? t("today.sideRight")
+                        : null;
+                  const isSatelliteSets = logExercise?.kind === "satellite";
+                  return (
+                    <div key={i} className="flex flex-col gap-1">
                       <Input
-                        label={t("today.weightKg")}
+                        label={
+                          !isSatelliteSets && sideLabel
+                            ? t("today.setSideN", { n: i + 1, side: sideLabel })
+                            : logExercise?.useDuration
+                              ? t("today.setDurationN", { n: i + 1 })
+                              : t("today.setN", { n: i + 1 })
+                        }
                         type="number"
                         min={0}
-                        step="0.001"
-                        value={weightValues[i] ?? ""}
+                        value={r}
                         onChange={(e) => {
-                          const next = [...weightValues];
+                          const next = [...setValues];
                           next[i] = e.target.value;
-                          setWeightValues(next);
+                          setSetValues(next);
                         }}
                       />
-                    ) : null}
-                  </div>
-                );
-              })
+                      {isSatelliteSets && logExercise.requireBothSides ? (
+                        <Select
+                          label={t("today.sideLabelN", { n: i + 1 })}
+                          value={side ?? "left"}
+                          onChange={(e) => {
+                            const nextSide = e.target.value as "left" | "right";
+                            setLogExercise((prev) => {
+                              if (!prev?.setSides) return prev;
+                              const setSides = [...prev.setSides];
+                              setSides[i] = nextSide;
+                              return { ...prev, setSides };
+                            });
+                          }}
+                        >
+                          <option value="left">{t("today.sideLeft")}</option>
+                          <option value="right">{t("today.sideRight")}</option>
+                        </Select>
+                      ) : null}
+                      {logExercise?.trackWeight ? (
+                        <Input
+                          label={t("today.weightKg")}
+                          type="number"
+                          min={0}
+                          step="0.001"
+                          value={weightValues[i] ?? ""}
+                          onChange={(e) => {
+                            const next = [...weightValues];
+                            next[i] = e.target.value;
+                            setWeightValues(next);
+                          }}
+                        />
+                      ) : null}
+                      {isSatelliteSets && setValues.length > 1 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => {
+                            setSetValues((prev) =>
+                              prev.filter((_, idx) => idx !== i),
+                            );
+                            setWeightValues((prev) =>
+                              prev.filter((_, idx) => idx !== i),
+                            );
+                            setLogExercise((prev) => {
+                              if (!prev) return prev;
+                              const setSides = (prev.setSides ?? []).filter(
+                                (_, idx) => idx !== i,
+                              );
+                              return {
+                                ...prev,
+                                setSides,
+                                sets: Math.max(1, setSides.length),
+                              };
+                            });
+                          }}
+                        >
+                          {t("today.removeSet", { n: i + 1 })}
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {logExercise?.kind === "satellite" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={setValues.length >= MAX_SATELLITE_SETS}
+                    onClick={() => {
+                      const defaultVal =
+                        logExercise.defaultSetValue ??
+                        (logExercise.useDuration ? "20" : "10");
+                      const nextSide = nextSatelliteSide(
+                        logExercise.setSides ?? [],
+                        Boolean(logExercise.requireBothSides),
+                      );
+                      setSetValues((prev) => [...prev, defaultVal]);
+                      if (logExercise.trackWeight) {
+                        setWeightValues((prev) => [...prev, "20"]);
+                      }
+                      setLogExercise({
+                        ...logExercise,
+                        setSides: [...(logExercise.setSides ?? []), nextSide],
+                        sets: setValues.length + 1,
+                      });
+                    }}
+                  >
+                    {t("today.addSet")}
+                  </Button>
+                ) : null}
+              </>
             )}
             {createMut.isError ? (
               <p className="text-sm text-rose-700" role="alert">

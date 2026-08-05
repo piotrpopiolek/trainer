@@ -108,3 +108,17 @@ export async function setAppOffline(page: Page, offline: boolean): Promise<void>
 export function satelliteCard(page: Page, satName: string) {
   return page.locator("div.rounded-xl").filter({ hasText: satName }).first();
 }
+
+/** Fill N set values in the satellite log dialog (starts at 1 row; uses „Dodaj serię”). */
+export async function fillSatelliteSetValues(
+  page: Page,
+  values: string[],
+): Promise<void> {
+  const dialog = page.getByRole("dialog");
+  for (let i = 0; i < values.length; i++) {
+    if (i > 0) {
+      await dialog.getByRole("button", { name: /Dodaj serię/i }).click();
+    }
+    await dialog.getByLabel(new RegExp(`Seria ${i + 1}`, "i")).fill(values[i]!);
+  }
+}

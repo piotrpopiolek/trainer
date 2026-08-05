@@ -4,6 +4,7 @@ import {
   goSatellites,
   goToday,
   loginE2e,
+  fillSatelliteSetValues,
   satelliteCard,
   seedE2e,
 } from "./helpers";
@@ -72,9 +73,7 @@ test.describe("satellite goal-only path", () => {
     await satelliteCard(page, satName).getByRole("button", { name: /^Zapisz$/i }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
-    for (const n of [1, 2, 3]) {
-      await page.getByLabel(new RegExp(`Seria ${n}`, "i")).fill("10");
-    }
+    await fillSatelliteSetValues(page, ["10", "10", "10"]);
     await page.getByRole("button", { name: /Zapisz wynik/i }).click();
     await expect(page.getByText(/Sesja zapisana|zapisana/i)).toBeVisible({
       timeout: 15_000,
