@@ -64,6 +64,15 @@ function SatelliteListItem({
         equipment: satellite.equipment,
         tags: satellite.tags,
         steps: satellite.steps,
+        progression:
+          satellite.progression?.mode === "steps"
+            ? {
+                mode: "steps" as const,
+                regression: satellite.progression.regression,
+              }
+            : satellite.progression?.mode === "goal_only"
+              ? { mode: "goal_only" as const }
+              : undefined,
         expected_current_config_version_id: satellite.current_config_version_id,
       }),
     onSuccess: async () => {

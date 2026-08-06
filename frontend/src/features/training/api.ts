@@ -146,6 +146,43 @@ export async function createSatellite(input: {
   });
 }
 
+function satelliteStepsForWrite(
+  steps: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return steps.map((s) => {
+    const stepNumber = Number(s.step_number ?? s.sort_order);
+    const out: Record<string, unknown> = {
+      step_number: Number.isFinite(stepNumber) && stepNumber >= 1 ? stepNumber : 1,
+      rules: s.rules,
+    };
+    if (typeof s.step_id === "string") out.step_id = s.step_id;
+    if (s.name !== undefined) out.name = s.name;
+    if (s.description !== undefined) out.description = s.description;
+    return out;
+  });
+}
+
+function progressionForWrite(
+  steps: Array<Record<string, unknown>>,
+  progression?: { mode: "goal_only" } | { mode: "steps"; regression: unknown },
+): { mode: "goal_only" } | { mode: "steps"; regression: unknown } {
+  if (progression?.mode === "goal_only") return { mode: "goal_only" };
+  if (progression?.mode === "steps") {
+    return {
+      mode: "steps",
+      regression: progression.regression ?? {
+        mode: "suggest_after_failed_days",
+        threshold: 2,
+      },
+    };
+  }
+  if (steps.length <= 1) return { mode: "goal_only" };
+  return {
+    mode: "steps",
+    regression: { mode: "suggest_after_failed_days", threshold: 2 },
+  };
+}
+
 export async function updateSatellite(input: {
   id: string;
   revision: number;
@@ -161,8 +198,11 @@ export async function updateSatellite(input: {
   progression?: { mode: "goal_only" } | { mode: "steps"; regression: unknown };
   expected_current_config_version_id?: string | null;
 }): Promise<Satellite> {
+  const csrf = useAuthStore.getState().me?.csrf_token;
+  const steps = satelliteStepsForWrite(input.steps);
   const raw = await apiJson<unknown>(`/api/satellites/${input.id}`, {
     method: "PATCH",
+    csrfToken: csrf,
     body: JSON.stringify({
       schema_version: 1,
       revision: input.revision,
@@ -174,8 +214,8 @@ export async function updateSatellite(input: {
       schedule_kind: input.schedule_kind,
       weekdays: input.weekdays ?? null,
       schedule_category: input.schedule_category ?? null,
-      progression: input.progression ?? { mode: "goal_only" },
-      steps: input.steps,
+      progression: progressionForWrite(steps, input.progression),
+      steps,
       client_mutation_id: newClientMutationId(),
       config_version_id: newClientMutationId(),
       expected_current_config_version_id:

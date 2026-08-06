@@ -325,6 +325,7 @@ class SatelliteReadV1(BaseModel):
     config_effective_on: date | None = None
     config_status: Literal["current", "pending"] = "current"
     cloned_from_exercise_id: UUID | None = None
+    progression: dict[str, Any] | None = None
     steps: list[dict[str, Any]]
 
 

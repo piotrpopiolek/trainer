@@ -13,6 +13,7 @@ const KNOWN: Record<string, string> = {
   oauth_state_invalid: "errors.oauthState",
   unauthorized: "errors.unauthorized",
   not_found: "errors.notFound",
+  csrf_invalid: "errors.csrfInvalid",
   nothing_to_update: "errors.nothingToUpdate",
   satellite_config_required: "errors.satelliteConfigRequired",
   satellite_config_not_found: "errors.satelliteConfigNotFound",

@@ -141,6 +141,14 @@ async def _exercise_to_read(db: AsyncSession, ex: Exercise) -> SatelliteReadV1:
     pending_cfg = None
     if ex.pending_config_version_id is not None:
         pending_cfg = await db.get(SatelliteConfigVersion, ex.pending_config_version_id)
+    progression: dict[str, Any] | None = None
+    if current_cfg is not None:
+        try:
+            progression = parse_satellite_config_document(
+                current_cfg.document
+            ).progression.model_dump(mode="json")
+        except Exception:
+            progression = None
     return SatelliteReadV1(
         id=ex.id,
         name=ex.name or "",
@@ -161,11 +169,11 @@ async def _exercise_to_read(db: AsyncSession, ex: Exercise) -> SatelliteReadV1:
         config_effective_on=ex.config_effective_on,
         config_status="pending" if ex.pending_config_version_id is not None else "current",
         cloned_from_exercise_id=ex.cloned_from_exercise_id,
+        progression=progression,
         steps=[
             {
                 "step_id": str(s.id),
                 "step_number": s.step_number,
-                "sort_order": s.sort_order,
                 "rules": s.rules,
                 "name": s.name,
                 "description": s.description,

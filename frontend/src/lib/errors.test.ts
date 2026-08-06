@@ -13,6 +13,7 @@ describe("errorCodeToI18nKey Stage 1 satellite codes", () => {
     ["goal_only_requires_one_step", "errors.goalOnlyRequiresOneStep"],
     ["steps_mode_requires_2_to_5", "errors.stepsModeRequires2To5"],
     ["bilateral_not_allowed_when_require_both_sides", "errors.bilateralNotAllowed"],
+    ["csrf_invalid", "errors.csrfInvalid"],
     ["unknown_code_xyz", "errors.generic"],
   ] as const)("%s → %s", (code, key) => {
     expect(errorCodeToI18nKey(code)).toBe(key);

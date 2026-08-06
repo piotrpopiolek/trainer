@@ -185,6 +185,19 @@ export const satelliteSchema = z.object({
   config_effective_on: z.string().nullable().optional(),
   config_status: z.enum(["current", "pending"]).optional(),
   cloned_from_exercise_id: z.string().uuid().nullable().optional(),
+  progression: z
+    .discriminatedUnion("mode", [
+      z.object({ mode: z.literal("goal_only") }),
+      z.object({
+        mode: z.literal("steps"),
+        regression: z.object({
+          mode: z.literal("suggest_after_failed_days"),
+          threshold: z.number(),
+        }),
+      }),
+    ])
+    .nullable()
+    .optional(),
   steps: z.array(z.record(z.unknown())),
 });
 

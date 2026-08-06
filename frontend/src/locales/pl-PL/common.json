@@ -202,6 +202,7 @@
     "generic": "Coś poszło nie tak. Spróbuj ponownie.",
     "unauthorized": "Sesja wygasła — zaloguj się ponownie.",
     "notFound": "Nie znaleziono zasobu.",
+    "csrfInvalid": "Zabezpieczenie formularza wygasło — odśwież stronę i spróbuj ponownie.",
     "legalRequired": "Najpierw zaakceptuj zastrzeżenie zdrowotne.",
     "enrollmentRequired": "Ukończ onboarding, aby zobaczyć plan dnia.",
     "onboardingDone": "Onboarding został już ukończony.",
