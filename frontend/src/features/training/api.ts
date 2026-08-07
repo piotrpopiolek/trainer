@@ -1,5 +1,6 @@
 import { apiJson } from "@/lib/api";
 import {
+  catalogCcResponseSchema,
   measurementSchema,
   progressItemSchema,
   progressionEventSchema,
@@ -13,6 +14,7 @@ import {
   type Session,
   type Today,
 } from "@/lib/schemas";
+import type { CatalogCcExercise } from "@/lib/schemas";
 import { newClientMutationId } from "@/lib/uuid";
 import { useAuthStore } from "@/stores/authStore";
 import { z } from "zod";
@@ -291,16 +293,29 @@ export async function listProgress(): Promise<ProgressItem[]> {
 }
 
 export async function fetchCatalogCc(): Promise<{
-  exercises: Array<{ id: string; name: string; slug: string | null }>;
+  exercises: CatalogCcExercise[];
 }> {
-  const raw = await apiJson<{
-    exercises: Array<{ id: string; name: string; slug: string | null }>;
-  }>("/api/catalog/cc");
+  const raw = await apiJson<unknown>("/api/catalog/cc");
+  const parsed = catalogCcResponseSchema.parse(raw);
   return {
-    exercises: raw.exercises.map((e) => ({
+    exercises: parsed.exercises.map((e) => ({
+      schema_version: e.schema_version,
       id: e.id,
-      name: e.name,
       slug: e.slug,
+      name: e.name,
+      description: e.description ?? null,
+      exercise_type: e.exercise_type,
+      steps: e.steps.map((s) => ({
+        schema_version: s.schema_version,
+        step_number: s.step_number,
+        name: s.name,
+        description: s.description,
+        execution: s.execution ?? "",
+        rationale: s.rationale ?? "",
+        technique: s.technique ?? "",
+        content_status: s.content_status,
+        rules: s.rules as Record<string, unknown>,
+      })),
     })),
   };
 }

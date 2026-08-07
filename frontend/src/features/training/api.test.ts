@@ -395,11 +395,28 @@ describe("training api", () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
+              schema_version: 1,
               exercises: [
                 {
+                  schema_version: 1,
                   id: "018f0000-0000-7000-8000-000000000011",
                   name: "Pompki",
                   slug: "push_ups",
+                  description: null,
+                  exercise_type: "A",
+                  steps: [
+                    {
+                      schema_version: 1,
+                      step_number: 1,
+                      name: "Pion",
+                      description: "Opis",
+                      execution: "",
+                      rationale: "",
+                      technique: "",
+                      content_status: "ready",
+                      rules: { schema_version: 2 },
+                    },
+                  ],
                 },
               ],
             }),
@@ -410,5 +427,6 @@ describe("training api", () => {
     expect(await listProgress()).toHaveLength(1);
     const cat = await fetchCatalogCc();
     expect(cat.exercises[0]?.name).toBe("Pompki");
+    expect(cat.exercises[0]?.steps).toHaveLength(1);
   });
 });

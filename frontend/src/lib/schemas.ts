@@ -103,6 +103,37 @@ export const softDeleteOutcomeHintSchema = z.object({
 
 export type SoftDeleteOutcomeHint = z.infer<typeof softDeleteOutcomeHintSchema>;
 
+export const catalogCcStepSchema = z.object({
+  schema_version: schemaVersion,
+  step_number: z.number().int(),
+  name: z.string(),
+  description: z.string(),
+  execution: z.string().optional().default(""),
+  rationale: z.string().optional().default(""),
+  technique: z.string().optional().default(""),
+  content_status: z.string(),
+  rules: z.record(z.unknown()),
+});
+
+export const catalogCcExerciseSchema = z.object({
+  schema_version: schemaVersion,
+  id: z.string().uuid(),
+  slug: z.string().nullable(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  exercise_type: z.string(),
+  steps: z.array(catalogCcStepSchema),
+});
+
+export const catalogCcResponseSchema = z.object({
+  schema_version: schemaVersion,
+  program_slug: z.string().optional(),
+  exercises: z.array(catalogCcExerciseSchema),
+});
+
+export type CatalogCcStep = z.infer<typeof catalogCcStepSchema>;
+export type CatalogCcExercise = z.infer<typeof catalogCcExerciseSchema>;
+
 export const progressItemSchema = z.object({
   schema_version: schemaVersion,
   exercise_id: z.string().uuid(),

@@ -6,6 +6,7 @@ import { LoginPage, OnboardingPage } from "@/features/auth/pages";
 import { RequireAuth } from "@/features/auth/RequireAuth";
 import { MeasurementsPage } from "@/features/measurements/MeasurementsPage";
 import { ProgressPage } from "@/features/progress/ProgressPage";
+import { CcExerciseProgressPage } from "@/features/progress/CcExerciseProgressPage";
 import { SatellitesPage } from "@/features/satellites/SatellitesPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { TodayPage } from "@/features/today/TodayPage";
@@ -20,6 +21,7 @@ export function AppRoutes() {
         <Route element={<AppShell />}>
           <Route index element={<TodayPage />} />
           <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/progress/:exerciseId" element={<CcExerciseProgressPage />} />
           <Route path="/satellites" element={<SatellitesPage />} />
           <Route path="/measurements" element={<MeasurementsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
