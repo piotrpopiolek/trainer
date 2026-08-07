@@ -16,7 +16,11 @@ from app.models.progression import UserExerciseProgress
 from app.schemas.api import ProgressionEventReadV1, ProgressItemV1, ProgressOverrideRequestV1
 from app.services.errors import DomainError, NotFoundError
 from app.services.progression import ProgressionEngine
-from app.services.sessions import event_to_read, progress_to_read
+from app.services.sessions import (
+    event_to_read,
+    last_session_summaries_by_exercise,
+    progress_to_read,
+)
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 _engine = ProgressionEngine()
@@ -61,7 +65,20 @@ async def list_progress(
             select(UserExerciseProgress).where(UserExerciseProgress.user_id == ctx.user.id)
         )
     ).all()
-    return ProgressListResponse(items=[progress_to_read(r) for r in rows])
+    summaries = await last_session_summaries_by_exercise(
+        db,
+        user_id=ctx.user.id,
+        exercise_ids=[r.exercise_id for r in rows],
+    )
+    return ProgressListResponse(
+        items=[
+            progress_to_read(
+                r,
+                last_session_summary=summaries.get(r.exercise_id),
+            )
+            for r in rows
+        ]
+    )
 
 
 @router.post("/{exercise_id}/override", response_model=ProgressOverrideResponse)

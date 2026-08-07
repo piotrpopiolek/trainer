@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Button, Page } from "@/components/ui";
 import { OverrideStepModal } from "@/features/progress/OverrideStepModal";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
-import { formatLastSessionAt } from "@/features/progress/progressDisplay";
+import { formatLastSessionAt, formatLastSessionSummary } from "@/features/progress/progressDisplay";
 import { StepLadder } from "@/features/progress/StepLadder";
 import { fetchCatalogCc, listProgress, overrideProgress } from "@/features/training/api";
 import { ApiError } from "@/lib/api";
@@ -167,12 +167,19 @@ export function ProgressPage() {
                       : ""}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {t("progress.lastSession", {
-                      date: formatLastSessionAt(
+                    {(() => {
+                      const date = formatLastSessionAt(
                         row.lastSessionAt,
                         t("progress.lastSessionNever"),
-                      ),
-                    })}
+                      );
+                      const result = formatLastSessionSummary(
+                        row.lastSessionSummary,
+                        t("progress.lastSessionCompleted"),
+                      );
+                      return result
+                        ? t("progress.lastSessionWithResult", { date, result })
+                        : t("progress.lastSession", { date });
+                    })()}
                   </p>
                   <div className="mt-2">
                     <StepLadder

@@ -128,6 +128,7 @@ class ProgressItemV1(BaseModel):
     fail_streak: int
     last_session_at: datetime | None
     is_active: bool
+    last_session_summary: str | None = None
 
 
 class SessionReadV1(BaseModel):

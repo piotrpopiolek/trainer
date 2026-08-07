@@ -53,3 +53,13 @@ export function formatLastSessionAt(
     day: "numeric",
   });
 }
+
+/** Map API last_session_summary for display (completed → i18n label). */
+export function formatLastSessionSummary(
+  summary: string | null | undefined,
+  completedLabel: string,
+): string | null {
+  if (!summary) return null;
+  if (summary === "completed") return completedLabel;
+  return summary;
+}

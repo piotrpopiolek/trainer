@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -88,13 +89,101 @@ def log_to_read(log: SessionExerciseLog) -> SessionLogReadV1:
     )
 
 
-def progress_to_read(row: UserExerciseProgress) -> ProgressItemV1:
+def summarize_sets_payload(sets_doc: dict[str, Any] | None) -> str | None:
+    """Compact last-session result: ``3×10``, ``3×20s``, or ``10/8/10`` when mixed."""
+    if not sets_doc or not isinstance(sets_doc, dict):
+        return None
+    if sets_doc.get("completed") is True and not sets_doc.get("sets"):
+        return "completed"
+    rows = sets_doc.get("sets")
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    durations: list[int] = []
+    reps: list[int] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("duration_sec") is not None:
+            try:
+                durations.append(int(row["duration_sec"]))
+            except (TypeError, ValueError):
+                continue
+        elif row.get("reps") is not None:
+            try:
+                reps.append(int(row["reps"]))
+            except (TypeError, ValueError):
+                continue
+
+    n = len(rows)
+    if len(durations) == n and n > 0:
+        if len(set(durations)) == 1:
+            return f"{n}×{durations[0]}s"
+        return "/".join(f"{d}s" for d in durations)
+    if len(reps) == n and n > 0:
+        if len(set(reps)) == 1:
+            return f"{n}×{reps[0]}"
+        return "/".join(str(r) for r in reps)
+    if durations:
+        if len(set(durations)) == 1:
+            return f"{len(durations)}×{durations[0]}s"
+        return "/".join(f"{d}s" for d in durations)
+    if reps:
+        if len(set(reps)) == 1:
+            return f"{len(reps)}×{reps[0]}"
+        return "/".join(str(r) for r in reps)
+    return None
+
+
+async def last_session_summaries_by_exercise(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    exercise_ids: list[UUID] | None = None,
+) -> dict[UUID, str]:
+    """Latest non-skipped log sets summary per exercise (active sessions only)."""
+    stmt = (
+        select(SessionExerciseLog)
+        .join(WorkoutSession, WorkoutSession.id == SessionExerciseLog.session_id)
+        .where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.deleted_at.is_(None),
+            SessionExerciseLog.skipped.is_(False),
+        )
+        .distinct(SessionExerciseLog.exercise_id)
+        .order_by(
+            SessionExerciseLog.exercise_id,
+            WorkoutSession.performed_at.desc(),
+            SessionExerciseLog.id.desc(),
+        )
+    )
+    if exercise_ids is not None:
+        if not exercise_ids:
+            return {}
+        stmt = stmt.where(SessionExerciseLog.exercise_id.in_(exercise_ids))
+    logs = (await db.scalars(stmt)).all()
+    out: dict[UUID, str] = {}
+    for log in logs:
+        summary = summarize_sets_payload(
+            log.sets if isinstance(log.sets, dict) else None
+        )
+        if summary:
+            out[log.exercise_id] = summary
+    return out
+
+
+def progress_to_read(
+    row: UserExerciseProgress,
+    *,
+    last_session_summary: str | None = None,
+) -> ProgressItemV1:
     return ProgressItemV1(
         exercise_id=row.exercise_id,
         current_step_number=row.current_step_number,
         fail_streak=row.fail_streak,
         last_session_at=row.last_session_at,
         is_active=row.is_active,
+        last_session_summary=last_session_summary,
     )
 
 

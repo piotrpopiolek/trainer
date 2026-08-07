@@ -140,6 +140,7 @@ export const progressItemSchema = z.object({
   current_step_number: z.number(),
   fail_streak: z.number(),
   last_session_at: z.string().nullable().optional(),
+  last_session_summary: z.string().nullable().optional(),
   is_active: z.boolean(),
 });
 

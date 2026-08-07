@@ -15,6 +15,7 @@ export type CcProgressRow = {
   currentStepNumber: number;
   failStreak: number;
   lastSessionAt: string | null;
+  lastSessionSummary: string | null;
   isActive: boolean;
   currentStep: CatalogCcStep | null;
   hasProgress: boolean;
@@ -41,6 +42,7 @@ export function joinCcCatalogWithProgress(
       currentStepNumber,
       failStreak: p?.fail_streak ?? 0,
       lastSessionAt: p?.last_session_at ?? null,
+      lastSessionSummary: p?.last_session_summary ?? null,
       isActive: p?.is_active ?? true,
       currentStep,
       hasProgress: p != null,

@@ -8,6 +8,7 @@ import { OverrideStepModal } from "@/features/progress/OverrideStepModal";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
 import {
   formatLastSessionAt,
+  formatLastSessionSummary,
   standardsFromRules,
 } from "@/features/progress/progressDisplay";
 import { StepLadder } from "@/features/progress/StepLadder";
@@ -95,12 +96,19 @@ export function CcExerciseProgressPage() {
               {row.currentStep?.name ? ` · ${row.currentStep.name}` : ""}
             </p>
             <p className="mt-1 text-xs text-slate-500">
-              {t("progress.lastSession", {
-                date: formatLastSessionAt(
+              {(() => {
+                const date = formatLastSessionAt(
                   row.lastSessionAt,
                   t("progress.lastSessionNever"),
-                ),
-              })}
+                );
+                const result = formatLastSessionSummary(
+                  row.lastSessionSummary,
+                  t("progress.lastSessionCompleted"),
+                );
+                return result
+                  ? t("progress.lastSessionWithResult", { date, result })
+                  : t("progress.lastSession", { date });
+              })()}
             </p>
             {row.failStreak > 0 ? (
               <p className="mt-1 text-xs text-amber-800">
