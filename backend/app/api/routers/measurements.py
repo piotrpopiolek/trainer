@@ -53,9 +53,14 @@ async def list_measurements(
     await _set_rls(db, ctx.user.id)
     rows = (
         await db.scalars(
-            select(BodyMeasurement).where(
+            select(BodyMeasurement)
+            .where(
                 BodyMeasurement.user_id == ctx.user.id,
                 BodyMeasurement.deleted_at.is_(None),
+            )
+            .order_by(
+                BodyMeasurement.local_date.desc(),
+                BodyMeasurement.measured_at.desc(),
             )
         )
     ).all()

@@ -185,7 +185,13 @@
     "notes": "Notatka (opcjonalnie)",
     "submit": "Zapisz pomiar",
     "weightValue": "{{value}} kg",
-    "cmValue": "{{value}} cm"
+    "cmValue": "{{value}} cm",
+    "trendsTitle": "Trendy",
+    "trendsRange": "Zakres wykresu",
+    "trendsRangeDays": "{{days}} dni",
+    "trendsDelta": "{{delta}}",
+    "trendsEmpty": "Brak pomiarów w wybranym zakresie.",
+    "trendsFewPoints": "Za mało punktów do linii — pokazano pojedynczy pomiar."
   },
   "settings": {
     "title": "Ustawienia",

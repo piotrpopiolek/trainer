@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -209,13 +209,27 @@ async def test_progress_override_idor(
 async def test_measurement_create_list(api_client: AsyncClient, db: AsyncSession) -> None:
     _user, raw = await _ready_user(db, "meas@ex.com")
     now = datetime.now(UTC)
+    d_new = now.date()
+    d_old = d_new - timedelta(days=2)
+    res_old = await api_client.post(
+        "/api/measurements",
+        cookies={settings.session_cookie_name: raw},
+        json={
+            "schema_version": 1,
+            "measured_at": datetime(d_old.year, d_old.month, d_old.day, tzinfo=UTC).isoformat(),
+            "local_date": d_old.isoformat(),
+            "metrics": {"schema_version": 1, "weight_kg": 81.0},
+            "client_mutation_id": str(uuid4()),
+        },
+    )
+    assert res_old.status_code == 200, res_old.text
     res = await api_client.post(
         "/api/measurements",
         cookies={settings.session_cookie_name: raw},
         json={
             "schema_version": 1,
             "measured_at": now.isoformat(),
-            "local_date": now.date().isoformat(),
+            "local_date": d_new.isoformat(),
             "metrics": {"schema_version": 1, "weight_kg": 80.5},
             "client_mutation_id": str(uuid4()),
         },
@@ -227,7 +241,11 @@ async def test_measurement_create_list(api_client: AsyncClient, db: AsyncSession
         cookies={settings.session_cookie_name: raw},
     )
     assert listed.status_code == 200
-    assert any(i["id"] == mid for i in listed.json()["items"])
+    items = listed.json()["items"]
+    assert any(i["id"] == mid for i in items)
+    dates = [i["local_date"] for i in items]
+    assert dates == sorted(dates, reverse=True)
+    assert dates[0] == d_new.isoformat()
 
 
 @pytest.mark.asyncio

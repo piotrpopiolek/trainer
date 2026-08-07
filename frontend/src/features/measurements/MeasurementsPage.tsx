@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { Button, Input, Page } from "@/components/ui";
+import { MeasurementTrendsSection } from "@/features/measurements/MeasurementTrendsSection";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import { createMeasurementOfflineAware } from "@/features/sync/writes";
 import { listMeasurements } from "@/features/training/api";
@@ -64,6 +65,9 @@ export function MeasurementsPage() {
   const [values, setValues] = useState(emptyValues);
   const [notes, setNotes] = useState("");
 
+  const tz = me?.timezone ?? "Europe/Warsaw";
+  const todayLocalDate = formatDateInTimezone(tz, new Date());
+
   const listQ = useQuery({
     queryKey: ["measurements"],
     queryFn: listMeasurements,
@@ -73,7 +77,6 @@ export function MeasurementsPage() {
     mutationFn: () => {
       if (!me?.id) throw new ApiError(401, "unauthorized");
       const now = new Date();
-      const tz = me.timezone ?? "Europe/Warsaw";
       const num = (k: MetricKey) => {
         const raw = values[k].trim();
         if (!raw) return undefined;
@@ -114,25 +117,13 @@ export function MeasurementsPage() {
       <SyncStatusBanner />
       <Page title={t("measurements.title")}>
         {listQ.isLoading ? <p>{t("shell.loading")}</p> : null}
-        <ul className="flex flex-col gap-2">
-          {(listQ.data ?? []).map((m) => {
-            const metrics = m.metrics as Record<string, unknown>;
-            const lines = Object.entries(metrics)
-              .filter(([k]) => k !== "schema_version")
-              .map(([k, v]) => formatMetricLine(k, v, t))
-              .filter(Boolean);
-            return (
-              <li
-                key={m.id}
-                className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm"
-              >
-                <p className="font-medium">{m.local_date}</p>
-                <p className="text-slate-600">{lines.join(" · ")}</p>
-                {m.notes ? <p className="mt-1 text-slate-500">{m.notes}</p> : null}
-              </li>
-            );
-          })}
-        </ul>
+
+        {!listQ.isLoading ? (
+          <MeasurementTrendsSection
+            items={listQ.data ?? []}
+            todayLocalDate={todayLocalDate}
+          />
+        ) : null}
 
         <form
           className="flex flex-col gap-3 rounded-xl border border-dashed border-slate-300 bg-white/60 p-4"
@@ -184,6 +175,26 @@ export function MeasurementsPage() {
             {t("measurements.submit")}
           </Button>
         </form>
+
+        <ul className="flex flex-col gap-2">
+          {(listQ.data ?? []).map((m) => {
+            const metrics = m.metrics as Record<string, unknown>;
+            const lines = Object.entries(metrics)
+              .filter(([k]) => k !== "schema_version")
+              .map(([k, v]) => formatMetricLine(k, v, t))
+              .filter(Boolean);
+            return (
+              <li
+                key={m.id}
+                className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm"
+              >
+                <p className="font-medium">{m.local_date}</p>
+                <p className="text-slate-600">{lines.join(" · ")}</p>
+                {m.notes ? <p className="mt-1 text-slate-500">{m.notes}</p> : null}
+              </li>
+            );
+          })}
+        </ul>
       </Page>
     </>
   );
