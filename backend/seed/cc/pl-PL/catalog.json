@@ -476,12 +476,12 @@
     {
       "exercise_slug": "bridges",
       "step_number": 3,
-      "name": "Mostek z unoszeniem jednej nogi",
-      "description": "Asymetria w mostku.",
+      "name": "Mostek zgięty",
+      "description": "Wypychanie bioder z krawędzi mebla, dłonie przy głowie.",
       "content_status": "ready",
-      "execution": "Unieś jedną nogę, biodra równo, zmiana stron.",
-      "rationale": "Wymusza antyrotację miednicy.",
-      "technique": "Zacznij od krótkiego uniesienia stopy tuż nad podłoże."
+      "execution": "Usiądź na krawędzi mebla (~wysokość kolan), połóż się, stopy na podłodze. Zsuń biodra poza krawędź, dłonie przy głowie (palce do stóp). Wypchnij biodra w górę, aż barki i głowa oderwą się od mebla — łokcie mogą zostać zgięte. Wróć kontrolowanie.",
+      "rationale": "Pierwszy mostek z ułożeniem dłoni jak w zaawansowanych wariantach — mobilność barków i klatki.",
+      "technique": "Nie forsuj pełnego wyprostu łokci; wystarczy kilka centymetrów uniesienia."
     },
     {
       "exercise_slug": "bridges",
@@ -566,12 +566,12 @@
     {
       "exercise_slug": "handstand_push_ups",
       "step_number": 2,
-      "name": "Stanie na rękach przy ścianie",
-      "description": "Pełne stanie na rękach z asekuracją.",
+      "name": "Kruk",
+      "description": "Balans na dłoniach w kuckach — stopy oderwane od podłogi.",
       "content_status": "ready",
-      "execution": "Wejdź do stania, łokcie wypchnięte, barki aktywne, zejdź kontrolowanie.",
-      "rationale": "Fundament równowagi odwróconej.",
-      "technique": "Ćwicz bezpieczne zejście zanim wydłużysz hold."
+      "execution": "Usiądź w kucki, kolana na zewnątrz. Dłonie na szerokość barków przed sobą, łokcie lekko ugięte. Pochyl się, oprzyj kolana na zewnątrz łokci i przenieś ciężar na dłonie, aż stopy uniosą się. Utrzymaj równowagę, potem wróć miękko na stopy.",
+      "rationale": "Łączy siłę barków z balansem na rękach — bez pozycji do góry nogami.",
+      "technique": "Przy „locie” w przód mocniej dociśnij palce; nogi trzymaj mocno podwinięte."
     },
     {
       "exercise_slug": "handstand_push_ups",
