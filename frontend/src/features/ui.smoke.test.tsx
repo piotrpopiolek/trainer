@@ -6,8 +6,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { LoginPage } from "@/features/auth/pages";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
+import { ConflictSurface } from "@/features/sync/ConflictSurface";
 import "@/lib/i18n";
+import { useAuthStore } from "@/stores/authStore";
 import { useSeenEventsStore } from "@/stores/seenEventsStore";
+import { useSyncStore } from "@/stores/syncStore";
 
 describe("LoginPage", () => {
   it("renders Google CTA", () => {
@@ -64,5 +67,61 @@ describe("ProgressionSurface", () => {
     );
     expect(screen.queryByRole("heading", { name: "Awans!" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "OK" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ConflictSurface (FR-073a)", () => {
+  beforeEach(() => {
+    useSyncStore.getState().reset();
+    useAuthStore.getState().setMe({
+      schema_version: 1,
+      id: "018f0000-0000-7000-8000-000000000001",
+      email: "a@b.c",
+      display_name: null,
+      locale: "pl-PL",
+      timezone: "Europe/Warsaw",
+      onboarding_completed: true,
+      health_disclaimer_accepted: true,
+      csrf_token: "csrf",
+    });
+    useSyncStore.setState({
+      modalConflictQueue: [
+        {
+          id: "018f0000-0000-7000-8000-0000000000cf",
+          entity_type: "workout_session",
+          entity_id: "018f0000-0000-7000-8000-0000000000se",
+          conflict_kind: "conflict_tie",
+          created_at: "2026-08-10T12:00:00Z",
+          acknowledged: false,
+          winning_revision: 2,
+          losing_payload: {
+            schema_version: 1,
+            op: "upsert",
+            revision: 2,
+            payload: {
+              schema_version: 1,
+              local_date: "2026-08-10",
+              performed_at: "2026-08-10T10:00:00Z",
+              logs: [],
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it("shows mandatory tie modal with recover CTA", () => {
+    render(
+      <MemoryRouter>
+        <ConflictSurface />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Konflikt synchronizacji")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Zapisz przegraną jako nową" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Zostaw wersję serwera" }),
+    ).toBeInTheDocument();
   });
 });

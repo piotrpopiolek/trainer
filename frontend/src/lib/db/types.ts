@@ -47,6 +47,10 @@ export type CachedConflict = {
   created_at: string;
   acknowledged: boolean;
   winning_revision?: number | null;
+  losing_revision?: number | null;
+  winning_updated_at?: string | null;
+  /** SyncLosingPayloadV1 from server or reconstructed from outbox on push ACK. */
+  losing_payload?: Record<string, unknown> | null;
   losing_summary?: string | null;
 };
 

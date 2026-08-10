@@ -10,6 +10,11 @@ import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import { acknowledgeConflict } from "@/lib/db/cache";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
+import { conflictKindI18nKey } from "@/lib/sync/conflictKind";
+import {
+  canRecoverConflict,
+  recoverConflictAsNewEntity,
+} from "@/lib/sync/recoverConflict";
 import { useAuthStore } from "@/stores/authStore";
 import { useSyncStore } from "@/stores/syncStore";
 
@@ -37,6 +42,7 @@ export function SettingsPage() {
   const [tz, setTz] = useState(me?.timezone ?? "Europe/Warsaw");
   const [anchor, setAnchor] = useState<"1" | "2" | "">("");
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null);
+  const [recoverMsg, setRecoverMsg] = useState<string | null>(null);
 
   const logoutMut = useMutation({
     mutationFn: logout,
@@ -85,6 +91,8 @@ export function SettingsPage() {
     },
   });
 
+  const unacked = conflicts.filter((c) => !c.acknowledged);
+
   return (
     <>
       <SyncStatusBanner />
@@ -121,32 +129,67 @@ export function SettingsPage() {
           >
             {t("sync.syncNow")}
           </Button>
-          {conflicts.filter((c) => !c.acknowledged).length > 0 ? (
-            <ul className="flex flex-col gap-2 text-sm">
-              <li className="font-medium">{t("settings.conflicts")}</li>
-              {conflicts
-                .filter((c) => !c.acknowledged)
-                .map((c) => (
+          {recoverMsg ? <p className="text-sm text-teal-800">{recoverMsg}</p> : null}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">{t("settings.conflicts")}</h3>
+            {unacked.length === 0 ? (
+              <p className="text-sm text-slate-500">{t("settings.conflictsEmpty")}</p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {unacked.map((c) => (
                   <li
                     key={c.id}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-3 py-2"
+                    className="flex flex-col gap-2 rounded-lg bg-violet-50 px-3 py-2"
                   >
-                    <span>
-                      {c.conflict_kind} · {c.entity_type}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        if (!me?.id) return;
-                        void acknowledgeConflict(me.id, c.id).then(() => refresh());
-                      }}
-                    >
-                      {t("common.close")}
-                    </Button>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">
+                          {t(conflictKindI18nKey(c.conflict_kind))}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {c.entity_type}
+                          {c.winning_revision != null
+                            ? ` · winning rev ${c.winning_revision}`
+                            : ""}
+                        </p>
+                        <p className="text-xs text-slate-500">{c.created_at}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (!me?.id) return;
+                          void acknowledgeConflict(me.id, c.id).then(() => refresh());
+                        }}
+                      >
+                        {t("sync.conflictAck")}
+                      </Button>
+                    </div>
+                    {canRecoverConflict(c) ? (
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          if (!me?.id) return;
+                          void recoverConflictAsNewEntity(me.id, c).then(async (r) => {
+                            if (!r.ok) {
+                              setRecoverMsg(t("sync.recoverFailed"));
+                              return;
+                            }
+                            setRecoverMsg(t("sync.recoverQueued"));
+                            await refresh();
+                            if (navigator.onLine) {
+                              await syncNow(me.id, me.locale);
+                            }
+                          });
+                        }}
+                      >
+                        {t("sync.conflictRecover")}
+                      </Button>
+                    ) : null}
                   </li>
                 ))}
-            </ul>
-          ) : null}
+              </ul>
+            )}
+          </div>
         </section>
 
         <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/80 p-4">

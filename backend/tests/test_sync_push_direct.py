@@ -279,10 +279,19 @@ async def test_push_session_conflict_lost(db: AsyncSession) -> None:
         ),
     )
     assert out.results[0].status == "conflict_lost"
+    assert out.results[0].conflict_id is not None
 
+    from app.services.sync_pull import pull as sync_pull
 
-@pytest.mark.asyncio
-async def test_push_legal_acceptance(db: AsyncSession) -> None:
+    pull_out = await sync_pull(db, user=user, since=None, locale="pl-PL", device_id=None)
+    conflict_rows = [
+        c for c in pull_out.conflicts if c["id"] == str(out.results[0].conflict_id)
+    ]
+    assert len(conflict_rows) == 1
+    assert "losing_payload" in conflict_rows[0]
+    assert conflict_rows[0]["losing_payload"]["schema_version"] == 1
+    assert conflict_rows[0]["winning_revision"] == 3
+
     user = await _ready(db, "sync-legal@ex.com")
     doc, tr = await latest_health_disclaimer(db)
     mut = new_uuid7()

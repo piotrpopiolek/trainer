@@ -4,6 +4,7 @@ import { listConflicts } from "@/lib/db/cache";
 import { outboxCounts } from "@/lib/db/outbox";
 import { readPersisted } from "@/lib/db/persist";
 import type { CachedConflict } from "@/lib/db/types";
+import { conflictIsLost, conflictNeedsModal } from "@/lib/sync/conflictKind";
 import type { ProgressionEvent } from "@/lib/schemas";
 
 type SyncState = {
@@ -18,7 +19,10 @@ type SyncState = {
   transportFailStreak: number;
   lastFlushError: string | null;
   recentEvents: ProgressionEvent[];
+  /** Toast-only (conflict_lost). */
   lastConflictToast: CachedConflict | null;
+  /** Mandatory modal queue (tie / immutable) — one at a time. */
+  modalConflictQueue: CachedConflict[];
   setOnline: (online: boolean) => void;
   setUserId: (userId: string | null) => void;
   refresh: () => Promise<void>;
@@ -27,6 +31,9 @@ type SyncState = {
   pushEvents: (events: ProgressionEvent[]) => void;
   clearEvents: () => void;
   setLastConflictToast: (c: CachedConflict | null) => void;
+  /** After flush/pull: partition unacked conflicts into toast vs modal queue. */
+  surfaceConflicts: (conflicts: CachedConflict[]) => void;
+  dismissModalConflict: () => void;
   reset: () => void;
 };
 
@@ -43,6 +50,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   lastFlushError: null,
   recentEvents: [],
   lastConflictToast: null,
+  modalConflictQueue: [],
   setOnline: (online) => set({ online }),
   setUserId: (userId) => set({ userId }),
   refresh: async () => {
@@ -67,6 +75,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set((s) => ({ recentEvents: [...s.recentEvents, ...events] })),
   clearEvents: () => set({ recentEvents: [] }),
   setLastConflictToast: (c) => set({ lastConflictToast: c }),
+  surfaceConflicts: (conflicts) => {
+    const unacked = conflicts.filter((c) => !c.acknowledged);
+    const modals = unacked.filter((c) => conflictNeedsModal(c.conflict_kind));
+    const lost = unacked.find((c) => conflictIsLost(c.conflict_kind)) ?? null;
+    set((s) => {
+      const existingIds = new Set(s.modalConflictQueue.map((c) => c.id));
+      const merged = [
+        ...s.modalConflictQueue,
+        ...modals.filter((c) => !existingIds.has(c.id)),
+      ];
+      return {
+        modalConflictQueue: merged,
+        lastConflictToast: lost ?? s.lastConflictToast,
+      };
+    });
+  },
+  dismissModalConflict: () =>
+    set((s) => ({ modalConflictQueue: s.modalConflictQueue.slice(1) })),
   reset: () =>
     set({
       userId: null,
@@ -79,6 +105,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       lastFlushError: null,
       recentEvents: [],
       lastConflictToast: null,
+      modalConflictQueue: [],
       persisted: null,
     }),
 }));

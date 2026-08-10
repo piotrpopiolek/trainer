@@ -19,14 +19,10 @@ export async function bootstrapSync(userId: string, locale?: string): Promise<vo
       if (result.progressionEvents.length) {
         useSyncStore.getState().pushEvents(result.progressionEvents);
       }
-      if (result.conflicts > 0) {
-        await useSyncStore.getState().refresh();
-        const first = useSyncStore.getState().conflicts.find((c) => !c.acknowledged);
-        if (first) useSyncStore.getState().setLastConflictToast(first);
-      }
     }
   } finally {
     await useSyncStore.getState().refresh();
+    useSyncStore.getState().surfaceConflicts(useSyncStore.getState().conflicts);
   }
 }
 
@@ -46,5 +42,6 @@ export async function syncNow(userId: string, locale?: string): Promise<void> {
     }
   } finally {
     await useSyncStore.getState().refresh();
+    useSyncStore.getState().surfaceConflicts(useSyncStore.getState().conflicts);
   }
 }

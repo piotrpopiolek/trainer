@@ -1,8 +1,11 @@
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui";
+import { ConflictSurface } from "@/features/sync/ConflictSurface";
 import { syncNow } from "@/features/sync/bootstrap";
 import { acknowledgeConflict } from "@/lib/db/cache";
+import { conflictKindI18nKey } from "@/lib/sync/conflictKind";
 import { useAuthStore } from "@/stores/authStore";
 import { pendingOutboxTotal, useSyncStore } from "@/stores/syncStore";
 
@@ -16,8 +19,10 @@ export function SyncStatusBanner() {
   const transportFailStreak = useSyncStore((s) => s.transportFailStreak);
   const lastConflictToast = useSyncStore((s) => s.lastConflictToast);
   const setLastConflictToast = useSyncStore((s) => s.setLastConflictToast);
+  const conflicts = useSyncStore((s) => s.conflicts);
   const refresh = useSyncStore((s) => s.refresh);
   const total = useSyncStore(pendingOutboxTotal);
+  const unackedConflicts = conflicts.filter((c) => !c.acknowledged);
 
   if (!me) return null;
 
@@ -26,59 +31,86 @@ export function SyncStatusBanner() {
   const showPending = pending > 0 || !online;
   const showQuarantine = quarantine > 0;
   const showTransport = transportFailStreak >= 5;
+  const showConflictBadge = unackedConflicts.length > 0;
 
-  if (!showPersist && !showPending && !showQuarantine && !showTransport && !lastConflictToast) {
-    return null;
+  if (
+    !showPersist &&
+    !showPending &&
+    !showQuarantine &&
+    !showTransport &&
+    !lastConflictToast &&
+    !showConflictBadge
+  ) {
+    return (
+      <>
+        <ConflictSurface />
+      </>
+    );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-2 px-4 pt-3">
-      {showPersist ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          {t("sync.persistWarning")}
-        </div>
-      ) : null}
-      {showPending ? (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950">
-          <span>
-            {!online ? t("sync.offline") : t("sync.pending", { count: total })}
-          </span>
-          {online ? (
+    <>
+      <div className="mx-auto flex w-full max-w-lg flex-col gap-2 px-4 pt-3">
+        {showPersist ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            {t("sync.persistWarning")}
+          </div>
+        ) : null}
+        {showPending ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950">
+            <span>
+              {!online ? t("sync.offline") : t("sync.pending", { count: total })}
+            </span>
+            {online ? (
+              <Button
+                variant="secondary"
+                onClick={() => void syncNow(me.id, me.locale)}
+              >
+                {t("sync.syncNow")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {showQuarantine ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+            {t("sync.quarantine", { count: quarantine })}
+          </div>
+        ) : null}
+        {showTransport ? (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950">
+            {t("sync.transportEscalation")}
+          </div>
+        ) : null}
+        {showConflictBadge ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+            <span>{t("sync.conflictBadge", { count: unackedConflicts.length })}</span>
+            <Link className="font-semibold underline" to="/settings">
+              {t("sync.conflictListLink")}
+            </Link>
+          </div>
+        ) : null}
+        {lastConflictToast ? (
+          <div className="flex items-start justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+            <span>
+              {t("sync.conflictToast", {
+                kind: t(conflictKindI18nKey(lastConflictToast.conflict_kind)),
+              })}
+            </span>
             <Button
-              variant="secondary"
-              onClick={() => void syncNow(me.id, me.locale)}
+              variant="ghost"
+              onClick={() => {
+                void acknowledgeConflict(me.id, lastConflictToast.id).then(() => {
+                  setLastConflictToast(null);
+                  return refresh();
+                });
+              }}
             >
-              {t("sync.syncNow")}
+              {t("common.close")}
             </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {showQuarantine ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
-          {t("sync.quarantine", { count: quarantine })}
-        </div>
-      ) : null}
-      {showTransport ? (
-        <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950">
-          {t("sync.transportEscalation")}
-        </div>
-      ) : null}
-      {lastConflictToast ? (
-        <div className="flex items-start justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
-          <span>{t("sync.conflictToast", { kind: lastConflictToast.conflict_kind })}</span>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              void acknowledgeConflict(me.id, lastConflictToast.id).then(() => {
-                setLastConflictToast(null);
-                return refresh();
-              });
-            }}
-          >
-            {t("common.close")}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+          </div>
+        ) : null}
+      </div>
+      <ConflictSurface />
+    </>
   );
 }

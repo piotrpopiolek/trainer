@@ -1,5 +1,6 @@
 import {
   applyTombstone,
+  listConflicts,
   putMeasurementCache,
   putProgressCache,
   putSatelliteCache,
@@ -67,13 +68,26 @@ export async function applyPull(userId: string, locale?: string): Promise<void> 
   }
   for (const c of pull.conflicts) {
     if (typeof c.id === "string") {
+      const existing = (
+        await listConflicts(userId)
+      ).find((row) => row.id === c.id);
       await upsertConflict(userId, {
         id: c.id,
         entity_type: String(c.entity_type ?? ""),
         entity_id: String(c.entity_id ?? ""),
         conflict_kind: String(c.conflict_kind ?? ""),
         created_at: String(c.created_at ?? new Date().toISOString()),
-        acknowledged: false,
+        acknowledged: existing?.acknowledged ?? false,
+        winning_revision:
+          typeof c.winning_revision === "number" ? c.winning_revision : null,
+        losing_revision:
+          typeof c.losing_revision === "number" ? c.losing_revision : null,
+        winning_updated_at:
+          typeof c.winning_updated_at === "string" ? c.winning_updated_at : null,
+        losing_payload:
+          c.losing_payload && typeof c.losing_payload === "object"
+            ? (c.losing_payload as Record<string, unknown>)
+            : existing?.losing_payload ?? null,
       });
     }
   }
@@ -126,6 +140,14 @@ async function applyPushResults(
           created_at: new Date().toISOString(),
           acknowledged: false,
           winning_revision: result.winning_revision,
+          losing_revision: item.revision,
+          winning_updated_at: result.winning_updated_at ?? null,
+          losing_payload: {
+            schema_version: 1,
+            payload: item.payload ?? {},
+            op: item.op,
+            revision: item.revision,
+          },
         });
       }
     } else if (action.kind === "quarantine") {

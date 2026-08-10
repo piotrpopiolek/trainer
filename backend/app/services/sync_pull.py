@@ -249,6 +249,10 @@ async def pull(
                 "entity_type": c.entity_type,
                 "entity_id": str(c.entity_id),
                 "conflict_kind": c.conflict_kind,
+                "winning_revision": c.winning_revision,
+                "losing_revision": c.losing_revision,
+                "winning_updated_at": c.winning_updated_at.isoformat(),
+                "losing_payload": c.losing_payload,
                 "created_at": c.created_at.isoformat(),
             }
             for c in conflicts
