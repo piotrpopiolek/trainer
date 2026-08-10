@@ -45,9 +45,18 @@ export function ProgressionSurface({
   names: Record<string, string>;
 }) {
   const { t } = useTranslation();
-  const filterUnseen = useSeenEventsStore((s) => s.filterUnseen);
+  const seenIds = useSeenEventsStore((s) => s.seenIds);
   const markSeen = useSeenEventsStore((s) => s.markSeen);
-  const queue = useMemo(() => filterUnseen(events), [events, filterUnseen]);
+  const queue = useMemo(() => {
+    const seen = new Set(seenIds);
+    const surface = new Set([
+      "advance",
+      "regress",
+      "satellite_advance",
+      "satellite_regress_confirmed",
+    ]);
+    return events.filter((e) => surface.has(e.event_type) && !seen.has(e.id));
+  }, [events, seenIds]);
   const current = queue[0];
 
   if (!current) return null;

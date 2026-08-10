@@ -62,5 +62,7 @@ describe("ProgressionSurface", () => {
     expect(useSeenEventsStore.getState().seenIds).toContain(
       "018f0000-0000-7000-8000-0000000000aa",
     );
+    expect(screen.queryByRole("heading", { name: "Awans!" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "OK" })).not.toBeInTheDocument();
   });
 });
