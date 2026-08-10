@@ -186,7 +186,7 @@ Host Postgres tooling (optional) maps to `localhost:5433`.
 | Go-live ops | Checklist — [infra/runbooks/go-live.md](infra/runbooks/go-live.md) |
 | License file | Not chosen |
 
-Current focus: **dogfood / host go-live** (not Phase 2).
+Current focus: **dogfood hardening / host go-live** (quarantine UX, crash boundary, founder checklist — not Phase 2).
 
 ## License
 

@@ -45,12 +45,13 @@ Backup destination must be **off the app host** in real prod (bind-mount `infra/
 
 0. `python scripts/go_live_smoke.py` must print `go_live_smoke.ok` (sets expectations for env + stack).
 1. Trust TLS / real cert; open `PUBLIC_ORIGIN`
-2. Google login → onboarding + health disclaimer
-3. Log CC session online; confirm progression surface
-4. Airplane mode: log session → online → flush / conflicts UI
-5. Settings: schedule/TZ, sync status, `storage.persist` banner if needed
+2. Google login → onboarding + health disclaimer → **Today** (not blank white; crash screen OK only if you can reload)
+3. Log CC session online; confirm progression surface (FR-036)
+4. Airplane mode: log session → badge pending + „Stan z ostatniego syncu” (FR-071a) → online → flush / conflicts UI (FR-073a)
+5. Settings: schedule/TZ, sync status, quarantine list (retry/discard), `storage.persist` banner if needed
 6. Export / soft-delete account smoke (CSRF)
-7. `docker compose --profile ops run --rm backup` then restore drill on a **non-prod** volume
+7. Ops one-shots: `docker compose --profile ops run --rm backup`, `satellite-finalize`, then restore drill on a **non-prod** volume
+8. Host cron installed from `infra/cron/trainer.cron.example` (backup + purge + cleanup + satellite-finalize)
 
 ## E. Content (PCO)
 

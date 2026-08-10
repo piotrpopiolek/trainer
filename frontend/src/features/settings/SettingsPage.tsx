@@ -8,6 +8,7 @@ import { logout, logoutAll, patchSchedule } from "@/features/auth/api";
 import { syncNow } from "@/features/sync/bootstrap";
 import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import { acknowledgeConflict } from "@/lib/db/cache";
+import { deleteOutboxItem, requeueQuarantineItem } from "@/lib/db/outbox";
 import { ApiError } from "@/lib/api";
 import { errorCodeToI18nKey } from "@/lib/errors";
 import { conflictKindI18nKey } from "@/lib/sync/conflictKind";
@@ -38,11 +39,13 @@ export function SettingsPage() {
   const persisted = useSyncStore((s) => s.persisted);
   const oldestPendingAt = useSyncStore((s) => s.oldestPendingAt);
   const conflicts = useSyncStore((s) => s.conflicts);
+  const quarantineItems = useSyncStore((s) => s.quarantineItems);
   const refresh = useSyncStore((s) => s.refresh);
   const [tz, setTz] = useState(me?.timezone ?? "Europe/Warsaw");
   const [anchor, setAnchor] = useState<"1" | "2" | "">("");
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null);
   const [recoverMsg, setRecoverMsg] = useState<string | null>(null);
+  const [quarantineMsg, setQuarantineMsg] = useState<string | null>(null);
 
   const logoutMut = useMutation({
     mutationFn: logout,
@@ -130,6 +133,77 @@ export function SettingsPage() {
             {t("sync.syncNow")}
           </Button>
           {recoverMsg ? <p className="text-sm text-teal-800">{recoverMsg}</p> : null}
+          {quarantineMsg ? (
+            <p className="text-sm text-teal-800">{quarantineMsg}</p>
+          ) : null}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">
+              {t("settings.quarantineTitle")}
+            </h3>
+            <p className="text-xs text-slate-500">{t("settings.quarantineHint")}</p>
+            {quarantineItems.length === 0 ? (
+              <p className="text-sm text-slate-500">{t("settings.quarantineEmpty")}</p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {quarantineItems.map((item) => (
+                  <li
+                    key={item.client_mutation_id}
+                    className="flex flex-col gap-2 rounded-lg bg-rose-50 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {item.entity_type} · {item.op}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {item.last_error_code
+                          ? t(errorCodeToI18nKey(item.last_error_code))
+                          : t("errors.generic")}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {item.entity_id.slice(0, 8)}… · {item.updated_at}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          if (!me?.id) return;
+                          void requeueQuarantineItem(
+                            me.id,
+                            item.client_mutation_id,
+                          ).then(async (next) => {
+                            if (!next) return;
+                            setQuarantineMsg(t("settings.quarantineRequeued"));
+                            await refresh();
+                            if (navigator.onLine) {
+                              await syncNow(me.id, me.locale);
+                            }
+                          });
+                        }}
+                      >
+                        {t("settings.quarantineRetry")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (!me?.id) return;
+                          void deleteOutboxItem(
+                            me.id,
+                            item.client_mutation_id,
+                          ).then(async () => {
+                            setQuarantineMsg(t("settings.quarantineDiscarded"));
+                            await refresh();
+                          });
+                        }}
+                      >
+                        {t("settings.quarantineDiscard")}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold text-slate-800">{t("settings.conflicts")}</h3>
             {unacked.length === 0 ? (

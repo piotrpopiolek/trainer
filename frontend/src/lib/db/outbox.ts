@@ -81,6 +81,26 @@ export async function deleteOutboxItem(
   await db.delete("outbox", clientMutationId);
 }
 
+/** FR-072b: user "Spróbuj ponownie" — reset quarantine → pending (no auto-drop). */
+export async function requeueQuarantineItem(
+  userId: string,
+  clientMutationId: string,
+): Promise<OutboxItem | null> {
+  const db = await openUserDb(userId);
+  const item = await db.get("outbox", clientMutationId);
+  if (!item || item.status !== "quarantine") return null;
+  const next: OutboxItem = {
+    ...item,
+    status: "pending",
+    next_attempt_at: null,
+    blocked_by: [],
+    last_error_code: null,
+    updated_at: new Date().toISOString(),
+  };
+  await db.put("outbox", next);
+  return next;
+}
+
 export async function outboxCounts(userId: string): Promise<{
   pending: number;
   in_flight: number;

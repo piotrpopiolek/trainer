@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { LoginPage } from "@/features/auth/pages";
 import { ProgressionSurface } from "@/features/progress/ProgressionSurface";
 import { ConflictSurface } from "@/features/sync/ConflictSurface";
+import { SyncStatusBanner } from "@/features/sync/SyncStatusBanner";
 import "@/lib/i18n";
 import { useAuthStore } from "@/stores/authStore";
 import { useSeenEventsStore } from "@/stores/seenEventsStore";
@@ -123,5 +124,40 @@ describe("ConflictSurface (FR-073a)", () => {
     expect(
       screen.getByRole("button", { name: "Zostaw wersję serwera" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("SyncStatusBanner (dogfood)", () => {
+  beforeEach(() => {
+    useSyncStore.getState().reset();
+    useAuthStore.getState().setMe({
+      schema_version: 1,
+      id: "018f0000-0000-7000-8000-000000000001",
+      email: "a@b.c",
+      display_name: null,
+      locale: "pl-PL",
+      timezone: "Europe/Warsaw",
+      onboarding_completed: true,
+      health_disclaimer_accepted: true,
+      csrf_token: "csrf",
+    });
+  });
+
+  it("links quarantine badge to settings without crashing", () => {
+    useSyncStore.setState({
+      quarantine: 2,
+      pending: 0,
+      conflicts: [],
+      quarantineItems: [],
+    });
+    render(
+      <MemoryRouter>
+        <SyncStatusBanner />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Wymaga uwagi: 2/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Otwórz kwarantannę" }),
+    ).toHaveAttribute("href", "/settings");
   });
 });

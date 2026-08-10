@@ -72,8 +72,11 @@ export function SyncStatusBanner() {
           </div>
         ) : null}
         {showQuarantine ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
-            {t("sync.quarantine", { count: quarantine })}
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+            <span>{t("sync.quarantine", { count: quarantine })}</span>
+            <Link className="font-semibold underline" to="/settings">
+              {t("sync.quarantineListLink")}
+            </Link>
           </div>
         ) : null}
         {showTransport ? (

@@ -124,7 +124,10 @@ export function TodayPage() {
   const qc = useQueryClient();
   const me = useAuthStore((s) => s.me);
   const syncEvents = useSyncStore((s) => s.recentEvents);
+  const online = useSyncStore((s) => s.online);
+  const pending = useSyncStore((s) => s.pending);
   const userTz = me?.timezone ?? "Europe/Warsaw";
+  const showStepFromCache = !online || pending > 0;
   const [override, setOverride] = useState<number | undefined>();
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
@@ -302,7 +305,9 @@ export function TodayPage() {
                 execution={ex.execution}
                 rationale={ex.rationale}
                 technique={ex.technique}
-                cacheLabel={t("sync.stepFromCache")}
+                cacheLabel={
+                  showStepFromCache ? t("sync.stepFromCache") : undefined
+                }
                 onLog={() => {
                   const sets = setCountFromAdvance(ex.advance);
                   const useDuration = advanceUsesDuration(ex.advance);

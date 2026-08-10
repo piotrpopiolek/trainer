@@ -1,9 +1,9 @@
 import { create } from "zustand";
 
 import { listConflicts } from "@/lib/db/cache";
-import { outboxCounts } from "@/lib/db/outbox";
+import { listOutboxByStatus, outboxCounts } from "@/lib/db/outbox";
 import { readPersisted } from "@/lib/db/persist";
-import type { CachedConflict } from "@/lib/db/types";
+import type { CachedConflict, OutboxItem } from "@/lib/db/types";
 import { conflictIsLost, conflictNeedsModal } from "@/lib/sync/conflictKind";
 import type { ProgressionEvent } from "@/lib/schemas";
 
@@ -16,6 +16,8 @@ type SyncState = {
   quarantine: number;
   oldestPendingAt: string | null;
   conflicts: CachedConflict[];
+  /** FR-072b: poison items for Settings “Wymaga uwagi”. */
+  quarantineItems: OutboxItem[];
   transportFailStreak: number;
   lastFlushError: string | null;
   recentEvents: ProgressionEvent[];
@@ -46,6 +48,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   quarantine: 0,
   oldestPendingAt: null,
   conflicts: [],
+  quarantineItems: [],
   transportFailStreak: 0,
   lastFlushError: null,
   recentEvents: [],
@@ -58,6 +61,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (!userId) return;
     const counts = await outboxCounts(userId);
     const conflicts = await listConflicts(userId);
+    const quarantineItems = await listOutboxByStatus(userId, ["quarantine"]);
     const persisted = await readPersisted(userId);
     set({
       pending: counts.pending,
@@ -65,6 +69,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       quarantine: counts.quarantine,
       oldestPendingAt: counts.oldestPendingAt,
       conflicts,
+      quarantineItems,
       persisted,
     });
   },
@@ -101,6 +106,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       quarantine: 0,
       oldestPendingAt: null,
       conflicts: [],
+      quarantineItems: [],
       transportFailStreak: 0,
       lastFlushError: null,
       recentEvents: [],
