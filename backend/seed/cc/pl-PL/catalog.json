@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "locale": "pl-PL",
-  "catalog_version": 4,
+  "catalog_version": 5,
   "program": {
     "name": "Program Big Six",
     "description": "Sześć podstawowych wzorców ruchowych z dziesięciostopniową progresją. Treści własne aplikacji — bez cytatów z książek. Awans i regres ocenia serwer według reguł kroku."
@@ -39,7 +39,7 @@
     {
       "slug": "leg_raises",
       "name": "Unoszenie nóg",
-      "description": "Progresja pracy tułowia i bioder od leżenia do zwisu. Stabilne lędźwie, kontrolowane tempo, bez zamachu."
+      "description": "Progresja tułowia i bioder: od siadu na krawędzi, przez leżenie, do zwisu. Stały kąt kolan, wolne tempo, bez zamachu."
     },
     {
       "slug": "bridges",
@@ -356,102 +356,102 @@
     {
       "exercise_slug": "leg_raises",
       "step_number": 1,
-      "name": "Unoszenie kolan w leżeniu",
-      "description": "Bezpieczny start pracy tułowia.",
+      "name": "Podwijanie kolan na krawędzi",
+      "description": "Siad na krawędzi, nogi proste, kolana do klatki.",
       "content_status": "ready",
-      "execution": "Leż na plecach, unoś zgięte kolana, lędźwie przyciśnięte do podłoża.",
-      "rationale": "Uczy kontroli miednicy bez zwisu.",
-      "technique": "Jeśli lędźwie odrywają się, zmniejsz zakres."
+      "execution": "Usiądź na krawędzi krzesła lub łóżka, oprzyj dłonie, odchyl tułów. Nogi razem, proste, pięty nad podłogą. Przyciągnij kolana do klatki, pauza, wróć do wyprostu. Stopy nie dotykają podłoża do końca serii.",
+      "rationale": "Uczy oddechu i napięcia brzucha przy małym obciążeniu.",
+      "technique": "Gdy za trudno, skróć zakres i stopniowo go wydłużaj."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 2,
-      "name": "Unoszenie prostych nóg w leżeniu",
-      "description": "Dłuższa dźwignia nóg.",
+      "name": "Unoszenie kolan w leżeniu",
+      "description": "Leżenie, kolana zgięte pod kątem prostym.",
       "content_status": "ready",
-      "execution": "Unoś proste nogi, opuszczaj wolno bez odbicia.",
-      "rationale": "Wzmacnia zginacze bioder i prostowniki synchronicznie z brzuchem.",
-      "technique": "Lekko ugnij kolana, gdy nie dajesz rady utrzymać prostych nóg."
+      "execution": "Leż na plecach, dłonie wzdłuż tułowia. Unoś zgięte kolana, aż uda będą pionowo; kąt w kolanach zostaje prosty. Opuszczaj wolno, stopy nad podłogą do końca serii.",
+      "rationale": "Przenosi wzorzec na podłogę i uczy kontroli lędźwi.",
+      "technique": "Jeśli lędźwie odrywają się, zmniejsz zakres."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 3,
-      "name": "Unoszenie kolan w zwisie",
-      "description": "Przeniesienie wzorca do zwisu.",
+      "name": "Unoszenie zgiętych nóg w leżeniu",
+      "description": "Ten sam tor, kolana zablokowane pod 45°.",
       "content_status": "ready",
-      "execution": "W zwisie unoś kolana do klatki bez huśtania.",
-      "rationale": "Wymaga chwytu i stabilnych barków.",
-      "technique": "Najpierw „martwy zwis” 20–30 s, potem unoszenia."
+      "execution": "Leż na plecach, dłonie na podłożu. Unoś nogi z kolanami zgiętymi pod około 45°; stopy nad ziemią. Prowadź stopy nad miednicę, kąt kolan bez zmian. Pauza, wolny powrót.",
+      "rationale": "Dłuższa dźwignia niż przy kolanach pod 90°.",
+      "technique": "Za ciężko — zegnij kolana trochę bardziej i z sesji na sesję je prostuj."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 4,
-      "name": "Unoszenie nóg częściowe w zwisie",
-      "description": "Proste nogi w połowie zakresu.",
+      "name": "Unoszenie z wyprostem w leżeniu",
+      "description": "W górze wyprost, w dół proste nogi.",
       "content_status": "ready",
-      "execution": "Unoś do połowy, tempo równe, bez bujania.",
-      "rationale": "Buduje siłę do pełnego poziomu.",
-      "technique": "Wyobraź sobie pauzę w górze na ułamek sekundy."
+      "execution": "Zacznij jak w kroku 3. W górze wyprostuj nogi pionowo nad biodrami. Opuszczaj je wyprostowane, aż znajdą się tuż nad podłogą. Zejście wolniejsze niż unoszenie.",
+      "rationale": "Most między zgiętymi a prostymi nogami; uczy kontroli opuszczania.",
+      "technique": "Pracuj nad górną częścią toru, potem pogłębiaj zejście."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 5,
-      "name": "Unoszenie nóg do poziomu",
-      "description": "Nogi do równoległości z podłożem.",
+      "name": "Unoszenie prostych nóg w leżeniu",
+      "description": "Proste nogi przez cały ruch, stopy nad miednicą.",
       "content_status": "ready",
-      "execution": "Core napięty, wolne opuszczanie, bez szarpania barkami.",
-      "rationale": "Klasyczny próg kontroli tułowia w zwisie.",
-      "technique": "Lekko odchyl barki „w dół i od uszu”."
+      "execution": "Leż na plecach, nogi złączone i wyprostowane, pięty tuż nad podłogą. Unoś je, aż stopy będą nad miednicą. Pauza, wróć bez zgięcia kolan i bez odbicia pięt.",
+      "rationale": "Pełna dźwignia w leżeniu przed przejściem do zwisu.",
+      "technique": "Nie uginaj kolan „na oszustwo”. W razie kłopotu wróć do kroku 4."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 6,
-      "name": "Unoszenie nóg powyżej poziomu",
-      "description": "Zakres powyżej równoległości.",
+      "name": "Unoszenie kolan w zwisie",
+      "description": "Zwis, kolana do wysokości bioder.",
       "content_status": "ready",
-      "execution": "Prowadź nogi wyżej z kontrolą bioder, wracaj płynnie.",
-      "rationale": "Zwiększa wymaganie zginaczy i anty-huśtania.",
-      "technique": "Nie zamykaj klatki — oddychaj w górze."
+      "execution": "Zwis na drążku, barki aktywne, ciało w linii. Unoś kolana, aż uda będą równoległe do podłoża (kąt prosty w biodrach). Pauza, wróć do zwisu bez bujania.",
+      "rationale": "Pierwszy krok w pełnej grawitacji; dochodzi chwyt i barki.",
+      "technique": "Za mało siły — skróć zakres od góry i pogłębiaj. Bez zamachu."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 7,
-      "name": "Unoszenie nóg do drążka",
-      "description": "Stopy w stronę drążka.",
+      "name": "Unoszenie zgiętych nóg w zwisie",
+      "description": "Zwis, kolana zablokowane pod 45°.",
       "content_status": "ready",
-      "execution": "Proste nogi możliwie blisko drążka, kontrolowane zejście.",
-      "rationale": "Pełny zakres kompresji tułowia.",
-      "technique": "Mobilność tylnego łańcucha często limituje — rozluźnij biodra przed serią."
+      "execution": "W zwisie zegnij kolana tak, by łydki były odchylone od pionu. Unoś nogi z bioder, aż stopy dojdą do wysokości miednicy. Kąt kolan stały — rusza się tylko biodro.",
+      "rationale": "Dłuższa dźwignia niż przy unoszeniu kolan.",
+      "technique": "Jeśli kąt się rozjeżdża, wróć bliżej 90° i prostuj nogi stopniowo."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 8,
-      "name": "Unoszenie nóg z pauzą",
-      "description": "Izometria na szczycie.",
+      "name": "Unoszenie z wyprostem w zwisie",
+      "description": "W górze wyprost, opuszczanie prostych nóg.",
       "content_status": "ready",
-      "execution": "Krótka pauza w górze, wolniejsze opuszczanie.",
-      "rationale": "Buduje wytrzymałość kontroli.",
-      "technique": "Licz „21–22” na pauzie zamiast trzymać w nieskończoność."
+      "execution": "Zacznij jak w kroku 7. W górze wyprostuj nogi przed sobą. Opuszczaj je wyprostowane aż do pionowego zwisu, potem wróć do pozycji startowej.",
+      "rationale": "Negatywna faza buduje siłę i zakres do prostych nóg.",
+      "technique": "Trudność często wynika ze sztywności tylnego łańcucha — rozluźnij biodra przed serią."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 9,
-      "name": "Unoszenie nóg w wolnym tempie",
-      "description": "Cały ruch bardzo wolny.",
+      "name": "Częściowe unoszenie prostych nóg",
+      "description": "Proste nogi od skosu 45° do poziomu.",
       "content_status": "ready",
-      "execution": "Bez zamachu, stabilne barki, jakość > liczba.",
-      "rationale": "Eliminuje oszustwa momentum.",
-      "technique": "Celuj w 3 s w górę i 3 s w dół."
+      "execution": "W zwisie unoś wyprostowane nogi do skosu około 45° i utrzymaj. Stąd prowadź je do równoległości z podłożem i wracaj do skosu — nie do pełnego zwisu.",
+      "rationale": "Uczy najtrudniejszego wycinka bez startu z martwego zwisu.",
+      "technique": "Za trudno — pracuj blisko poziomu, nawet na krótkim odcinku."
     },
     {
       "exercise_slug": "leg_raises",
       "step_number": 10,
-      "name": "Unoszenie nóg zaawansowane",
-      "description": "Pełny zakres z maksymalną kontrolą.",
+      "name": "Unoszenie prostych nóg w zwisie",
+      "description": "Z pionu do poziomu, nogi zablokowane.",
       "content_status": "ready",
-      "execution": "Bez kippingu, symetria stron, napięcie przez całą serię.",
-      "rationale": "Mistrzowski wariant pracy tułowia w zwisie.",
-      "technique": "Rób mniej powtórzeń, gdy pojawia się huśtanie."
+      "execution": "Martwy zwis, ciało napięte. Unoś wyprostowane nogi, aż będą równoległe do podłoża. Pauza, kontrolowane zejście do pionu. Bez kippingu.",
+      "rationale": "Pełny tor prostych nóg w zwisie — cel progresji.",
+      "technique": "Jeśli nie dajesz rady, wróć do kroku 9 i pogłębiaj zakres centymetr po centymetrze."
     },
     {
       "exercise_slug": "bridges",
