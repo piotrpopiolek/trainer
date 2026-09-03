@@ -148,6 +148,7 @@
     "addPreset": "Dodaj z szablonu",
     "presetHipThrustHint": "3×10 jednonóż, ciężar + strony · Pn/Śr/Pt",
     "presetCopenhagenHint": "3 kroki holdów (duration) · po treningu",
+    "presetSeatedCurlHint": "3×10 L/P, ciężar · Wt/Czw/Sob",
     "name": "Nazwa",
     "exerciseType": "Typ",
     "typeB": "B — serie / powtórzenia",

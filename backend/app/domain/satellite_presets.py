@@ -11,9 +11,13 @@ from uuid import UUID
 
 from app.core.ids import new_uuid7
 
-SatellitePresetId = Literal["sl_hip_thrust_db", "copenhagen_plank"]
+SatellitePresetId = Literal["sl_hip_thrust_db", "copenhagen_plank", "seated_db_curl"]
 
-PRESET_IDS: tuple[SatellitePresetId, ...] = ("sl_hip_thrust_db", "copenhagen_plank")
+PRESET_IDS: tuple[SatellitePresetId, ...] = (
+    "sl_hip_thrust_db",
+    "copenhagen_plank",
+    "seated_db_curl",
+)
 
 _PRESET_META: dict[SatellitePresetId, dict[str, str]] = {
     "sl_hip_thrust_db": {
@@ -23,6 +27,10 @@ _PRESET_META: dict[SatellitePresetId, dict[str, str]] = {
     "copenhagen_plank": {
         "default_name": "Copenhagen Plank",
         "summary": "steps · duration + sides · post_workout",
+    },
+    "seated_db_curl": {
+        "default_name": "Zginanie przedramion siedząc",
+        "summary": "goal_only · reps + weight + sides · Tue/Thu/Sat",
     },
 }
 
@@ -56,6 +64,13 @@ def build_satellite_preset_create(
         )
     if preset_id == "copenhagen_plank":
         return _copenhagen_body(
+            client_mutation_id=client_mutation_id or new_uuid7(),
+            name=name,
+            step_ids=step_ids,
+            config_version_id=config_version_id,
+        )
+    if preset_id == "seated_db_curl":
+        return _seated_curl_body(
             client_mutation_id=client_mutation_id or new_uuid7(),
             name=name,
             step_ids=step_ids,
@@ -168,6 +183,49 @@ def _copenhagen_body(
                 "name": "Long lever with bottom leg lifted",
                 "rules": duration_goal(sets=3, min_duration_sec=15),
             },
+        ],
+        "client_mutation_id": str(client_mutation_id),
+    }
+    if config_version_id is not None:
+        body["config_version_id"] = str(config_version_id)
+    return body
+
+
+def _seated_curl_body(
+    *,
+    client_mutation_id: UUID,
+    name: str | None,
+    step_ids: list[UUID] | None,
+    config_version_id: UUID | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "schema_version": 1,
+        "name": name or _PRESET_META["seated_db_curl"]["default_name"],
+        "exercise_type": "B",
+        "active_metrics": {
+            "schema_version": 1,
+            "metrics": ["reps", "sides", "weight_kg"],
+        },
+        "equipment": ["dumbbell", "bench"],
+        "schedule_kind": "weekdays",
+        "weekdays": [2, 4, 6],
+        "progression": {"mode": "goal_only"},
+        "steps": [
+            {
+                "step_number": 1,
+                "step_id": _step_id(step_ids, 0),
+                "name": "Serie robocze",
+                "rules": {
+                    "schema_version": 1,
+                    "goal": {
+                        "type": "reps",
+                        "sets": 3,
+                        "min_reps": 10,
+                        "require_both_sides": True,
+                        "min_weight_kg": None,
+                    },
+                },
+            }
         ],
         "client_mutation_id": str(client_mutation_id),
     }

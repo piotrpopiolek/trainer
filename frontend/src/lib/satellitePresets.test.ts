@@ -13,6 +13,7 @@ describe("satellitePresets", () => {
     expect(SATELLITE_PRESET_IDS).toEqual([
       "sl_hip_thrust_db",
       "copenhagen_plank",
+      "seated_db_curl",
     ]);
   });
 
@@ -35,6 +36,20 @@ describe("satellitePresets", () => {
     expect(body.steps).toHaveLength(3);
     expect(body.schedule_category).toBe("post_workout");
     expect(body.steps[2]?.name).toBe("Long lever with bottom leg lifted");
+  });
+
+  it("builds seated curl goal-only with L/R and Tue/Thu/Sat", () => {
+    const body = buildSatellitePresetCreate("seated_db_curl");
+    expect(body.name).toBe("Zginanie przedramion siedząc");
+    expect(body.name).not.toMatch(/DB/);
+    expect(body.progression?.mode).toBe("goal_only");
+    expect(body.steps).toHaveLength(1);
+    expect(body.steps[0]?.rules.goal.require_both_sides).toBe(true);
+    expect(body.schedule_kind).toBe("weekdays");
+    expect(body.weekdays).toEqual([2, 4, 6]);
+    expect(body.active_metrics.metrics.sort()).toEqual(
+      ["reps", "sides", "weight_kg"].sort(),
+    );
   });
 
   it("offline pin hashes multi-step Copenhagen document", async () => {

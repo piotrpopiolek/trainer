@@ -9,11 +9,15 @@ import {
 } from "@/lib/satelliteContracts";
 import { newClientMutationId } from "@/lib/uuid";
 
-export type SatellitePresetId = "sl_hip_thrust_db" | "copenhagen_plank";
+export type SatellitePresetId =
+  | "sl_hip_thrust_db"
+  | "copenhagen_plank"
+  | "seated_db_curl";
 
 export const SATELLITE_PRESET_IDS: SatellitePresetId[] = [
   "sl_hip_thrust_db",
   "copenhagen_plank",
+  "seated_db_curl",
 ];
 
 export type SatelliteCreateRequest = {
@@ -48,6 +52,10 @@ const META: Record<
   copenhagen_plank: {
     defaultName: "Copenhagen Plank",
     summaryKey: "satellites.presetCopenhagenHint",
+  },
+  seated_db_curl: {
+    defaultName: "Zginanie przedramion siedząc",
+    summaryKey: "satellites.presetSeatedCurlHint",
   },
 };
 
@@ -101,6 +109,46 @@ export function buildSatellitePresetCreate(
           step_number: 1,
           step_id: stepId(0),
           name: "Working sets",
+          rules: satelliteRulesSchema.parse({
+            schema_version: 1,
+            goal: {
+              type: "reps",
+              sets: 3,
+              min_reps: 10,
+              require_both_sides: true,
+              min_weight_kg: null,
+            },
+          }),
+        },
+      ],
+      client_mutation_id: mutationId,
+    };
+    if (opts?.configVersionId) body.config_version_id = opts.configVersionId;
+    return body;
+  }
+
+  if (presetId === "seated_db_curl") {
+    const metrics = activeMetricsSchema.parse({
+      schema_version: 1,
+      metrics: ["reps", "weight_kg", "sides"],
+    });
+    const body: SatelliteCreateRequest = {
+      schema_version: 1,
+      name: opts?.name ?? META.seated_db_curl.defaultName,
+      exercise_type: "B",
+      active_metrics: {
+        schema_version: 1,
+        metrics: [...metrics.metrics].sort(),
+      },
+      equipment: ["dumbbell", "bench"],
+      schedule_kind: "weekdays",
+      weekdays: [2, 4, 6],
+      progression: satelliteProgressionPolicySchema.parse({ mode: "goal_only" }),
+      steps: [
+        {
+          step_number: 1,
+          step_id: stepId(0),
+          name: "Serie robocze",
           rules: satelliteRulesSchema.parse({
             schema_version: 1,
             goal: {
