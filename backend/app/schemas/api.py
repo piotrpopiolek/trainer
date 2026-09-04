@@ -131,6 +131,48 @@ class ProgressItemV1(BaseModel):
     last_session_summary: str | None = None
 
 
+class SatelliteProgressPointV1(BaseModel):
+    """One local_date aggregate from evaluated satellite log sets (no re-evaluate)."""
+
+    schema_version: int = 1
+    local_date: date
+    goal_met: bool
+    completed: bool | None = None
+    best_reps: int | None = None
+    best_duration_sec: int | None = None
+    best_weight_kg: float | None = None
+    best_reps_left: int | None = None
+    best_reps_right: int | None = None
+    best_duration_left: int | None = None
+    best_duration_right: int | None = None
+    best_weight_left: float | None = None
+    best_weight_right: float | None = None
+
+
+class SatelliteProgressItemV1(BaseModel):
+    schema_version: int = 1
+    id: UUID
+    name: str
+    exercise_type: str
+    schedule_kind: str | None = None
+    weekdays: list[int] | None = None
+    schedule_category: str | None = None
+    progression: dict[str, Any] | None = None
+    current_step_number: int
+    current_step_name: str | None = None
+    steps_count: int
+    active_metrics: dict[str, Any] = Field(default_factory=dict)
+    last_session_at: datetime | None = None
+    last_session_summary: str | None = None
+    points: list[SatelliteProgressPointV1] = Field(default_factory=list)
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SatelliteProgressListV1(BaseModel):
+    schema_version: int = 1
+    items: list[SatelliteProgressItemV1] = Field(default_factory=list)
+
+
 class SessionReadV1(BaseModel):
     schema_version: int = 1
     id: UUID
@@ -187,6 +229,7 @@ class TodaySatelliteV1(BaseModel):
     exercise_type: str
     schedule_kind: str | None
     schedule_category: str | None
+    due_today: bool = True
     current_step_number: int | None = None
     step_name: str | None = None
     active_metrics: dict[str, Any] | None = None
@@ -364,6 +407,9 @@ __all__ = [
     "CatalogCcResponseV1",
     "SatelliteCreateV1",
     "SatelliteReadV1",
+    "SatelliteProgressPointV1",
+    "SatelliteProgressItemV1",
+    "SatelliteProgressListV1",
     "MeasurementCreateV1",
     "MeasurementReadV1",
 ]

@@ -12,6 +12,7 @@ export function OverrideStepModal({
   onConfirm,
   pending,
   errorMessage,
+  maxStep = CC_STEP_COUNT,
 }: {
   open: boolean;
   exerciseName: string;
@@ -20,11 +21,13 @@ export function OverrideStepModal({
   onConfirm: (toStep: number, reason: string) => void;
   pending?: boolean;
   errorMessage?: string | null;
+  maxStep?: number;
 }) {
   const { t } = useTranslation();
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
   const [toStep, setToStep] = useState(String(currentStep));
   const [reason, setReason] = useState("");
+  const stepMax = Math.max(1, maxStep);
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +49,7 @@ export function OverrideStepModal({
             disabled={pending || offline}
             onClick={() => {
               const n = Number(toStep);
-              if (!Number.isInteger(n) || n < 1 || n > CC_STEP_COUNT) return;
+              if (!Number.isInteger(n) || n < 1 || n > stepMax) return;
               onConfirm(n, reason.trim());
             }}
           >
@@ -68,7 +71,7 @@ export function OverrideStepModal({
           onChange={(e) => setToStep(e.target.value)}
           disabled={offline}
         >
-          {Array.from({ length: CC_STEP_COUNT }, (_, i) => {
+          {Array.from({ length: stepMax }, (_, i) => {
             const n = i + 1;
             return (
               <option key={n} value={n}>

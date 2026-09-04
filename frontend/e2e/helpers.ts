@@ -85,8 +85,21 @@ export async function seedE2e(
 }
 
 export async function goSatellites(page: Page): Promise<void> {
-  await page.getByRole("link", { name: /Satelit/i }).click();
-  await expect(page.getByRole("heading", { name: /Satelit/i })).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Satelity$/i })
+    .click();
+  await expect(page.getByRole("heading", { name: /^Satelity$/i })).toBeVisible();
+}
+
+export async function goSatProgress(page: Page): Promise<void> {
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Wyniki$/i })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: /Wyniki satelit/i }),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 export async function goToday(page: Page): Promise<void> {

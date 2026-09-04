@@ -85,8 +85,8 @@ export function Modal({
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="flex max-h-[min(100dvh-2rem,40rem)] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-5">
           <h2 id="modal-title" className="font-display text-xl font-semibold text-slate-900">
             {title}
           </h2>
@@ -99,8 +99,20 @@ export function Modal({
             ×
           </button>
         </div>
-        <div className="text-sm text-slate-700">{children}</div>
-        {actions ? <div className="mt-5 flex flex-wrap justify-end gap-2">{actions}</div> : null}
+        <div
+          className={
+            actions
+              ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 text-sm text-slate-700"
+              : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 text-sm text-slate-700"
+          }
+        >
+          {children}
+        </div>
+        {actions ? (
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-100 px-5 pb-5 pt-4">
+            {actions}
+          </div>
+        ) : null}
       </div>
     </div>
   );

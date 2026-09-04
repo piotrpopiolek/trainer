@@ -31,6 +31,10 @@ interface TrainerDb extends DBSchema {
     key: string;
     value: Record<string, unknown>;
   };
+  satellite_progress: {
+    key: string;
+    value: Record<string, unknown>;
+  };
   conflicts: {
     key: string;
     value: CachedConflict;
@@ -41,7 +45,7 @@ interface TrainerDb extends DBSchema {
   };
 }
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function dbName(userId: string): string {
   return `trainer.${userId}`;
@@ -75,6 +79,9 @@ export async function openUserDb(userId: string): Promise<IDBPDatabase<TrainerDb
         }
         if (!db.objectStoreNames.contains("progress")) {
           db.createObjectStore("progress", { keyPath: "exercise_id" });
+        }
+        if (!db.objectStoreNames.contains("satellite_progress")) {
+          db.createObjectStore("satellite_progress", { keyPath: "id" });
         }
         if (!db.objectStoreNames.contains("conflicts")) {
           db.createObjectStore("conflicts", { keyPath: "id" });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 
 import { Button, Page } from "@/components/ui";
 import { OverrideStepModal } from "@/features/progress/OverrideStepModal";
@@ -114,6 +114,14 @@ export function ProgressPage() {
     );
   }
 
+  if (focusIsSatellite && focusId) {
+    const qs = new URLSearchParams({ adjust: focusId });
+    if (relatedOutcomeId) qs.set("relatedOutcome", relatedOutcomeId);
+    return (
+      <Navigate to={`/sat-progress/${focusId}?${qs.toString()}`} replace />
+    );
+  }
+
   return (
     <Page title={t("progress.title")}>
       <p className="text-sm text-slate-600">{t("progress.hint")}</p>
@@ -122,14 +130,6 @@ export function ProgressPage() {
           {t("progress.adjustAfterDeleteHint", {
             name: names[focusId] ?? t("progress.unknownExercise"),
           })}
-        </p>
-      ) : null}
-      {focusIsSatellite ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
-          {t("progress.satelliteAdjustHint")}{" "}
-          <Link className="font-medium underline" to="/satellites">
-            {t("progress.satelliteAdjustLink")}
-          </Link>
         </p>
       ) : null}
 

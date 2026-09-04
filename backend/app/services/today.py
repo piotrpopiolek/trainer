@@ -185,15 +185,22 @@ async def _build_satellites(
             )
         )
     ).all()
-    due = [
-        s
-        for s in sats
-        if _satellite_due_today(s, local_date=local_date, is_rest_day=is_rest_day)
-    ]
-    if not due:
+    if not sats:
         return []
 
-    sat_ids = [s.id for s in due]
+    # All active satellites are loggable today; due_today marks schedule match
+    # so the UI can separate "plan" vs "zapisz mimo to".
+    due_ids = {
+        s.id
+        for s in sats
+        if _satellite_due_today(s, local_date=local_date, is_rest_day=is_rest_day)
+    }
+    ordered = sorted(
+        sats,
+        key=lambda s: (0 if s.id in due_ids else 1, (s.name or "").lower(), str(s.id)),
+    )
+
+    sat_ids = [s.id for s in ordered]
     progress_by_ex = {
         p.exercise_id: p
         for p in (
@@ -221,7 +228,7 @@ async def _build_satellites(
 
     cfg_ids = [
         s.current_config_version_id
-        for s in due
+        for s in ordered
         if s.current_config_version_id is not None
     ]
     configs = {
@@ -251,7 +258,7 @@ async def _build_satellites(
     rec_by_ex = {r.exercise_id: r for r in recs}
 
     out: list[TodaySatelliteV1] = []
-    for sat in due:
+    for sat in ordered:
         step_number = step_numbers[sat.id]
         step = step_by_ex_num.get((sat.id, step_number))
         cfg = (
@@ -281,6 +288,7 @@ async def _build_satellites(
                 exercise_type=sat.exercise_type,
                 schedule_kind=sat.schedule_kind,
                 schedule_category=sat.schedule_category,
+                due_today=sat.id in due_ids,
                 current_step_number=step_number,
                 step_name=step.name if step is not None else None,
                 active_metrics=sat.active_metrics,

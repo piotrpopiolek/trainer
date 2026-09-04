@@ -76,6 +76,7 @@ export const todaySatelliteSchema = z.object({
   goal: satelliteGoalSchema.nullable().optional(),
   config_version_id: z.string().uuid().nullable().optional(),
   config_hash: z.string().nullable().optional(),
+  due_today: z.boolean().optional().default(true),
   pending_regression: satellitePendingRegressionSchema.nullable().optional(),
 });
 
@@ -246,3 +247,59 @@ export const measurementSchema = z.object({
 });
 
 export type Measurement = z.infer<typeof measurementSchema>;
+
+export const satelliteProgressPointSchema = z.object({
+  schema_version: schemaVersion.optional().default(1),
+  local_date: z.string(),
+  goal_met: z.boolean(),
+  completed: z.boolean().nullable().optional(),
+  best_reps: z.number().nullable().optional(),
+  best_duration_sec: z.number().nullable().optional(),
+  best_weight_kg: z.number().nullable().optional(),
+  best_reps_left: z.number().nullable().optional(),
+  best_reps_right: z.number().nullable().optional(),
+  best_duration_left: z.number().nullable().optional(),
+  best_duration_right: z.number().nullable().optional(),
+  best_weight_left: z.number().nullable().optional(),
+  best_weight_right: z.number().nullable().optional(),
+});
+
+export const satelliteProgressItemSchema = z.object({
+  schema_version: schemaVersion.optional().default(1),
+  id: z.string().uuid(),
+  name: z.string(),
+  exercise_type: z.string(),
+  schedule_kind: z.string().nullable().optional(),
+  weekdays: z.array(z.number()).nullable().optional(),
+  schedule_category: z.string().nullable().optional(),
+  progression: z
+    .discriminatedUnion("mode", [
+      z.object({ mode: z.literal("goal_only") }),
+      z.object({
+        mode: z.literal("steps"),
+        regression: z
+          .object({
+            mode: z.literal("suggest_after_failed_days"),
+            threshold: z.number(),
+          })
+          .optional(),
+      }),
+    ])
+    .nullable()
+    .optional(),
+  current_step_number: z.number(),
+  current_step_name: z.string().nullable().optional(),
+  steps_count: z.number(),
+  active_metrics: z.unknown(),
+  last_session_at: z.string().nullable().optional(),
+  last_session_summary: z.string().nullable().optional(),
+  points: z.array(satelliteProgressPointSchema).default([]),
+  steps: z.array(z.record(z.unknown())).default([]),
+});
+
+export type SatelliteProgressItem = z.infer<typeof satelliteProgressItemSchema>;
+
+export const satelliteProgressListSchema = z.object({
+  schema_version: schemaVersion,
+  items: z.array(satelliteProgressItemSchema),
+});

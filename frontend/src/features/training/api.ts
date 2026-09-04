@@ -4,6 +4,8 @@ import {
   measurementSchema,
   progressItemSchema,
   progressionEventSchema,
+  satelliteProgressItemSchema,
+  satelliteProgressListSchema,
   satelliteSchema,
   sessionSchema,
   todaySchema,
@@ -11,6 +13,7 @@ import {
   type ProgressItem,
   type ProgressionEvent,
   type Satellite,
+  type SatelliteProgressItem,
   type Session,
   type Today,
 } from "@/lib/schemas";
@@ -290,6 +293,18 @@ export async function createMeasurement(input: {
 export async function listProgress(): Promise<ProgressItem[]> {
   const raw = await apiJson<{ items: unknown[] }>("/api/progress");
   return z.array(progressItemSchema).parse(raw.items);
+}
+
+export async function listSatelliteProgress(): Promise<SatelliteProgressItem[]> {
+  const raw = await apiJson<unknown>("/api/progress/satellites");
+  return satelliteProgressListSchema.parse(raw).items;
+}
+
+export async function getSatelliteProgress(
+  exerciseId: string,
+): Promise<SatelliteProgressItem> {
+  const raw = await apiJson<unknown>(`/api/progress/satellites/${exerciseId}`);
+  return satelliteProgressItemSchema.parse(raw);
 }
 
 export async function fetchCatalogCc(): Promise<{

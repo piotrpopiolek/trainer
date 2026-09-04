@@ -1,4 +1,4 @@
-"""Progress list + manual override (FR-038 / US-016b)."""
+"""Progress list + manual override (FR-038 / US-016b) + satellite progress charts."""
 
 from __future__ import annotations
 
@@ -13,9 +13,19 @@ from app.api.deps import AuthContext, get_current_user_rate_limited
 from app.db.session import get_session
 from app.models.catalog import Exercise
 from app.models.progression import UserExerciseProgress
-from app.schemas.api import ProgressionEventReadV1, ProgressItemV1, ProgressOverrideRequestV1
+from app.schemas.api import (
+    ProgressionEventReadV1,
+    ProgressItemV1,
+    ProgressOverrideRequestV1,
+    SatelliteProgressItemV1,
+    SatelliteProgressListV1,
+)
 from app.services.errors import DomainError, NotFoundError
 from app.services.progression import ProgressionEngine
+from app.services.satellite_progress_read import (
+    get_satellite_progress_item,
+    list_satellite_progress,
+)
 from app.services.sessions import (
     event_to_read,
     last_session_summaries_by_exercise,
@@ -53,6 +63,32 @@ async def _owned_progress_exercise(
     if exercise.kind == "satellite" and exercise.user_id == user_id:
         return exercise
     raise NotFoundError()
+
+
+@router.get("/satellites", response_model=SatelliteProgressListV1)
+async def list_satellite_progress_route(
+    ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
+) -> SatelliteProgressListV1:
+    return await list_satellite_progress(
+        db,
+        user_id=ctx.user.id,
+        timezone_name=ctx.user.timezone or "Europe/Warsaw",
+    )
+
+
+@router.get("/satellites/{exercise_id}", response_model=SatelliteProgressItemV1)
+async def get_satellite_progress_route(
+    exercise_id: UUID,
+    ctx: AuthContext = Depends(get_current_user_rate_limited),
+    db: AsyncSession = Depends(get_session),
+) -> SatelliteProgressItemV1:
+    return await get_satellite_progress_item(
+        db,
+        user_id=ctx.user.id,
+        exercise_id=exercise_id,
+        timezone_name=ctx.user.timezone or "Europe/Warsaw",
+    )
 
 
 @router.get("", response_model=ProgressListResponse)

@@ -24,6 +24,9 @@ export function AppShell() {
           <NavLink to="/progress" className={linkClass}>
             {t("nav.progress")}
           </NavLink>
+          <NavLink to="/sat-progress" className={linkClass}>
+            {t("nav.satelliteProgress")}
+          </NavLink>
           <NavLink to="/satellites" className={linkClass}>
             {t("nav.satellites")}
           </NavLink>
