@@ -20,9 +20,9 @@ from app.services.auth_session import AuthSessionService
 from app.services.legal import record_legal_acceptance
 from app.services.onboarding import complete_onboarding
 from app.services.rate_limit import reset_memory_rate_limits
+from app.services.satellite_progress_read import aggregate_sets_point
 from app.services.satellites import create_satellite
 from app.services.sessions import create_session
-from app.services.satellite_progress_read import aggregate_sets_point
 from tests.legal_fixtures import latest_health_disclaimer
 
 
