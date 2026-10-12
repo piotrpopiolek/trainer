@@ -252,11 +252,11 @@ async def list_satellite_progress(
 
         progression: dict[str, Any] | None = None
         if ex.current_config_version_id is not None:
-            cfg = configs.get(ex.current_config_version_id)
-            if cfg is not None:
+            config_version = configs.get(ex.current_config_version_id)
+            if config_version is not None:
                 try:
                     progression = parse_satellite_config_document(
-                        cfg.document
+                        config_version.document
                     ).progression.model_dump(mode="json")
                 except Exception:
                     progression = None
