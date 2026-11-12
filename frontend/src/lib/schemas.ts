@@ -113,7 +113,7 @@ export const catalogCcStepSchema = z.object({
   rationale: z.string().optional().default(""),
   technique: z.string().optional().default(""),
   content_status: z.string(),
-  rules: z.record(z.unknown()),
+  rules: z.record(z.string(), z.unknown()),
 });
 
 export const catalogCcExerciseSchema = z.object({
@@ -231,7 +231,7 @@ export const satelliteSchema = z.object({
     ])
     .nullable()
     .optional(),
-  steps: z.array(z.record(z.unknown())),
+  steps: z.array(z.record(z.string(), z.unknown())),
 });
 
 export type Satellite = z.infer<typeof satelliteSchema>;
@@ -241,7 +241,7 @@ export const measurementSchema = z.object({
   id: z.string().uuid(),
   measured_at: z.string(),
   local_date: z.string(),
-  metrics: z.record(z.unknown()),
+  metrics: z.record(z.string(), z.unknown()),
   notes: z.string().nullable().optional(),
   revision: z.number(),
 });
@@ -294,7 +294,7 @@ export const satelliteProgressItemSchema = z.object({
   last_session_at: z.string().nullable().optional(),
   last_session_summary: z.string().nullable().optional(),
   points: z.array(satelliteProgressPointSchema).default([]),
-  steps: z.array(z.record(z.unknown())).default([]),
+  steps: z.array(z.record(z.string(), z.unknown())).default([]),
 });
 
 export type SatelliteProgressItem = z.infer<typeof satelliteProgressItemSchema>;

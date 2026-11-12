@@ -29,8 +29,8 @@ export const syncPushResponseSchema = z.object({
   schema_version: schemaVersion.optional().default(1),
   truncated: z.boolean().optional().default(false),
   results: z.array(syncPushItemResultSchema),
-  progression_events: z.array(z.record(z.unknown())).optional().default([]),
-  progress: z.array(z.record(z.unknown())).optional().default([]),
+  progression_events: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  progress: z.array(z.record(z.string(), z.unknown())).optional().default([]),
 });
 
 export type SyncPushResponse = z.infer<typeof syncPushResponseSchema>;
@@ -42,12 +42,12 @@ export const syncPullResponseSchema = z.object({
   resolved_locale: z.string(),
   catalog_version: z.number().nullable().optional(),
   resync_required: z.boolean().optional().default(false),
-  sessions: z.array(z.record(z.unknown())).optional().default([]),
-  measurements: z.array(z.record(z.unknown())).optional().default([]),
-  satellites: z.array(z.record(z.unknown())).optional().default([]),
-  progress: z.array(z.record(z.unknown())).optional().default([]),
-  progression_events: z.array(z.record(z.unknown())).optional().default([]),
-  conflicts: z.array(z.record(z.unknown())).optional().default([]),
+  sessions: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  measurements: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  satellites: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  progress: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  progression_events: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+  conflicts: z.array(z.record(z.string(), z.unknown())).optional().default([]),
   tombstones: z
     .array(
       z.object({
