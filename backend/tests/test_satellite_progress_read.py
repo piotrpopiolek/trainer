@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -167,13 +168,15 @@ async def test_list_satellite_progress_and_idor(
         commit=True,
     )
 
+    performed_at = datetime.now(UTC)
+    local_date = performed_at.astimezone(ZoneInfo("Europe/Warsaw")).date()
     await create_session(
         db,
         user=user_a,
         body=SessionCreateV1(
             schema_version=1,
-            performed_at=datetime(2026, 8, 5, 10, 0, tzinfo=UTC),
-            local_date=date(2026, 8, 5),
+            performed_at=performed_at,
+            local_date=local_date,
             client_mutation_id=new_uuid7(),
             client_timezone="Europe/Warsaw",
             logs=[
@@ -211,7 +214,7 @@ async def test_list_satellite_progress_and_idor(
     assert item["name"] == "Curl Progress"
     assert item["weekdays"] == [2, 4, 6]
     assert len(item["points"]) == 1
-    assert item["points"][0]["local_date"] == "2026-08-05"
+    assert item["points"][0]["local_date"] == local_date.isoformat()
     assert item["points"][0]["best_reps"] == 10
     assert item["points"][0]["best_weight_kg"] == 12.0
     assert item["last_session_summary"] == "6×10"
