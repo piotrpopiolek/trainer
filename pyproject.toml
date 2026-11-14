@@ -23,6 +23,8 @@ dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "pytest-cov>=5.0",
+  "pytest-timeout>=2.3",
+  "pytest-xdist>=3.6",
   "httpx>=0.27",
   "ruff>=0.8",
   "mypy>=1.13",
@@ -40,11 +42,17 @@ pythonpath = ["backend"]
 addopts = [
   "-ra",
   "--strict-markers",
+  "--import-mode=importlib",
+  "--timeout=60",
+  "--timeout-method=thread",
   "--cov=backend/app",
   "--cov-report=term-missing",
   "--cov-config=pyproject.toml",
 ]
 markers = [
+  "unit: no Postgres, ASGI, or network — path tests/unit",
+  "integration: one layer on Compose Postgres — path tests/integration",
+  "e2e: FastAPI over ASGI — path tests/e2e",
   "idor: IDOR / tenant isolation (FR-005b) — required CI job",
   "concurrency: parallel race tests (auth sessions, satellites, CAS sync)",
 ]

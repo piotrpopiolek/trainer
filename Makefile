@@ -21,8 +21,11 @@ seed:
 test:
 	docker compose run --rm api pytest
 
+test-unit:
+	docker compose run --rm --no-deps api pytest -m unit -n auto
+
 test-idor:
-	docker compose run --rm api pytest -m idor
+	docker compose run --rm api pytest -m idor --no-cov
 
 test-concurrency:
 	docker compose run --rm api pytest -m concurrency --no-cov
